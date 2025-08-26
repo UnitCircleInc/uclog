@@ -2,24 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "ucuart.h"
-#include <zephyr/pm/device.h>
+#include "cb.h"
 #include <hal/nrf_uarte.h>
 #include <hal/nrf_gpio.h>
 #include <nrfx_timer.h>
-#include <zephyr/sys/util.h>
-#include <zephyr/kernel.h>
-#include <soc.h>
 #include <nrfx_ppi.h>
-#include <zephyr/linker/devicetree_regions.h>
-#include <zephyr/irq.h>
-
-//#include <zephyr/logging/log.h>
-
 
 // This must be a power of 2 in order to be able to use 32 bit timer/counter
 // mod and not have to keep track of timer/counter overflow events.
 #define RX_BUF_LEN (2<<7)
 
+// TODO move to another file e.g. ucpinctrl.h
 #ifdef CONFIG_PINCTRL
 #include <zephyr/drivers/pinctrl.h>
 
@@ -144,39 +137,9 @@ static inline int my_pinctrl_apply_state(
 #error CONFIG_PINCTRL required.
 #endif
 
-#include "cb.h"
-#include "cobs.h"
-#include "cobs.h"
-
-#if 0
-#include "log.h"
-#else
-#define LOG_ERROR(...)
-#define LOG_INF(...)
-#define LOG_WARN(...)
-#endif
-#if 0
-#include "app_version.h"
-#endif
 
 // Must match dts/bindings file - commas replaced with underscores
 #define DT_DRV_COMPAT unitcircle_ucuart
-
-// uclog sends ping packets at this rate
-#define UCLOG_PING_RATE_MS 500
-// ping_timeout_timer will expire if no packets received in this time
-#define PING_TIMEOUT_MS (UCLOG_PING_RATE_MS * 2)
-
-#ifdef CONFIG_SIGNED_IMAGE
-#include "lib/uc/sbl.h"
-#define APP_HASH_SIZE 64
-#endif
-
-#define DEVICE_INFO_UCLOG_PORT (62)
-
-#define MAX_LOG_TX_SIZE (256u)
-//static uint8_t device_info_tx_buf[COBS_ENC_SIZE(MAX_LOG_TX_SIZE)+2];
-//static size_t device_info_len;
 
 struct ucuart_config {
   NRF_UARTE_Type * regs;
@@ -190,11 +153,11 @@ struct ucuart_config {
 
 struct ucuart_data {
   atomic_t tx_active;
-  atomic_t host_ready;
+  atomic_t rx_active;
   cb_t* tx_cb;
+  uint32_t last_error;
 
   struct k_event event;
-  struct k_timer ping_timeout_timer;
   size_t n; // current number of bytes being sent
   nrf_ppi_channel_t ppi;
 };
@@ -208,39 +171,13 @@ typedef enum {
   UCUART_ERROR_NOISE  = 1 << 4,
 } uart_error_t;
 
-static void send_device_info(const struct device* dev) {
-#if 0
-  const struct ucuart_config * config = ZEPHYR_DEVICE_MEMBER(dev, config);
-  struct ucuart_data * data = ZEPHYR_DEVICE_MEMBER(dev, data);
-
-  // Send device info to host so it can use hash to validate log parsing
-  atomic_set(&data->tx_active, true);
-
-  LOG_INFO("Sending device info");
-  nrf_uarte_event_clear(config->regs, NRF_UARTE_EVENT_ENDTX);
-  nrf_uarte_event_clear(config->regs, NRF_UARTE_EVENT_TXSTOPPED);
-  nrf_uarte_tx_buffer_set(config->regs, device_info_tx_buf, device_info_len);
-  data->n = 0; // not peeking from tx_cb for this transfer
-  nrf_uarte_task_trigger(config->regs, NRF_UARTE_TASK_STARTTX);
-#else
-  (void) dev;
-#endif
-}
-
 static void uart_handler(const struct device* dev) {
   const struct ucuart_config * config = ZEPHYR_DEVICE_MEMBER(dev, config);
   struct ucuart_data * data = ZEPHYR_DEVICE_MEMBER(dev, data);
 
   if (nrf_uarte_event_check(config->regs, NRF_UARTE_EVENT_ERROR)) {
-    uint32_t z = nrf_uarte_errorsrc_get_and_clear(config->regs);
+    data->last_error = nrf_uarte_errorsrc_get_and_clear(config->regs);
     nrf_uarte_event_clear(config->regs, NRF_UARTE_EVENT_ERROR);
-    if (z != 0) {
-      LOG_ERROR("uart error: %c%c%c%c",
-         (z & NRF_UARTE_ERROR_OVERRUN_MASK) == 0 ? '-' : 'O',
-         (z & NRF_UARTE_ERROR_PARITY_MASK)  == 0 ? '-' : 'P',
-         (z & NRF_UARTE_ERROR_FRAMING_MASK) == 0 ? '-' : 'F',
-         (z & NRF_UARTE_ERROR_BREAK_MASK)   == 0 ? '-' : 'B');
-    }
   }
   if (nrf_uarte_event_check(config->regs, NRF_UARTE_EVENT_ENDRX)) {
     // This will trigger a STARTRX
@@ -248,14 +185,7 @@ static void uart_handler(const struct device* dev) {
   }
   if (nrf_uarte_event_check(config->regs, NRF_UARTE_EVENT_RXDRDY)) {
     nrf_uarte_event_clear(config->regs, NRF_UARTE_EVENT_RXDRDY);
-
-    k_timer_start(&data->ping_timeout_timer, K_MSEC(PING_TIMEOUT_MS), K_NO_WAIT);
-
-    bool changed = atomic_cas(&data->host_ready, false, true);
-    if (changed) {
-      send_device_info(dev);
-    }
-
+    atomic_cas(&data->rx_active, false, true);
     k_event_post(&data->event, UCUART_EVT_RX);
   }
 
@@ -326,9 +256,7 @@ static int tx_schedule(const struct device *dev) {
   const struct ucuart_config * config = ZEPHYR_DEVICE_MEMBER(dev, config);
   struct ucuart_data * data = ZEPHYR_DEVICE_MEMBER(dev, data);
 
-  //LOG_INF("ucuart_tx_schedule %d %p", data->tx_active, data->tx_cb);
-
-  if (data->tx_cb && atomic_get(&data->host_ready)) {
+  if (data->tx_cb) {
     bool got = atomic_cas(&data->tx_active, false, true);
     if (got) {
       size_t n = cb_peek_avail(data->tx_cb);
@@ -368,9 +296,27 @@ static int tx_buffer(const struct device *dev, const uint8_t* b, size_t n) {
 static int set_tx_cb(const struct device *dev, cb_t* cb) {
   struct ucuart_data * data = ZEPHYR_DEVICE_MEMBER(dev, data);
   data->tx_cb = cb;
-  LOG_INF("ucuart_set_tx_cb %p", data->tx_cb);
   return 0;
 }
+
+#if 0
+// TODO Add to API perhaps should be an error or a function to convert
+// error code to error string for those that want it.
+//
+static uint32_t last_error(const struct device *dev) {
+  const struct ucuart_config * config = ZEPHYR_DEVICE_MEMBER(dev, config);
+  uint32_t last_error = dev->last_error;
+  if (last_error != 0) {
+    LOG_ERROR("uart error: %c%c%c%c",
+       (last_error & NRF_UARTE_ERROR_OVERRUN_MASK) == 0 ? '-' : 'O',
+       (last_error & NRF_UARTE_ERROR_PARITY_MASK)  == 0 ? '-' : 'P',
+       (last_error & NRF_UARTE_ERROR_FRAMING_MASK) == 0 ? '-' : 'F',
+       (last_error & NRF_UARTE_ERROR_BREAK_MASK)   == 0 ? '-' : 'B');
+  }
+  dev->last_error = 0;
+  return last_error;
+}
+#endif
 
 
 static void rx_start(const struct device *dev) {
@@ -420,6 +366,12 @@ static int panic(const struct device *dev) {
   return 0;
 }
 
+// Perhaps rx_start/rx_stop should be run/idle
+// with run having tx/rx enabled at full power, and idle
+// having peripheral disabled, and Rx pin as GPIO with interrupt
+// semantics.  Idle -> lower power, less functionality.
+// resume/suspend - although suspend is not realy full suspend.
+//
 static const struct ucuart_driver_api ucuart_api = {
   .tx_no_wait = tx,
   .tx_buffer = tx_buffer,
@@ -434,98 +386,7 @@ static const struct ucuart_driver_api ucuart_api = {
   .panic = panic,
 };
 
-#ifdef CONFIG_PM_DEVICE
-
-static int uart_pm_action(const struct device *dev, enum pm_device_action action) {
-  int ret;
-  const struct ucuart_config * config = ZEPHYR_DEVICE_MEMBER(dev, config);
-  LOG_INF("uart_pc_action: %s", pm_device_state_str(action));
-  switch (action) {
-    case PM_DEVICE_ACTION_RESUME:
-      ret = my_pinctrl_apply_state(config->pcfg, PINCTRL_STATE_DEFAULT);
-      if (ret < 0) return ret;
-      // Restart rx/tx tasks
-      // nrf_uarte_enable(config->regs);
-      break;
-
-    case PM_DEVICE_ACTION_SUSPEND:
-      // Stop rx/tx tasks - wait for rx/tx stopped to be complete
-      // nrf_uarte_disable(config->regs);
-      ret = my_pinctrl_apply_state(config->pcfg, PINCTRL_STATE_SLEEP);
-      if (ret < 0) return ret;
-      break;
-
-    case PM_DEVICE_ACTION_TURN_ON:
-    case PM_DEVICE_ACTION_TURN_OFF:
-      break;
-
-    default: return -ENOTSUP;
-  }
-  return 0;
-}
-
-// Notes for logging framework:
-// https://docs.zephyrproject.org/latest/services/pm/device.html#device-power-management
-// See figure 15.
-// Logger should probably be calling:
-// pm_device_busy_set()
-// pm_device_busy_clear()
-// pm_device_wakeup_enable()
-// Also see: samples/boards/nrf/system_off/src/main.c
-
-#endif
-
-void ping_timeout(struct k_timer *timer) {
-  struct ucuart_data * data = CONTAINER_OF(timer, struct ucuart_data, ping_timeout_timer);
-  atomic_set(&data->host_ready, false);
-  LOG_WARN("Ping timeout expired: Host disconnected");
-}
-
 static void timer_handler(nrf_timer_event_t event_type, void *p_context) { }
-
-#if 0
-static void fill_device_info(void) {
-  size_t port_offset = sizeof(device_info_tx_buf) - (size_t)MAX_LOG_TX_SIZE;
-
-  // Encode port number
-  uint8_t port = DEVICE_INFO_UCLOG_PORT;
-  device_info_tx_buf[port_offset] = (port << 2) | 3;
-
-  // Encode CBOR
-  size_t cbor_offset = port_offset + 1;
-  uint8_t *cbor_output = &device_info_tx_buf[cbor_offset];
-
-  cbor_stream_t cbor_stream;
-  cbor_init(&cbor_stream, cbor_output, MAX_LOG_TX_SIZE);
-
-  cbor_error_t err = cbor_pack(&cbor_stream,
-    "{"
-        ".app_hash:b,"
-        ".image_type:s,"
-        ".board:s"
-    "}",
-        sbl_app_hash(), APP_HASH_SIZE,
-        get_image_type(),
-        CONFIG_BOARD
-    );
-  if (err != CBOR_ERROR_NONE) {
-    LOG_FATAL("CBOR pack error: {enum:cbor_error_t}%d", err);
-  }
-
-  size_t cbor_len = cbor_read_avail(&cbor_stream);
-
-  // Encode COBS
-  size_t cobs_len = cobs_enc(&device_info_tx_buf[1],
-      &device_info_tx_buf[port_offset],
-      cbor_len + 1);
-
-  // Frame
-  device_info_tx_buf[0] = '\0';
-  device_info_tx_buf[cobs_len+1] = '\0';
-
-  device_info_len = cobs_len + 2;
-}
-#endif
 
 static int ucuart_init(const struct device *dev) {
   const struct ucuart_config * config = ZEPHYR_DEVICE_MEMBER(dev, config);
@@ -533,11 +394,6 @@ static int ucuart_init(const struct device *dev) {
   int err;
 
   k_event_init(&data->event);
-  k_timer_init(&data->ping_timeout_timer, ping_timeout, NULL);
-
-#if 0
-  fill_device_info();
-#endif
 
   nrf_uarte_disable(config->regs);
 
@@ -578,7 +434,6 @@ static int ucuart_init(const struct device *dev) {
   tmr_config.bit_width = NRF_TIMER_BIT_WIDTH_32;
   err = nrfx_timer_init(&config->timer, &tmr_config, timer_handler);
   if (err != NRFX_SUCCESS) {
-    LOG_ERROR("nrfx_timer_init %d", err);
     return -EIO;
   }
   nrfx_timer_enable(&config->timer);
@@ -586,7 +441,6 @@ static int ucuart_init(const struct device *dev) {
 
   err = nrfx_ppi_channel_alloc(&data->ppi);
   if (err != NRFX_SUCCESS) {
-    LOG_ERROR("nrfx_ppi_channel_alloc %d", err);
     return -EIO;
   }
 
@@ -594,12 +448,10 @@ static int ucuart_init(const struct device *dev) {
             nrf_uarte_event_address_get(config->regs, NRF_UARTE_EVENT_RXDRDY),
             nrfx_timer_task_address_get(&config->timer, NRF_TIMER_TASK_COUNT));
   if (err != NRFX_SUCCESS) {
-    LOG_ERROR("nrfx_ppi_channel_assign %d", err);
     return -EIO;
   }
   err = nrfx_ppi_channel_enable(data->ppi);
   if (err != NRFX_SUCCESS) {
-    LOG_ERROR("nrfx_ppi_channel_enable %d", err);
     return -EIO;
   }
 
@@ -608,12 +460,10 @@ static int ucuart_init(const struct device *dev) {
   nrf_uarte_shorts_enable(config->regs, NRF_UARTE_SHORT_ENDRX_STARTRX);
   nrf_uarte_rx_buffer_set(config->regs, config->rx_cb->b, RX_BUF_LEN);
   nrf_uarte_task_trigger(config->regs, NRF_UARTE_TASK_STARTRX);
-
-  LOG_INF("ucuart_init %s 0x%08x %u", dev->name, (uint32_t) config->regs,
-                                      config->current_speed);
   return 0;
 }
 
+// TODO Timer should be configurable from device tree.
 #define CONFIG_UCUART_0_TIMER 4
 
 #define IRQ_CONFIG(i)                                               \
@@ -643,12 +493,11 @@ static void irq_config##i(const struct device *dev) {               \
                                                                     \
   static struct ucuart_data data##i = {                             \
     .tx_active = false,                                             \
-    .host_ready = false,                                            \
+    .rx_active = false,                                             \
     .tx_cb = NULL,                                                  \
+    .last_error = 0,                                                \
     .n = 0U,                                                        \
   };                                                                \
-                                                                    \
-  PM_DEVICE_DT_INST_DEFINE(i, uart_pm_action);                      \
                                                                     \
   DEVICE_DT_INST_DEFINE(i, ucuart_init, PM_DEVICE_DT_INST_GET(i), &data##i, &config##i, \
       PRE_KERNEL_1, CONFIG_UCUART_INIT_PRIORITY, &ucuart_api);
