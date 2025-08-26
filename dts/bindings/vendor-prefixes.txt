@@ -1,0 +1,8 @@
+tmi	Trudell Medical Inc.
+unitcircle	Unit Circle Inc.
+ti	Texas Instruments Inc.
+cfsensor	CFsensor.
+inolux	inolux Inc.
+staric	StarIC Inc.
+diodes	Diodes Inc.
+skyworks	Skyworks Inc.

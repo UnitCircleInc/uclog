@@ -1,0 +1,5 @@
+# © 2025 Unit Circle Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+rsource "drivers/Kconfig"
+rsource "lib/Kconfig"

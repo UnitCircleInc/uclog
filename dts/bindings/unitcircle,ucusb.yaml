@@ -1,0 +1,26 @@
+description: |
+  Unit Circle USB
+
+  This is the binding for the peripheral USBD the driver implements the
+  CDC?ACM serial profile with a different API from standard Zephyr serial API.    The new API matches needs of Unit Circle Logging Framwork.
+
+compatible: "unitcircle,ucusb"
+
+include: usb-ep.yaml
+
+properties:
+    reg:
+      required: true
+
+    interrupts:
+      required: true
+
+    num-isoin-endpoints:
+      type: int
+      required: true
+      description: Number of ISOIN endpoints supported by hardware
+
+    num-isoout-endpoints:
+      type: int
+      required: true
+      description: Number of ISOOUT endpoints supported by hardware

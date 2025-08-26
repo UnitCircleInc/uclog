@@ -1,0 +1,29 @@
+# Toolchain now uses hash - but hash is different for different host machines
+case $(uname) in
+  Linux)
+    NCS_TOOLCHAIN_PATH=$NCS_TOOLCHAIN_BASE/b77d8c1312 ;;
+  Darwin)
+    NCS_TOOLCHAIN_PATH=$NCS_TOOLCHAIN_BASE/b8efef2ad5 ;;
+  *)  echo "Warning unknown platform $(uname)" ;;
+esac
+
+export ZEPHYR_SDK_INSTALL_DIR=$NCS_TOOLCHAIN_PATH/opt/zephyr-sdk
+
+case $(uname) in
+  Linux)
+    export PATH=$NCS_TOOLCHAIN_PATH/usr/bin:$NCS_TOOLCHAIN_PATH/usr/bin:$NCS_TOOLCHAIN_PATH/usr/local/bin:$NCS_TOOLCHAIN_PATH/opt/bin:$NCS_TOOLCHAIN_PATH/opt/nanopb/generator-bin:$NCS_TOOLCHAIN_PATH/opt/zephyr-sdk/arm-zephyr-eabi/bin:$NCS_TOOLCHAIN_PATH/opt/zephyr-sdk/riscv64-zephyr-elf/bin:$PATH
+    export LD_LIBRARY_PATH=$NCS_TOOLCHAIN_PATH/usr/lib:$NCS_TOOLCHAIN_PATH/usr/lib/x86_64-linux-gnu:$NCS_TOOLCHAIN_PATH/usr/local/lib:$LD_LIBRARY_PATH
+    export GIT_EXEC_PATH=$NCS_TOOLCHAIN_PATH/usr/local/libexec/git-core
+    export GIT_TEMPLATE_DIR=$NCS_TOOLCHAIN_PATH/usr/local/share/git-core/templates
+    export PYTHONHOME=$NCS_TOOLCHAIN_PATH/usr/local
+    export PYTHONPATH=$NCS_TOOLCHAIN_PATH/usr/local/lib/python3.12:$NCS_TOOLCHAIN_PATH/usr/local/lib/python3.12/site-packages
+    ;;
+ Darwin)
+    export PATH=$NCS_TOOLCHAIN_PATH/Cellar/python@3.12/3.12.4/Frameworks/Python.framework/Versions/3.12/bin:$NCS_TOOLCHAIN_PATH/bin:$NCS_TOOLCHAIN_PATH/opt/bin:$NCS_TOOLCHAIN_PATH/opt/nanopb/generator-bin:$ZEPHYR_SDK_INSTALL_DIR/arm-zephyr-eabi/bin:$PATH
+    export GIT_EXEC_PATH=$NCS_TOOLCHAIN_PATH/Cellar/git/2.37.3/libexec/git-core
+    export GIT_TEMPLATE_DIR=$NCS_TOOLCHAIN_PATH/Cellar/git/2.37.3/share/git-core/templates ;;
+  *)  echo "Warning unknown platform $(uname)" ;;
+esac
+
+# Signing details
+export SBL_NEB_CERT=secondary.cert
