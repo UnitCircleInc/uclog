@@ -725,13 +725,11 @@ read1:;
           v->type = CBOR_TYPE_SIMPLE;
           v->value.simple_v = (uint8_t) n;
           return CBOR_ERROR_NONE;
-#if !defined(CBOR_NO_FLOAT16)
         case 25:
           v->type = CBOR_TYPE_FLOAT16;
           int_to_float.v = n;
           v->value.float16_v = int_to_float.f16;
           return CBOR_ERROR_NONE;
-#endif
         case 26:
           v->type = CBOR_TYPE_FLOAT32;
           int_to_float.v = n;
@@ -1377,7 +1375,6 @@ static cbor_error_t cbor_pack1(cbor_pack_state_t* state) {
             break;
           default:
             return CBOR_ERROR_FMT;
-            break; // MISRA-C Rule 16.3
         }
         // Read fmt sep
         if (*state->fmt++ != ':') return CBOR_ERROR_FMT;

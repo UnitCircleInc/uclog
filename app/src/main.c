@@ -42,6 +42,7 @@ void z_log_vprintk(const char *fmt, va_list ap) {
 				   fmt, ap);
 }
 
+#if 0
 #include "ucuart.h"
 #include "cb.h"
 // The alternative is to call the hook function
@@ -49,6 +50,9 @@ static const struct device* console = DEVICE_DT_GET_OR_NULL(DT_CHOSEN(zephyr_con
 static cb_t    tx_cb;
 static uint8_t tx_buf[1024];
 
+#endif
+
+#include "log.h"
 
 
 int main(void) {
@@ -62,19 +66,24 @@ int main(void) {
   timing_init();
   (void) k_timer_start(&my_timer, K_SECONDS(5), K_SECONDS(5));
 
+#if 0
   memset(tx_buf, 0, sizeof(tx_buf));
   cb_init(&tx_cb, tx_buf, sizeof(tx_buf));
   ucuart_set_tx_cb(console, &tx_cb);
+#endif
 
   while (true) {
     (void) k_sleep(K_MSEC(1000));
     //boot_banner();
     LOG_DBG("debug");
+    LOG_DEBUG("%s", "hello there");
 
+#if 0
     //uint32_t key = irq_lock();
     cb_write(&tx_cb, "hello\r\n", 7);
     //irq_unlock(key);
     ucuart_tx_schedule(console);
+#endif
   }
 }
 

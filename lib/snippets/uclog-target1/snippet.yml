@@ -1,0 +1,4 @@
+name: uclog-target1
+append:
+  EXTRA_CONF_FILE: uclog.conf
+  EXTRA_DTC_OVERLAY_FILE: uclog.overlay

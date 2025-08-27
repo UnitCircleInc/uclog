@@ -1,0 +1,22 @@
+
+&uart0 {
+    compatible = "unitcircle,ucuart";
+    current-speed = <1000000>;
+    /* pinctrl-0 = <&uart0_default>; */
+    /* pinctrl-1 = <&uart0_sleep>; */
+    /* pinctrl-names = "default", "sleep"; */
+    /* status = "okay"; */
+};
+
+#define UC_LOG_TARGET (0)
+
+/ {
+    logdata: memory@f0000000 {
+        compatible = "zephyr,memory-region";
+        reg = <(0xf0000000+0x0100000*UC_LOG_TARGET) 0x0100000>;
+        status = "okay";
+        zephyr,memory-region = "LOGDATA";
+    };
+};
+
+

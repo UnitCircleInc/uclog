@@ -36,6 +36,7 @@ enum ucuart_event_e {
   UCUART_EVT_RX = 1,
 };
 
+typedef const struct device uart_t;
 
 
 // Create a ucuart as new api that uses the uarte wiht DMA.
