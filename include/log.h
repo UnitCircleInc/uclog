@@ -28,6 +28,83 @@
 #define CONFIG_UC_LOG_SAVE (0)
 #endif
 
+// Override/overload zephyr logging macros
+#if defined(CONFIG_LOG_CUSTOM_HEADER)
+#undef LOG_ERR
+#undef LOG_WRN
+#undef LOG_INF
+#undef LOG_DBG
+#undef LOG_PRINTK
+#undef LOG_RAW
+#undef LOG_WRN_ONCE
+
+#undef LOG_HEXDUMP_ERR
+#undef LOG_HEXDUMP_WRN
+#undef LOG_HEXDUMP_INF
+#undef LOG_HEXDUMP_DBG
+
+#define LOG_ERR(...) do { \
+  if (Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_ERR)) { \
+    LOG_DEBUG(__VA_ARGS__);  \
+  } \
+} while (0)
+#define LOG_WRN(...) do { \
+  if (Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_WRN)) { \
+    LOG_DEBUG(__VA_ARGS__);  \
+  } \
+} while (0)
+#define LOG_INF(...) do { \
+  if (Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_INF)) { \
+    LOG_DEBUG(__VA_ARGS__);  \
+  } \
+} while (0)
+#define LOG_DBG(...) do { \
+  if (Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_DBG)) { \
+    LOG_DEBUG(__VA_ARGS__);  \
+  } \
+} while (0)
+
+#define LOG_WRN_ONCE(...) do { \
+  static uint8_t warned__ = 0; \
+  if (warned__ == 0) { \
+    LOG_WRN(__VA_ARGS__); \
+    warned__ = 1; \
+  } \
+} while (0)
+
+#define LOG_PRINTK(...) LOG_INFO("-printk-" __VA_ARGS__)
+#define LOG_RAW(...)    LOG_INFO("-raw-" __VA_ARGS__)
+#define printk(...)     LOG_INFO("-printk-" __VA_ARGS__)
+
+#define LOG_HEXDUMP_ERR(data_, length_, str_) do { \
+  if (Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_ERR)) { \
+    LOG_MEM_ERROR(str_, data_, length_);  \
+  } \
+} while (0)
+#define LOG_HEXDUMP_WRN(data_, length_, str_) do { \
+  if (Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_WRN)) { \
+    LOG_MEM_WARN(str_, data_, length_);  \
+  } \
+} while (0)
+#define LOG_HEXDUMP_INF(data_, length_, str_) do { \
+  if (Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_INF)) { \
+    LOG_MEM_INFO(str_, data_, length_);  \
+  } \
+} while (0)
+#define LOG_HEXDUMP_DBG(data_, length_, str_) do { \
+  if (Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_DBG)) { \
+    LOG_MEM_DEBUG(str_, data_, length_);  \
+  } \
+} while (0)
+
+#else
+
+// Only need to define these if not zephyr
+// On zephyr these are configured to run at startup
+void log_pre_init(void);
+void log_init(uart_t* uart);
+
+#endif
 
 // NOTE:
 //
@@ -71,7 +148,6 @@
   LOG_(LOG_LVL_FATAL, VA_SEL(__VA_ARGS__), __VA_ARGS__); \
   log_fatal_(); \
 } while (false)
-#define LOG_PANIC(...) LOG_(LOG_LVL_PANIC, VA_SEL(__VA_ARGS__), __VA_ARGS__)
 
 #define LOG_(c_,s_,...)      LOG_IMPL_(c_,s_,__VA_ARGS__)
 #define LOG_IMPL_(c_,s_,...) LOG##s_##_(c_,__VA_ARGS__)
@@ -101,7 +177,6 @@
   LOG_MEM_(LOG_LVL_FATAL, _fmt, _buf, _n); \
   log_fatal_(); \
 } while (false)
-#define LOG_MEM_PANIC(_fmt, _buf, _n) LOG_MEM_(LOG_LVL_PANIC, _fmt, _buf, _n)
 #define LOG_MEM_(_c, _fmt, _buf, _n) LOG_MEM_IMPL_(_c, _fmt, _buf, _n)
 
 #define LOG_MEM_IMPL_(_c, _fmt, _buf, _n) \
@@ -142,9 +217,6 @@ const uint8_t* log_saved_log(size_t* n);
 const uint8_t* log_saved_app_hash(size_t* n);
 void log_tx_saved_log(void);
 #endif
-
-void log_pre_init(void);
-void log_init(uart_t* uart);
 
 
 // MAP that takes up to 21 arguments (can be adjusted upwards by updating

@@ -287,7 +287,11 @@ void log_pre_init(void) {
   LOG_INFO("log-pre-init");
 }
 
+#if defined(CONFIG_LOG_CUSTOM_HEADER)
+void uc_log_init(uart_t* uart) {
+#else
 void log_init(uart_t* uart) {
+#endif
   if (uart == NULL) return;
 
   log_data.uart = uart;
@@ -296,7 +300,7 @@ void log_init(uart_t* uart) {
   // start server if availble
 }
 
-#if defined(CONFIG_ZEPHYR_NEWLOG_MODULE)
+#if defined(CONFIG_LOG_CUSTOM_HEADER)
 
 int zephyr_log_pre_init(void) {
   log_pre_init();
@@ -309,7 +313,7 @@ static const struct device* console = DEVICE_DT_GET_OR_NULL(DT_CHOSEN(zephyr_con
 
 int zephyr_log_init(void) {
   if (!device_is_ready(console)) return -ENOTSUP;
-  log_init(console);
+  uc_log_init(console);
   return 0;
 }
 

@@ -34,43 +34,16 @@ void my_timer_handler(struct k_timer *dummy) {
 
 K_TIMER_DEFINE(my_timer, my_timer_handler, NULL);
 
-void z_log_vprintk(const char *fmt, va_list ap) {
-  LOG_INF("z_log_vprintk");
-	z_log_msg_runtime_vcreate(Z_LOG_LOCAL_DOMAIN_ID, NULL,
-				   LOG_LEVEL_INTERNAL_RAW_STRING, NULL, 0,
-				   Z_LOG_MSG_CBPRINTF_FLAGS(0),
-				   fmt, ap);
-}
-
-#if 0
-#include "ucuart.h"
-#include "cb.h"
-// The alternative is to call the hook function
-static const struct device* console = DEVICE_DT_GET_OR_NULL(DT_CHOSEN(zephyr_console));
-static cb_t    tx_cb;
-static uint8_t tx_buf[1024];
-
-#endif
-
-#include "log.h"
-
-
 int main(void) {
     //log_output_timestamp_freq_set(0); // Disable generating timestamps
   LOG_ERR("error");
   LOG_WRN("warn");
   LOG_INF("info");
   LOG_DBG("debug");
-  printk("xxx %s %d\n", "hello", 2); // calls z_log_printk
+  printk("xxx %s %d\n", "hello", 2);
   LOG_PRINTK("hello\n"); // calls Z_LOG_PRINTK - can easily fake it
   timing_init();
   (void) k_timer_start(&my_timer, K_SECONDS(5), K_SECONDS(5));
-
-#if 0
-  memset(tx_buf, 0, sizeof(tx_buf));
-  cb_init(&tx_cb, tx_buf, sizeof(tx_buf));
-  ucuart_set_tx_cb(console, &tx_cb);
-#endif
 
   while (true) {
     (void) k_sleep(K_MSEC(1000));
@@ -78,12 +51,6 @@ int main(void) {
     LOG_DBG("debug");
     LOG_DEBUG("%s", "hello there");
 
-#if 0
-    //uint32_t key = irq_lock();
-    cb_write(&tx_cb, "hello\r\n", 7);
-    //irq_unlock(key);
-    ucuart_tx_schedule(console);
-#endif
   }
 }
 
