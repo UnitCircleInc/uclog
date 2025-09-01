@@ -12,13 +12,16 @@
 LOG_MODULE_REGISTER(main);
 
 void my_work_handler(struct k_work *work) {
-  int64_t now = k_uptime_get();
-  double  secs = (float) now / 1000.0f;
+  //int64_t now = k_uptime_get();
+  //double  secs = (float) now / 1000.0f;
+  static uint32_t x  = 0;
+  x = x + 1;
   timing_start();
   timing_t start = timing_counter_get();
-  LOG_INF("tick %.3f s since reset", secs);
+  //LOG_INF("tick %.3f s since reset", secs);
   //LOG_INF("tick %lld s since reset", now);
   //LOG_INF("tick 00000 s since reset");
+  LOG_INF("tick %u since reset", x);
   timing_t end = timing_counter_get();
   timing_stop();
   uint64_t cycles = timing_cycles_get(&start, &end);
