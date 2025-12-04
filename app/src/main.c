@@ -20,8 +20,8 @@ void my_work_handler(struct k_work *work) {
   timing_t start = timing_counter_get();
   //LOG_INF("tick %.3f s since reset", secs);
   //LOG_INF("tick %lld s since reset", now);
-  //LOG_INF("tick 00000 s since reset");
-  LOG_INF("tick %u since reset", x);
+  LOG_INF("tick 00000 s since reset");
+  //LOG_INF("tick %u since reset", x);
   timing_t end = timing_counter_get();
   timing_stop();
   uint64_t cycles = timing_cycles_get(&start, &end);
@@ -43,8 +43,8 @@ int main(void) {
   LOG_WRN("warn");
   LOG_INF("info");
   LOG_DBG("debug");
-  printk("xxx %s %d\n", "hello", 2);
-  LOG_PRINTK("hello\n"); // calls Z_LOG_PRINTK - can easily fake it
+  //printk("xxx %s %d\n", "hello", 2);
+  //LOG_PRINTK("hello\n"); // calls Z_LOG_PRINTK - can easily fake it
   timing_init();
   (void) k_timer_start(&my_timer, K_SECONDS(5), K_SECONDS(5));
 

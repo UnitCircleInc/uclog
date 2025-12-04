@@ -72,7 +72,7 @@ void log_log1_(const char *prefix) {
   b[0] = 0x00;
   b[1+n] = 0x00;
   tx_buffer(b, n+2);
-  if (log_data.tx_enabled) ucuart_tx_schedule(log_data.uart);
+  if (log_data.tx_enabled) ucuart_tx_schedule(log_data.uart, NULL, 0);
 }
 
 void log_logn_(const char* fmt, const char *prefix,  ...) {
@@ -147,7 +147,7 @@ done:
   b[0] = 0x00;
   b[1+n] = 0x00;
   tx_buffer(b, n+2);
-  if (log_data.tx_enabled) ucuart_tx_schedule(log_data.uart);
+  if (log_data.tx_enabled) ucuart_tx_schedule(log_data.uart, NULL, 0);
 }
 
 void log_mem_(const char *prefix, const void* b, size_t n) {
@@ -169,24 +169,34 @@ void log_mem_(const char *prefix, const void* b, size_t n) {
   bb[0] = 0x00;
   bb[1+n] = 0x00;
   tx_buffer(bb, n+2);
-  if (log_data.tx_enabled) ucuart_tx_schedule(log_data.uart);
+  if (log_data.tx_enabled) ucuart_tx_schedule(log_data.uart, NULL, 0);
 }
 
-void suspend_tx(void) {
+void log_tx_suspend(void) {
   log_data.tx_enabled = false;
 }
 
-void resume_tx(void) {
+
+void log_tx_resume(void) {
   log_data.tx_enabled = true;
-  ucuart_tx_schedule(log_data.uart);
+  static uint8_t b[1+LOG_APP_HASH_SIZE+1+2];
+
+  // A app hash on each resume to identify the device
+  // so that the correct uclog decoder file can be loaded
+  b[2] = (63 << 2) | 3;
+  memmove(b + 3, log_app_hash(NULL), LOG_APP_HASH_SIZE);
+  size_t n = cobs_enc(b + 1, b + 2, LOG_APP_HASH_SIZE + 1);
+  b[0] = '\0';
+  b[n+1] = '\0';
+  ucuart_tx_schedule(log_data.uart, b, n+2);
 }
 
-__weak void application_handle_fatal_error(void) {
+// Allow others to override log_fatal if needed
+__weak void log_fatal(void) {
 }
 
 __attribute__((noreturn)) void log_fatal_(void) {
-  // Handle it in the control subsystem if implemented
-  application_handle_fatal_error();
+  log_fatal();
 
   // We switched to log_panic so all data will have been flushed
   // If debugger connected then bkpt, otherwise reset
@@ -202,17 +212,41 @@ static void tx_buffer(const uint8_t* b, size_t n) {
   irq_unlock(key);
 }
 
-#if CONFIG_UC_LOG_SAVE
-#define APP_HASH_SIZE 64
+void log_tx(uint8_t port, const uint8_t* data, size_t n) {
+  static uint8_t b[COBS_ENC_SIZE(LOG_MAX_PACKET_SIZE+1)+2];
 
-#ifndef CONFIG_UC_SIGNED_IMAGE
+  if (n > LOG_MAX_PACKET_SIZE) LOG_FATAL("tx message too long %zu", n);
+  if (63 < port) LOG_FATAL("invalid port %d", port);
+  b[sizeof(b)-(LOG_MAX_PACKET_SIZE+1)] = (port << 2) | 3;
+  memmove(b+sizeof(b)-LOG_MAX_PACKET_SIZE, data, n);
+  n = cobs_enc(b+1, b+sizeof(b)-(LOG_MAX_PACKET_SIZE+1), n + 1);
+  b[0] = '\0';
+  b[n+1] = '\0';
+  tx_buffer(b, n+2);
+  if (log_data.tx_enabled) ucuart_tx_schedule(log_data.uart, NULL, 0);
+}
+
+size_t log_tx_avail(void) {
+  return cb_write_avail(&tx_cb);
+}
+
+#define LOG_APP_HASH_SIZE 64
+const uint8_t* log_app_hash(size_t* n) {
+#ifdef CONFIG_UC_SIGNED_IMAGE
+  const uint8_t *app_hash__ = sbl_app_hash();
+#else
 // Will be initialized by apphash.cmake
-static const __attribute__((section(".apphash"))) uint8_t app_hash__[APP_HASH_SIZE];
+static const __attribute__((section(".apphash"))) uint8_t app_hash__[LOG_APP_HASH_SIZE];
 #endif
+  if (n != NULL) *n = LOG_APP_HASH_SIZE;
+  return app_hash__;
+}
 
-static NOCLEAR uint8_t app_hash[APP_HASH_SIZE];
+#if CONFIG_UC_LOG_SAVE
 
-static uint8_t saved_app_hash[APP_HASH_SIZE];
+static NOCLEAR uint8_t app_hash[LOG_APP_HASH_SIZE];
+
+static uint8_t saved_app_hash[LOG_APP_HASH_SIZE];
 static uint8_t saved_log[CONFIG_UC_LOG_BUF_SIZE];
 static size_t saved_log_n;
 
@@ -222,20 +256,16 @@ const uint8_t* log_saved_log(size_t* n) {
 }
 
 const uint8_t* log_saved_app_hash(size_t* n) {
-  *n = APP_HASH_SIZE;
+  *n = LOG_APP_HASH_SIZE;
   return saved_app_hash;
 }
 
 // app_hash__ and app_hash will only be different on a code change.
 // We don't want previous log details for code changes.
 static bool log_valid(void) {
-#ifdef CONFIG_UC_SIGNED_IMAGE
-  const uint8_t *app_hash__ = sbl_app_hash();
-#endif
-
   return (tx_cb.write < tx_cb.n)     && (tx_cb.read < tx_cb.n) &&
          (tx_cb.n == sizeof(tx_buf)) && (tx_cb.b == tx_buf) &&
-         (memcmp(app_hash__, app_hash, sizeof(app_hash)) == 0);
+         (memcmp(log_app_hash(NULL), app_hash, sizeof(app_hash)) == 0);
 }
 
 static void log_save(void) {
@@ -264,56 +294,99 @@ static void log_save(void) {
   // Save the app_hash associated with the log.
   memmove(saved_app_hash, app_hash, sizeof(app_hash));
 }
-#endif
 
-void log_pre_init(void) {
-#if CONFIG_UC_LOG_SAVE
+static void log_save_init(void) {
   saved_log_n = 0;
   if (log_valid()) log_save();
 
-#ifdef CONFIG_UC_SIGNED_IMAGE
-  const uint8_t *app_hash__ = sbl_app_hash();
-#endif
-
   // Save current app hash so we can get access on next reset
   // app_hash__ might change between resets.
-  memmove(app_hash, app_hash__, sizeof(app_hash));
+  memmove(app_hash, log_app_hash(NULL), sizeof(app_hash));
+}
+
+#else
+
+static void log_save_init(void) {
+}
+
 #endif
+
+void log_pre_init(void) {
+  log_save_init();
 
   log_data.uart = NULL;
   memset(tx_buf, 0, sizeof(tx_buf));
   cb_init(&tx_cb, tx_buf, sizeof(tx_buf));
-  suspend_tx();
+  log_tx_suspend();
   LOG_INFO("log-pre-init");
 }
 
-#if defined(CONFIG_LOG_CUSTOM_HEADER)
-void uc_log_init(uart_t* uart) {
-#else
 void log_init(uart_t* uart) {
-#endif
   if (uart == NULL) return;
 
   log_data.uart = uart;
   ucuart_set_tx_cb(log_data.uart, &tx_cb);
-  resume_tx();
-  // start server if availble
+#if !defined(CONFIG_UC_LOG_SERVER)
+  // If there is no server then assume we can send at all times after init
+  // completes.
+  log_tx_resume();
+#endif
 }
 
 #if defined(CONFIG_LOG_CUSTOM_HEADER)
 
+#include <zephyr/sys/libc-hooks.h>
+#include <zephyr/sys/printk-hooks.h>
+
+// TODO Switch to using port 0 for stdin/stdout like stuff
+// TODO hook stdin as well as stdout
+// With semihosting the hooks are different as we take over low level write/read
+// Perhaps some conflict with pico libc.
+
+#if defined(CONFIG_STDOUT_CONSOLE) || defined(CONFIG_PRINTK)
+
+static char line[100-3-1]; // To allow for log_logn_ overheads
+static size_t  line_idx = 0;
+static int console_out(int c) {
+  if (line_idx < sizeof(line)-1) {
+    if (c == '\n') {
+      line[line_idx] = '\0';
+      LOG_INFO("%s", line);
+      line_idx = 0;
+    }
+    else {
+      line[line_idx++] = c;
+    }
+  }
+  else {
+    line[line_idx] = '\0';
+    LOG_INFO("%s", line);
+    line_idx = 0;
+  }
+  return c;
+}
+
+#endif
+
 int zephyr_log_pre_init(void) {
   log_pre_init();
+
+#if defined(CONFIG_STDOUT_CONSOLE)
+  __stdout_hook_install(console_out);
+#endif
+#if defined(CONFIG_PRINTK)
+  __printk_hook_install(console_out);
+#endif
   return 0;
 }
 
-SYS_INIT(zephyr_log_pre_init, EARLY, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT);
+SYS_INIT(zephyr_log_pre_init, PRE_KERNEL_1, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT);
 
 static const struct device* console = DEVICE_DT_GET_OR_NULL(DT_CHOSEN(zephyr_console));
 
 int zephyr_log_init(void) {
   if (!device_is_ready(console)) return -ENOTSUP;
-  uc_log_init(console);
+  log_init(console);
   return 0;
 }
 

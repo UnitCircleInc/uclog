@@ -13,6 +13,7 @@ zephyr_library_sources_ifdef(CONFIG_UC_LOG log.c)
 zephyr_library_sources_ifdef(CONFIG_UC_FAULT fault.c)
 zephyr_library_sources_ifdef(CONFIG_UC_LOG_SERVER logserver.c)
 zephyr_library_sources_ifdef(CONFIG_UC_SYSCALLS syscalls.c)
+zephyr_library_sources_ifdef(CONFIG_UC_SHELL shell.c)
 
 if(CONFIG_UC_LOG)
   include(log.cmake)
@@ -20,26 +21,16 @@ if(CONFIG_UC_LOG)
 endif()
 
 if(CONFIG_UC_SIGNED_IMAGE)
+  include(signature.cmake)
   zephyr_linker_sources(
     ROM_START
     SORT_KEY 0000
     signature.ld
   )
 
-  set_target_properties(
-    zephyr_property_target
-    PROPERTIES SIGNING_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/signature.cmake
-  )
-
 else()
+  include(apphash.cmake)
 
-if(CONFIG_UC_LOG_SAVE)
   zephyr_linker_sources(SECTIONS apphash.ld)
-
-  set_target_properties(
-    zephyr_property_target
-    PROPERTIES SIGNING_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/apphash.cmake
-  )
-endif()
 
 endif()

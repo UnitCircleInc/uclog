@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-# © 2022 Unit Circle Inc.
+# © 2025 Unit Circle Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -138,6 +138,8 @@ class MuxDecode(object):
         if t == LOG_TYPE_PORT:
             if p in self.on_data:
                 self.on_data[p](frame[1:])
+            elif p == 63:
+                print(f"----- Image hash: {frame[1:].hex()} -----")
         elif len(frame) >= 4:
             addr, frame = struct.unpack("<I", frame[:4])[0], frame[4:]
             target = (addr >> TARGET_DIGIT_SHIFT) & 0xF
@@ -344,7 +346,7 @@ class Serial(threading.Thread):
             # print("sending pulse")
             # self.cnt = (self.cnt + 1) % 256
             # self(bytes((self.cnt,)))
-            # self(b'\x00')
+            self(b'\x00')
             pass
 
     def set_target_status(self, target_online, target_device=""):
@@ -647,10 +649,11 @@ class StreamClient(object):
     Expects args argument to have attributes target, host, raw
     """
 
-    def __init__(self, args, stream=1):
+    def __init__(self, args, stream=1, cbor_wrap=True):
         self.args = args
         self.stream = stream
         self.service = None
+        self.cbor_wrap = cbor_wrap
 
     def __exit__(self, type, value, traceback):
         if self.service:
@@ -686,7 +689,10 @@ class StreamClient(object):
         return self
 
     def tx(self, data):
-        self.service[self.stream](cbor2.dumps(data))
+        if self.cbor_wrap:
+            self.service[self.stream](cbor2.dumps(data))
+        else:
+            self.service[self.stream](data)
 
     def _ondata(self, data):
         self.queue.put(data)
@@ -695,10 +701,10 @@ class StreamClient(object):
         try:
             data = self.queue.get(timeout=timeout)
             if len(data) > 0:
-                if False:
-                    return data
-                else:
+                if self.cbor_wrap:
                     return cbor2.loads(data)
+                else:
+                    return data
             else:
                 return None
         except queue.Empty:

@@ -47,6 +47,30 @@ config UC_SYSCALLS
         bool "Enable support for stdio fileio using syscalls over UC log"
         default n
 
+config UC_SHELL
+        bool "Enable support for shell over UC log"
+        default n
+        depends on !SHELL_BACKENDS
+
+if UC_SHELL
+
+config UC_SHELL_PROMPT
+        string "UC log shell prompt"
+        default "uclog$~ "
+        help
+          Needs to end with "~ " to allow flushing of buffered text.
+
+config UC_SHELL_STACK_SIZE
+        int "UC log shell stack size"
+        default 512
+
+
+backend = UC
+backend-str = UC
+source "subsys/logging/Kconfig.template.log_format_config"
+
+endif
+
 endif
 endif
 

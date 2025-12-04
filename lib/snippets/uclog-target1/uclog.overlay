@@ -11,9 +11,9 @@
 #define UC_LOG_TARGET (1)
 
 / {
-    logdata: memory@f0000000 {
+    logdata: memory@f0100000 {
         compatible = "zephyr,memory-region";
-        reg = <(0xf0000000+0x0100000*UC_LOG_TARGET) 0x0100000>;
+        reg = <(0xf0000000+0x00100000*UC_LOG_TARGET) 0x0100000>;
         status = "okay";
         zephyr,memory-region = "LOGDATA";
     };

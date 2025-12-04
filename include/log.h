@@ -28,13 +28,17 @@
 #define CONFIG_UC_LOG_SAVE (0)
 #endif
 
+#if !defined(LOG_MAX_PACKET_SIZE)
+#define LOG_MAX_PACKET_SIZE (1500)
+#endif
+
+
 // Override/overload zephyr logging macros
 #if defined(CONFIG_LOG_CUSTOM_HEADER)
 #undef LOG_ERR
 #undef LOG_WRN
 #undef LOG_INF
 #undef LOG_DBG
-#undef LOG_PRINTK
 #undef LOG_RAW
 #undef LOG_WRN_ONCE
 
@@ -72,9 +76,7 @@
   } \
 } while (0)
 
-#define LOG_PRINTK(...) LOG_INFO("-printk-" __VA_ARGS__)
-#define LOG_RAW(...)    LOG_INFO("-raw-" __VA_ARGS__)
-#define printk(...)     LOG_INFO("-printk-" __VA_ARGS__)
+#define LOG_RAW(...) LOG_ERROR("LOG_RAW - not supported")
 
 #define LOG_HEXDUMP_ERR(data_, length_, str_) do { \
   if (Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_ERR)) { \
@@ -206,11 +208,17 @@ __attribute__((noreturn)) void log_fatal_(void);
 void log_tx(uint8_t port, const uint8_t* data, size_t n);
 size_t log_tx_avail(void);
 
+void log_tx_suspend(void);
+void log_tx_resume(void);
+
 #if CONFIG_UC_LOG_SERVER
 size_t log_rx(uint8_t port, uint8_t* data, size_t n);
 typedef void log_cb_t(const uint8_t* rx, size_t rx_n, void* ctx);
 void log_notify(uint8_t port, log_cb_t* task, void* ctx);
 #endif
+
+#define LOG_APP_HASH_SIZE 64
+const uint8_t* log_app_hash(size_t* n);
 
 #if CONFIG_UC_LOG_SAVE
 const uint8_t* log_saved_log(size_t* n);

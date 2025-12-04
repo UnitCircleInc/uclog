@@ -140,17 +140,22 @@ static inline uint32_t br2uartebr(uint32_t br) {
   }
 }
 
-static int tx_schedule(const struct device *dev) {
+static int tx_schedule(const struct device *dev, const uint8_t* prefix, size_t pn) {
   const struct ucuart_config * config = ZEPHYR_DEVICE_MEMBER(dev, config);
   struct ucuart_data * data = ZEPHYR_DEVICE_MEMBER(dev, data);
 
   if (data->tx_cb) {
     bool got = atomic_cas(&data->tx_active, false, true);
     if (got) {
+      nrf_uarte_event_clear(config->regs, NRF_UARTE_EVENT_ENDTX);
+      nrf_uarte_event_clear(config->regs, NRF_UARTE_EVENT_TXSTOPPED);
       size_t n = cb_peek_avail(data->tx_cb);
-      if (n > 0) {
-        nrf_uarte_event_clear(config->regs, NRF_UARTE_EVENT_ENDTX);
-        nrf_uarte_event_clear(config->regs, NRF_UARTE_EVENT_TXSTOPPED);
+      if ((prefix != NULL) && (pn > 0)) {
+        nrf_uarte_tx_buffer_set(config->regs, prefix, pn);
+        data->n = 0;
+        nrf_uarte_task_trigger(config->regs, NRF_UARTE_TASK_STARTTX);
+      }
+      else if (n > 0) {
         nrf_uarte_tx_buffer_set(config->regs, cb_peek(data->tx_cb), n);
         data->n = n;
         nrf_uarte_task_trigger(config->regs, NRF_UARTE_TASK_STARTTX);
@@ -169,7 +174,7 @@ static int tx(const struct device *dev, const uint8_t* b, size_t n) {
   if (data->tx_cb == NULL) return -EIO;
 
   cb_write(data->tx_cb, b, n);
-  return tx_schedule(dev);
+  return tx_schedule(dev, NULL, 0);
 }
 
 static int tx_buffer(const struct device *dev, const uint8_t* b, size_t n) {
@@ -208,13 +213,30 @@ static uint32_t last_error(const struct device *dev) {
 
 
 static void rx_start(const struct device *dev) {
+#if 0
+  const struct ucuart_config * config = ZEPHYR_DEVICE_MEMBER(dev, config);
   struct ucuart_data * data = ZEPHYR_DEVICE_MEMBER(dev, data);
-  (void) data;
+  // TODO unmap RX gpio pin and gpio interrupt
+  // TODO map RX uart pin and uart interrupt
+  nrf_uarte_shorts_enable(config->regs, NRF_UARTE_SHORT_ENDRX_STARTRX);
+  nrf_uarte_rx_buffer_set(config->regs, config->rx_cb->b, RX_BUF_LEN);
+  nrf_uarte_task_trigger(config->regs, NRF_UARTE_TASK_STARTRX);
+#else
+  (void) dev;
+#endif
 }
 
 static void rx_stop(const struct device *dev) {
+#if 0
+  const struct ucuart_config * config = ZEPHYR_DEVICE_MEMBER(dev, config);
   struct ucuart_data * data = ZEPHYR_DEVICE_MEMBER(dev, data);
-  (void) data;
+  nrf_uarte_shorts_disable(config->regs, NRF_UARTE_SHORT_ENDRX_STARTRX);
+  nrf_uarte_task_trigger(config->regs, NRF_UARTE_TASK_STOPRX);
+  // TODO unmap RX uart pin and uart interrupt
+  // TODO map RX gpio pin and interrupt
+#else
+  (void) dev;
+#endif
 }
 
 static size_t rx_avail(const struct device *dev) {

@@ -14,6 +14,9 @@ set(SNIPPET_ROOT ../lib ${SNIPPET_ROOT} CACHE STRING "" FORCE)
 if(NOT uclog-target1 IN_LIST SNIPPET)
   set(SNIPPET uclog-target1 ${SNIPPET} CACHE STRING "" FORCE)
 endif()
+if(NOT uclog-shell IN_LIST SNIPPET)
+  set(SNIPPET uclog-shell ${SNIPPET} CACHE STRING "" FORCE)
+endif()
 
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
