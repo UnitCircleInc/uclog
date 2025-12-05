@@ -1,0 +1,27 @@
+# © 2025 Unit Circle Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+config UCUART
+	bool "Unit Circle UART"
+	default y
+	depends on DT_HAS_UNITCIRCLE_UCUART_ENABLED
+	select EVENTS
+	select NRFX_PPI
+	select PINCTRL
+	select NRFX_TIMER4
+	help
+	  Unit Circle UART
+
+if UCUART
+
+config UCUART_INIT_PRIORITY
+	int "ucuart init priority"
+	default 90 # KERNEL_INIT_PRIORITY_DEVICE
+	help
+	  Unit Circle UART initialization priority.
+
+# Can include specific alternatives here e.g.
+# rsource Kconfig.xxx
+
+endif
+

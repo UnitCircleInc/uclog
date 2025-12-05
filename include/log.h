@@ -20,6 +20,10 @@
 
 #include "ucuart.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #if !defined(CONFIG_UC_LOG_SERVER)
 #define CONFIG_UC_LOG_SERVER (0)
 #endif
@@ -122,9 +126,9 @@ void log_init(uart_t* uart);
 // For enums and other "special decode forms" use the following syntax:
 //   {enum:<enumname> %u}  - uses value to look up corresponding enum string
 
-#define VA_NARGS_IMPL(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, N, ...) N
-#define VA_CNT(...) VA_NARGS_IMPL(__VA_ARGS__, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
-#define VA_SEL(...) VA_NARGS_IMPL(__VA_ARGS__, N, N, N, N, N, N, N, N, N, 1)
+#define VA_NARGS_IMPL(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, N, ...) N
+#define VA_CNT(...) VA_NARGS_IMPL(__VA_ARGS__, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+#define VA_SEL(...) VA_NARGS_IMPL(__VA_ARGS__, N, N, N, N, N, N, N, N, N, N, N, N, N, N, 1)
 
 #define LOG_LVL_DEBUG 0
 #define LOG_LVL_INFO  1
@@ -326,3 +330,7 @@ ISEMPTY_(                                                               \
     char *:                 '4', \
     const char *:           '4', \
     default:                '5'),
+
+#ifdef __cplusplus
+}
+#endif

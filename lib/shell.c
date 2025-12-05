@@ -160,4 +160,4 @@ static int enable_shell(void) {
   return 0;
 }
 
-SYS_INIT(enable_shell, POST_KERNEL, CONFIG_UC_SHELL_BACKEND_INIT_PRIORITY);
+SYS_INIT(enable_shell, APPLICATION, CONFIG_UC_SHELL_BACKEND_INIT_PRIORITY);

@@ -1,0 +1,22 @@
+# © 2022 Unit Circle Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+config UCUSB
+	bool "Unit Circle USB Serial"
+	default y
+	depends on DT_HAS_UNITCIRCLE_UCUSB_ENABLED
+	select EVENTS
+	select NRF_USBD_COMMON
+	select NRFX_POWER
+	help
+	  Unit Circle USB Serial
+
+if UCUSB
+
+config UCUSB_INIT_PRIORITY
+	int "ucusb init priority"
+	default 90 # KERNEL_INIT_PRIORITY_DEVICE
+	help
+	  Unit Circle USB initialization priority.
+
+endif

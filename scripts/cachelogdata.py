@@ -11,7 +11,10 @@ def hash(input):
     with open(input, 'rb') as f:
         data = f.read()
 
-    image_data = data[SIGNATURE_HDR_LEN:]
+    if args.full:
+        image_data = data
+    else:
+        image_data = data[SIGNATURE_HDR_LEN:]
     return SHA512.new(data=image_data).digest()
 
 if __name__ == '__main__':
@@ -19,6 +22,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--bin', help="FW Image binary", required=True)
     parser.add_argument('--logdata', help="Log data to cache", required=True)
+    parser.add_argument('-f', '--full', action='store_true', help="Use full file contents")
 
     args = parser.parse_args()
 
