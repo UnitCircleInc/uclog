@@ -10,7 +10,7 @@ function(zephyr_runner_file type path)
   set_target_properties(runners_yaml_props_target PROPERTIES "${type}_file" "${path}")
 endfunction()
 
-message(WARNING "APP_ROOT_DIR: ${APP_ROOT_DIR}")
+message(WARNING "UCLOG_ROOT_DIR: ${UCLOG_ROOT_DIR}")
 message(WARNING "CMAKE_CURRENT_SOURCE_DIR: ${CMAKE_CURRENT_SOURCE_DIR}")
 message(WARNING "CMAKE_CURRENT_LIST_DIR: ${CMAKE_CURRENT_LIST_DIR}")
 
@@ -46,7 +46,7 @@ function(zephyr_hash_tasks)
   set_property(GLOBAL APPEND PROPERTY extra_post_build_commands COMMAND
     echo "Adding apphash to ${output}.elf")
   set_property(GLOBAL APPEND PROPERTY extra_post_build_commands COMMAND
-    ${APP_ROOT_DIR}/scripts/hash.py -f -i ${output}.bin -o ${output}.hash)
+    ${UCLOG_ROOT_DIR}/scripts/hash.py -f -i ${output}.bin -o ${output}.hash)
   set_property(GLOBAL APPEND PROPERTY extra_post_build_commands COMMAND
     ${CMAKE_OBJCOPY} --update-section .apphash=${output}.hash ${output}.elf ${output}.hash.elf)
   set_property(GLOBAL APPEND PROPERTY extra_post_build_commands COMMAND
@@ -55,7 +55,5 @@ function(zephyr_hash_tasks)
     ${CMAKE_OBJCOPY} -O ihex --gap-fill 0xff --keep-section=.apphash --remove-section=.comment --remove-section=COMMON --remove-section=.eh_frame ${output}.hash.elf ${output}.hash.hex)
   set_property(GLOBAL APPEND PROPERTY extra_post_build_byproducts ${byproducts})
 endfunction()
-
-message(WARNING "app root dir: ${APP_ROOT_DIR}")
 
 zephyr_hash_tasks()
