@@ -51,21 +51,24 @@ extern "C" {
 #undef LOG_HEXDUMP_INF
 #undef LOG_HEXDUMP_DBG
 
-#define LOG_ERR(...) do { \
-  if (Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_ERR)) { \
-    LOG_DEBUG(__VA_ARGS__);  \
-  } \
-} while (0)
-#define LOG_WRN(...) do { \
-  if (Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_WRN)) { \
-    LOG_DEBUG(__VA_ARGS__);  \
-  } \
-} while (0)
-#define LOG_INF(...) do { \
-  if (Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_INF)) { \
-    LOG_DEBUG(__VA_ARGS__);  \
-  } \
-} while (0)
+#define LOG_ERR(...)                                                           \
+  do {                                                                         \
+    if (Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_ERR)) {                              \
+      LOG_ERROR(__VA_ARGS__);                                                  \
+    }                                                                          \
+  } while (0)
+#define LOG_WRN(...)                                                           \
+  do {                                                                         \
+    if (Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_WRN)) {                              \
+      LOG_WARN(__VA_ARGS__);                                                   \
+    }                                                                          \
+  } while (0)
+#define LOG_INF(...)                                                           \
+  do {                                                                         \
+    if (Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_INF)) {                              \
+      LOG_INFO(__VA_ARGS__);                                                   \
+    }                                                                          \
+  } while (0)
 #define LOG_DBG(...) do { \
   if (Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_DBG)) { \
     LOG_DEBUG(__VA_ARGS__);  \
@@ -302,6 +305,10 @@ ISEMPTY_(                                                               \
 
 #define MAP(m, ...) EVAL(MAP_(m, __VA_ARGS__))
 
+#ifdef __cplusplus
+}
+#endif
+
 // The following depend on platform sizes
 // '0' - 4 byte int - smaller things get promoted to this - sign doesn't matter
 // '1' - 8 byte int
@@ -311,6 +318,53 @@ ISEMPTY_(                                                               \
 // '5' - pointer -  also the default if nothing else matches
 // MacoS long int is 8
 // ARM long int is 4
+
+#ifdef __cplusplus
+
+template <typename T> constexpr char cpp_typechar(T x) { return '5'; }
+template <> constexpr char cpp_typechar<_Bool>(_Bool x) { return '0'; }
+template <> constexpr char cpp_typechar<char>(char x) { return '0'; }
+template <> constexpr char cpp_typechar<signed char>(signed char x) {
+  return '0';
+}
+template <> constexpr char cpp_typechar<unsigned char>(unsigned char x) {
+  return '0';
+}
+template <> constexpr char cpp_typechar<short int>(short int x) { return '0'; }
+template <>
+constexpr char cpp_typechar<unsigned short int>(unsigned short int x) {
+  return '0';
+}
+template <> constexpr char cpp_typechar<int>(int x) { return '0'; }
+template <> constexpr char cpp_typechar<unsigned int>(unsigned int x) {
+  return '0';
+}
+template <> constexpr char cpp_typechar<long int>(long int x) { return '0'; }
+template <>
+constexpr char cpp_typechar<unsigned long int>(unsigned long int x) {
+  return '0';
+}
+template <> constexpr char cpp_typechar<long long int>(long long int x) {
+  return '1';
+}
+template <>
+constexpr char cpp_typechar<unsigned long long int>(unsigned long long int x) {
+  return '1';
+}
+template <> constexpr char cpp_typechar<float>(float x) { return '2'; }
+template <> constexpr char cpp_typechar<double>(double x) { return '2'; }
+template <> constexpr char cpp_typechar<long double>(long double x) {
+  return '3';
+}
+template <> constexpr char cpp_typechar<char *>(char *x) { return '4'; }
+template <> constexpr char cpp_typechar<const char *>(const char *x) {
+  return '4';
+}
+
+#define typechar(x) cpp_typechar(x),
+
+#else
+
 #define typechar(x) _Generic((x), \
     _Bool:                  '0', \
     char:                   '0', \
@@ -331,6 +385,4 @@ ISEMPTY_(                                                               \
     const char *:           '4', \
     default:                '5'),
 
-#ifdef __cplusplus
-}
 #endif
