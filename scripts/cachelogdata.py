@@ -3,7 +3,7 @@
 import os
 import shutil
 import argparse
-from Crypto.Hash import SHA512
+import hashlib
 
 SIGNATURE_HDR_LEN = 512
 
@@ -15,7 +15,9 @@ def hash(input):
         image_data = data
     else:
         image_data = data[SIGNATURE_HDR_LEN:]
-    return SHA512.new(data=image_data).digest()
+    hash_sha512 = hashlib.sha512()
+    hash_sha512.update(image_data)
+    return hash_sha512.digest()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Cache log data')

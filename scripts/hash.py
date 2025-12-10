@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 
 import argparse
-from Crypto.Hash import SHA512
+import hashlib
 
 SIGNATURE_HDR_LEN = 512
 
@@ -13,7 +13,9 @@ def hash(args):
         image_data = data
     else:
         image_data = data[SIGNATURE_HDR_LEN:]
-    h = SHA512.new(data=image_data).digest()
+    hash_sha512 = hashlib.sha512()
+    hash_sha512.update(image_data)
+    h = hash_sha512.digest()
 
     with open(args.output, 'wb') as f:
         f.write(h)
