@@ -4,7 +4,7 @@ menu "Unit Circle"
 
 config UC_LOG
         bool "Use UC logging framework"
-        depends on UCUART
+        depends on UCUART || UCUSB
 
 if UC_LOG
 
