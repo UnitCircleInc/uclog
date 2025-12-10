@@ -5,6 +5,8 @@ build:
   #  board_root: .
     dts_root: .
     snippet_root: lib
+  depends:
+    - uccomm
 #runners:
 #  # Additional runners, Zephyr will import these when discovering
 #  # subclasses of the `ZephyrBinaryRunner` class.

@@ -3,12 +3,6 @@
 
 zephyr_library()
 
-zephyr_library_sources(
-  cb.c
-  cobs.c
-  cbor.c
-)
-
 zephyr_library_sources_ifdef(CONFIG_UC_LOG log.c)
 zephyr_library_sources_ifdef(CONFIG_UC_FAULT fault.c)
 zephyr_library_sources_ifdef(CONFIG_UC_LOG_SERVER logserver.c)
@@ -28,7 +22,7 @@ if(CONFIG_UC_SIGNED_IMAGE)
     signature.ld
   )
 
-else()
+elseif(CONFIG_UC_LOG)
   include(apphash.cmake)
 
   zephyr_linker_sources(SECTIONS apphash.ld)

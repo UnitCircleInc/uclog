@@ -96,7 +96,7 @@ void log_notify(uint8_t port, log_cb_t* task, void* ctx) {
 }
 
 static void log_thread(log_server_data_t* data) {
-  LOG_INFO("log tread starting");
+  LOG_INFO("log thread starting");
 
 pause:
   log_tx_suspend();

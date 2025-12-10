@@ -11,6 +11,8 @@ manifest:
   remotes:
     - name: ncs
       url-base: https://github.com/nrfconnect
+    - name: uci
+      url-base: https://github.com/UnitCircleInc
 
   projects:
     - name: nrf
@@ -27,3 +29,9 @@ manifest:
           - hal_nordic
           - segger
           - tinycrypt
+
+    - name: uccomm
+      remote: uci
+      revision: v2
+      repo-path: ucComm
+      path: modules/uccomm
