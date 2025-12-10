@@ -218,7 +218,7 @@ size_t log_tx_avail(void);
 void log_tx_suspend(void);
 void log_tx_resume(void);
 
-int log_is_ready(bool *host_ready);
+int log_is_host_ready(bool *host_ready);
 
 #if CONFIG_UC_LOG_SERVER
 size_t log_rx(uint8_t port, uint8_t* data, size_t n);
