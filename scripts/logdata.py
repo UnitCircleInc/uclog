@@ -188,7 +188,8 @@ def process_variable(item, variables, cu_name):
             if addr > 0:
                 variables[addr] = cu_name + ":" + item["name"].short
         else:
-            print(cu_name + ":" + item["name"].short)
+            #print("variable addr is none ", cu_name + ":" + item["name"].short)
+            pass
 
 
 def process_enum(item, enums):
@@ -283,6 +284,13 @@ def extract(root, items):
                 "dwarf_procedure",
                 "restrict_type",
                 "unspecified_type",
+                # C++ tags
+                "namespace",
+                "reference_type",
+                "rvalue_reference_type",
+                "class_type",
+                "imported_module",
+                "ptr_to_member_type",
             ]:
                 pass
             else:
