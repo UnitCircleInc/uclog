@@ -967,9 +967,10 @@ static int usb_panic(const struct device* dev) {
   return 0;
 }
 
-static bool usb_is_host_ready(const struct device* dev) {
+static int usb_is_host_ready(const struct device* dev, bool* ready) {
   ARG_UNUSED(dev);
-  return (atomic_get(&host_ready) == true) && (atomic_get(&received_packet) == true);
+  *ready = (atomic_get(&host_ready) == true) && (atomic_get(&received_packet) == true);
+  return 0;
 }
 
 static const struct ucuart_driver_api ucusb_api = {

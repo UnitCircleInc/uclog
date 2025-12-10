@@ -32,7 +32,7 @@ typedef uint32_t (*ucuart_wait_event_t)(const struct device *dev, uint32_t mask,
 
 typedef int (*ucuart_panic_t)(const struct device *dev);
 
-typedef bool (*ucuart_is_host_ready_t)(const struct device *dev);
+typedef int (*ucuart_is_host_ready_t)(const struct device *dev, bool *ready);
 
 enum ucuart_event_e {
   UCUART_EVT_RX = 1,
@@ -210,15 +210,16 @@ static inline int z_impl_ucuart_panic(const struct device *dev) {
   return api->panic(dev);
 }
 
-__syscall bool ucuart_is_host_ready(const struct device *dev);
+__syscall int ucuart_is_host_ready(const struct device *dev, bool *ready);
 
-static inline bool z_impl_ucuart_is_host_ready(const struct device *dev) {
+static inline int z_impl_ucuart_is_host_ready(const struct device *dev,
+                                              bool *ready) {
   const struct ucuart_driver_api *api =
     (const struct ucuart_driver_api *)ZEPHYR_DEVICE_MEMBER(dev, api);
   if (api->is_host_ready == NULL) {
-    return -ENOTSUP;
+    return -ENOSYS;
   }
-  return api->is_host_ready(dev);
+  return api->is_host_ready(dev, ready);
 }
 
 #include <syscalls/ucuart.h>

@@ -191,6 +191,10 @@ void log_tx_resume(void) {
   ucuart_tx_schedule(log_data.uart, b, n+2);
 }
 
+int log_is_host_ready(bool *host_ready) {
+  return ucuart_is_host_ready(log_data.uart, host_ready);
+}
+
 // Allow others to override log_fatal if needed
 __weak void log_fatal(void) {
 }
