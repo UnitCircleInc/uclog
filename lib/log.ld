@@ -1,5 +1,5 @@
 /*
- * © 2025 Unit Circle Inc.
+ * © 2026 Unit Circle Inc.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -16,4 +16,5 @@
   . = ALIGN(4);
   _slogstr = .;
   KEEP(*(.logstr))
+  KEEP(*(.logstr.*))
 } > LOGDATA

@@ -143,10 +143,14 @@ void log_init(uart_t* uart);
 #define TOSTR_(x_)  TOSTR1_(x_)
 #define TOSTR1_(x_) #x_
 
-#define LOG_STRING_(x_) (__extension__({ \
-  static const __attribute__((__aligned__(4), __section__(".logstr"))) \
-    char c__[] = (x_); (const char *)&c__; \
-}))
+#define LOG_STRING_(x_)                                                        \
+  (__extension__({                                                             \
+    static const                                                               \
+        __attribute__((__aligned__(4),                                         \
+                       __section__(".logstr." TOSTR_(__LINE__)))) char c__[] = \
+            (x_);                                                              \
+    (const char *)&c__;                                                        \
+  }))
 
 #define LOG_DEBUG(...) LOG_(LOG_LVL_DEBUG, VA_SEL(__VA_ARGS__), __VA_ARGS__)
 #define LOG_INFO(...)  LOG_(LOG_LVL_INFO , VA_SEL(__VA_ARGS__), __VA_ARGS__)
