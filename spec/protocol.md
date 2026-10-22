@@ -86,7 +86,8 @@ A frame carries one **payload** (0 to 4094 bytes; §2.2 limits the encoded size)
   **sacrificial**. Senders handle this as follows:
   - Every frame starts with `00`, so losing it is harmless.
   - After any TX idle longer than 2 s (including a freshly opened link), a sender MUST send a
-    pulse and wait **≥ 2 ms** before the first real frame.
+    pulse and wait **≥ 50 ms** before the first real frame. USB-UART converters buffer data, so
+    the wake edge can reach the target well after the host wrote it.
   - The hub pulses the device continuously (D6), so the device stays awake while a hub runs.
 - Pulses received by a hub from its client are **dropped** (not forwarded to the device). The hub
   pulses the device itself. Pulses received from the device MAY be forwarded to the client; at
@@ -274,6 +275,13 @@ Hosts MAY cache the chosen port per device serial number for the session. Vector
 `fw_update.json`.
 
 ### 5.5 Port 63 — semihost syscalls
+
+The op set is the **ucLog semihost protocol implemented by the legacy host**
+(`uclog/protocol/semihost.py` in `uclog-client`), plus the time ops in §5.5.3. It is **not**
+[ARM semihosting](https://github.com/ARM-software/abi-aa/blob/main/semihosting/semihosting.rst):
+the opcode numbers differ (for example, legacy op 2 is ISATTY, while ARM `0x02` is SYS_CLOSE).
+Moving to ARM semihosting is a later, separate transition (D32). It will need its own op set or
+port, because the numbers clash.
 
 #### 5.5.1 General
 
@@ -536,5 +544,5 @@ section covers what a client sees.
 - Semihost errors use newlib errno. Every request gets a reply (`ENOSYS` for unknown or
   unimplemented ops). The `WRITE` fid mask is 31 bits.
 - The hub carries only the raw stream: no per-port TCP servers and no decoded CBOR stream.
-- Every frame starts with `00`, and senders respect the 2 ms wake gap after more than 2 s idle.
+- Every frame starts with `00`, and senders respect the ≥ 50 ms wake gap after more than 2 s idle.
 - The string argument escaping (§6.3) replaces Python `repr()`.

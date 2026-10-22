@@ -17,7 +17,7 @@ still unresolved** (§7).
 
 ---
 
-## 1. Decisions (answers to review rounds 1–3)
+## 1. Decisions (answers to review rounds 1–4 and the firmware review)
 
 | # | Topic | Decision |
 |---|---|---|
@@ -50,6 +50,7 @@ still unresolved** (§7).
 | 28 | Rust vs Go | **Rust, confirmed** (§4 "Why Rust"). Keep the option open to move Rust code to **WebAssembly** for the web and VS Code versions later (§4.1) |
 | 29 | Time-op semantics | SYS_CLOCK = u32 centiseconds, wraps, only deltas matter. SYS_TIME = 64-bit. SYS_ELAPSED = 64-bit raw host monotonic counter (QPC / `CLOCK_MONOTONIC`). SYS_TICKFREQ = that counter's frequency. Time ops do not set errno. TIMEOFDAY = same clock as SYS_TIME. SYS_TICKFREQ is **64-bit**, to match `QueryPerformanceFrequency` |
 | 31 | Who answers time calls at a hub | **The hub always answers the time calls itself** (SYS_CLOCK, SYS_TIME, SYS_ELAPSED, SYS_TICKFREQ, TIMEOFDAY), whether or not a client is connected. They are never forwarded. The device sees one continuous clock for the hub's lifetime |
+| 32 | Port 63 op set | **The ucLog op set implemented by the legacy `uclog/protocol/semihost.py`** (ops 0–13, incl. FSTAT, MKDIR and TIMEOFDAY), plus the time ops `0x10 0x11 0x30 0x31` (decision 21). This is *not* ARM semihosting; moving to [ARM semihosting](https://github.com/ARM-software/abi-aa/blob/main/semihosting/semihosting.rst) is a later, separate transition |
 | 30 | Python-started hubs | A hub started by the Python library is **stopped when the script exits**. Hubs that were already running are left alone. FW update from Python is out of scope for v1 (`uclog fw-update`), possibly added later |
 
 ---
@@ -91,7 +92,9 @@ still unresolved** (§7).
 > - bytes before the first `00` are dropped;
 > - `%s` arguments use a defined escaping instead of Python `repr()`;
 > - the FSTAT error reply is zero padded to 48 bytes;
-> - a malformed request gets `EINVAL`.
+> - a malformed request gets `EINVAL`;
+> - the wake gap after more than 2 s idle is ≥ 50 ms (USB-UART converters buffer);
+> - port 63 keeps the ucLog op set from the legacy `uclog/protocol/semihost.py` (decision 32).
 
 The protocol is unchanged except for **new port 59** and **four new semihost ops**. TCP, WebSocket and UDP links between hub and
 client carry exactly the bytes a device sends over serial.
@@ -110,7 +113,8 @@ client carry exactly the bytes a device sends over serial.
   the same rule. After 2 s without a pulse it powers down UART RX and only watches for edges. The
   first edge re-enables RX, so **the first byte(s) after a long idle are sacrificial**. Senders must
   pulse at least every 0.5 s while connected. After any idle of more than 2 s (for example, a fresh
-  connection), a sender must send a pulse and wait ≥ 2 ms before the first real frame.
+  connection), a sender must send a pulse and wait ≥ 50 ms before the first real frame (USB-UART
+  converters buffer before the edge reaches the target).
 - Maximum encoded frame size: 4096 bytes (`--max-frame`). Longer input is discarded up to the next
   `00` and counted as a framing error.
 
@@ -415,7 +419,7 @@ Hub flags are in the hub plan.
 
 | Phase | Work | Unblocks |
 |---|---|---|
-| 0 | ✅ Questions closed (§7). ✅ `spec/protocol.md`, reference, vectors and CI. ⏳ Firmware: port 59 + new semihost ops and confirmations ([`spec/firmware-changes.md`](../../spec/firmware-changes.md)) | everything |
+| 0 | ✅ Questions closed (§7). ✅ `spec/protocol.md`, reference, vectors and CI. ✅ Firmware requirements agreed (F1–F5, C1–C10 in [`spec/firmware-changes.md`](../../spec/firmware-changes.md)). ⏳ Firmware implementation of F1–F5 (outside this repository) | everything |
 | 1 | Rust crates: proto, logdata, semihost, link, session (+ `uclog list/decode/term/fw-update`) | hub, TUI, GUI |
 | 2 | Hub ([01](01-hub-server.md)) + `uclog-hub` release builds | VS Code; remote use; Python library |
 | 2b | Python library ([06](06-python-client.md)), in parallel with Phase 3 | script users; retire the legacy repository |

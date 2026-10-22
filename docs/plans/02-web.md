@@ -91,7 +91,7 @@ Decoded record: `{seq, ts, level, file, line, text, target, addr, error?}`. Time
 | BLE | `navigator.bluetooth.requestDevice({filters:[{services:[UUID]}]})` | notifications in; writes of whole frames up to 512 bytes per `writeValue*` (Chrome negotiates MTU / long writes). **No chunk-size setting** (D18). Pairing via the OS |
 | Hub | `WebSocket(url)` in the transport worker | default `ws://localhost:9000`, recent URLs saved. Close code `4001` → "hub busy". Open but silent → "waiting for hub approval…" (hub prompt, D14), 60 s timeout |
 
-Liveness on every link: send a pulse every 0.5 s while connected, and send a pulse + wait 2 ms
+Liveness on every link: send a pulse every 0.5 s while connected, and send a pulse + wait ≥ 50 ms
 before the first frame (UART wake, README §3.1). No bytes from the device for more than 2 s →
 "device not responding", shown without disconnecting.
 

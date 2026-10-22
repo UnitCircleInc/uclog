@@ -91,7 +91,7 @@ operator approval; `connect()` waits up to `approval_timeout` (60 s) and then ra
 
 - COBS framing, pulses and the 2-byte peek, the same as the other clients (README §3). Vectors from
   `spec/vectors/` run in CI.
-- A background thread sends a pulse every 0.5 s and sends the pulse/2 ms wake gap before the first
+- A background thread sends a pulse every 0.5 s and sends the pulse/≥ 50 ms wake gap before the first
   frame after idle (README §3.1). It also tracks liveness (`alive`).
 - **Port 63**: connecting means the script answers syscalls (D3). The hub answers the time calls
   itself (D31), so the library only sees file ops. It replies `ENOSYS` to them by default. With
