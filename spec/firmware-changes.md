@@ -1,4 +1,4 @@
-# fFirmware changes for protocol v1 (Phase 0)
+# Firmware changes for protocol v1 (Phase 0)
 
 The firmware is not in this repository. This is the list of changes the firmware team needs to
 make, or confirm, so that it matches [protocol.md](protocol.md). Hosts are built against these
