@@ -1,0 +1,358 @@
+{
+ "description": "Port 63 semihost codec (protocol.md \u00a75.5). requests: parse and compare op/fields. time_replies: given the clock inputs, the reply bytes must match. errors: <i32 -1, i32 newlib errno>, zero padded to 48 bytes for FSTAT.",
+ "newlib_errno": {
+  "EPERM": 1,
+  "ENOENT": 2,
+  "EINTR": 4,
+  "EIO": 5,
+  "EBADF": 9,
+  "EAGAIN": 11,
+  "ENOMEM": 12,
+  "EACCES": 13,
+  "EEXIST": 17,
+  "ENOTDIR": 20,
+  "EISDIR": 21,
+  "EINVAL": 22,
+  "EMFILE": 24,
+  "ENOSPC": 28,
+  "ESPIPE": 29,
+  "EROFS": 30,
+  "ENAMETOOLONG": 91,
+  "ENOSYS": 88,
+  "ENOTEMPTY": 90
+ },
+ "requests": [
+  {
+   "name": "OPEN",
+   "request": "08010600006f75742f6c6f672e747874",
+   "wire": "0005ff080106010c6f75742f6c6f672e74787400",
+   "op": 8,
+   "op_name": "OPEN",
+   "fields": {
+    "flags": 1537,
+    "path": "out/log.txt"
+   },
+   "time_op": false
+  },
+  {
+   "name": "WRITE needs reply",
+   "request": "0903000000616263",
+   "wire": "0004ff090301010461626300",
+   "op": 9,
+   "op_name": "WRITE",
+   "fields": {
+    "fid": 3,
+    "reply": true,
+    "data": "616263"
+   },
+   "time_op": false
+  },
+  {
+   "name": "WRITE no reply (bit 31)",
+   "request": "0903000080616263",
+   "wire": "0004ff090301058061626300",
+   "op": 9,
+   "op_name": "WRITE",
+   "fields": {
+    "fid": 3,
+    "reply": false,
+    "data": "616263"
+   },
+   "time_op": false
+  },
+  {
+   "name": "WRITE fid above 27 bits keeps all 31 bits",
+   "request": "090500000878",
+   "wire": "0004ff09050103087800",
+   "op": 9,
+   "op_name": "WRITE",
+   "fields": {
+    "fid": 134217733,
+    "reply": true,
+    "data": "78"
+   },
+   "time_op": false
+  },
+  {
+   "name": "READ",
+   "request": "0b0300000040000000",
+   "wire": "0004ff0b030101024001010100",
+   "op": 11,
+   "op_name": "READ",
+   "fields": {
+    "fid": 3,
+    "len": 64
+   },
+   "time_op": false
+  },
+  {
+   "name": "CLOSE",
+   "request": "0703000000",
+   "wire": "0004ff070301010100",
+   "op": 7,
+   "op_name": "CLOSE",
+   "fields": {
+    "fid": 3
+   },
+   "time_op": false
+  },
+  {
+   "name": "ISATTY",
+   "request": "0201000000",
+   "wire": "0004ff020101010100",
+   "op": 2,
+   "op_name": "ISATTY",
+   "fields": {
+    "fid": 1
+   },
+   "time_op": false
+  },
+  {
+   "name": "FSTAT",
+   "request": "0603000000",
+   "wire": "0004ff060301010100",
+   "op": 6,
+   "op_name": "FSTAT",
+   "fields": {
+    "fid": 3
+   },
+   "time_op": false
+  },
+  {
+   "name": "MKDIR",
+   "request": "0ced0100006f7574",
+   "wire": "0005ff0ced0101046f757400",
+   "op": 12,
+   "op_name": "MKDIR",
+   "fields": {
+    "mode": 493,
+    "path": "out"
+   },
+   "time_op": false
+  },
+  {
+   "name": "TIMEOFDAY",
+   "request": "0d",
+   "wire": "0003ff0d00",
+   "op": 13,
+   "op_name": "TIMEOFDAY",
+   "fields": {},
+   "time_op": true
+  },
+  {
+   "name": "SYS_CLOCK",
+   "request": "10",
+   "wire": "0003ff1000",
+   "op": 16,
+   "op_name": "SYS_CLOCK",
+   "fields": {},
+   "time_op": true
+  },
+  {
+   "name": "SYS_TIME",
+   "request": "11",
+   "wire": "0003ff1100",
+   "op": 17,
+   "op_name": "SYS_TIME",
+   "fields": {},
+   "time_op": true
+  },
+  {
+   "name": "SYS_ELAPSED",
+   "request": "30",
+   "wire": "0003ff3000",
+   "op": 48,
+   "op_name": "SYS_ELAPSED",
+   "fields": {},
+   "time_op": true
+  },
+  {
+   "name": "SYS_TICKFREQ",
+   "request": "31",
+   "wire": "0003ff3100",
+   "op": 49,
+   "op_name": "SYS_TICKFREQ",
+   "fields": {},
+   "time_op": true
+  },
+  {
+   "name": "unknown op 0x20",
+   "request": "200102",
+   "wire": "0005ff20010200",
+   "op": 32,
+   "op_name": null,
+   "fields": {
+    "args": "0102"
+   },
+   "time_op": false
+  }
+ ],
+ "time_replies": [
+  {
+   "source": "posix CLOCK_MONOTONIC ns",
+   "inputs": {
+    "mono_ns": 123456789012345,
+    "wall": 1767225600.25
+   },
+   "op": 16,
+   "op_name": "SYS_CLOCK",
+   "reply": "4e61bc00"
+  },
+  {
+   "source": "posix CLOCK_MONOTONIC ns",
+   "inputs": {
+    "mono_ns": 123456789012345,
+    "wall": 1767225600.25
+   },
+   "op": 17,
+   "op_name": "SYS_TIME",
+   "reply": "00b9556900000000"
+  },
+  {
+   "source": "posix CLOCK_MONOTONIC ns",
+   "inputs": {
+    "mono_ns": 123456789012345,
+    "wall": 1767225600.25
+   },
+   "op": 48,
+   "op_name": "SYS_ELAPSED",
+   "reply": "79df0d8648700000"
+  },
+  {
+   "source": "posix CLOCK_MONOTONIC ns",
+   "inputs": {
+    "mono_ns": 123456789012345,
+    "wall": 1767225600.25
+   },
+   "op": 49,
+   "op_name": "SYS_TICKFREQ",
+   "reply": "00ca9a3b00000000"
+  },
+  {
+   "source": "posix CLOCK_MONOTONIC ns",
+   "inputs": {
+    "mono_ns": 123456789012345,
+    "wall": 1767225600.25
+   },
+   "op": 13,
+   "op_name": "TIMEOFDAY",
+   "reply": "00b955690000000090d00300"
+  },
+  {
+   "source": "windows QPC",
+   "inputs": {
+    "qpc": 98765432101,
+    "qpf": 10000000,
+    "wall": 4102444800.9999995
+   },
+   "op": 16,
+   "op_name": "SYS_CLOCK",
+   "reply": "06120f00"
+  },
+  {
+   "source": "windows QPC",
+   "inputs": {
+    "qpc": 98765432101,
+    "qpf": 10000000,
+    "wall": 4102444800.9999995
+   },
+   "op": 17,
+   "op_name": "SYS_TIME",
+   "reply": "005786f400000000"
+  },
+  {
+   "source": "windows QPC",
+   "inputs": {
+    "qpc": 98765432101,
+    "qpf": 10000000,
+    "wall": 4102444800.9999995
+   },
+   "op": 48,
+   "op_name": "SYS_ELAPSED",
+   "reply": "25e5e0fe16000000"
+  },
+  {
+   "source": "windows QPC",
+   "inputs": {
+    "qpc": 98765432101,
+    "qpf": 10000000,
+    "wall": 4102444800.9999995
+   },
+   "op": 49,
+   "op_name": "SYS_TICKFREQ",
+   "reply": "8096980000000000"
+  },
+  {
+   "source": "windows QPC",
+   "inputs": {
+    "qpc": 98765432101,
+    "qpf": 10000000,
+    "wall": 4102444800.9999995
+   },
+   "op": 13,
+   "op_name": "TIMEOFDAY",
+   "reply": "005786f4000000003f420f00"
+  },
+  {
+   "source": "SYS_CLOCK wraps at 2^32 centiseconds",
+   "inputs": {
+    "mono_ns": 42949673010000000,
+    "wall": 0.0
+   },
+   "op": 16,
+   "op_name": "SYS_CLOCK",
+   "reply": "05000000"
+  }
+ ],
+ "errors": [
+  {
+   "name": "unknown op",
+   "op": 32,
+   "errno": "ENOSYS",
+   "value": 88,
+   "reply": "ffffffff58000000"
+  },
+  {
+   "name": "OPEN path outside sandbox",
+   "op": 8,
+   "errno": "EACCES",
+   "value": 13,
+   "reply": "ffffffff0d000000"
+  },
+  {
+   "name": "client went away with READ outstanding",
+   "op": 11,
+   "errno": "EIO",
+   "value": 5,
+   "reply": "ffffffff05000000"
+  },
+  {
+   "name": "CLOSE bad fid",
+   "op": 7,
+   "errno": "EBADF",
+   "value": 9,
+   "reply": "ffffffff09000000"
+  },
+  {
+   "name": "OPEN no such file",
+   "op": 8,
+   "errno": "ENOENT",
+   "value": 2,
+   "reply": "ffffffff02000000"
+  },
+  {
+   "name": "FSTAT error is zero padded to 48 bytes",
+   "op": 6,
+   "errno": "EBADF",
+   "value": 9,
+   "reply": "ffffffff0900000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+  },
+  {
+   "name": "malformed request",
+   "op": 7,
+   "errno": "EINVAL",
+   "value": 22,
+   "reply": "ffffffff16000000"
+  }
+ ]
+}

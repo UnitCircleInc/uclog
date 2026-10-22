@@ -1,0 +1,104 @@
+{
+ "description": "FW update messages (protocol.md \u00a75.4). port59 = mux(59, cbor). port3 = mux(3, 00 cobs(cbor || crc32c_le(cbor)) 00). CBOR here uses insertion-order keys and shortest integers; decoders must accept any valid CBOR, so compare decoded values, not bytes, for received messages. Byte fields are shown as {\"hex\": ...}.",
+ "crc32c_check": {
+  "input": "313233343536373839",
+  "crc": 3808858755
+ },
+ "requests": [
+  {
+   "msg": {
+    "cmd": "set-time",
+    "timestamp": 1767225600
+   },
+   "cbor": "a263636d64687365742d74696d656974696d657374616d701a6955b900",
+   "port59_wire": "001eefa263636d64687365742d74696d656974696d657374616d701a6955b90100",
+   "port3_wire": "00020f231da263636d64687365742d74696d656974696d657374616d701a6955b905476aa4240100"
+  },
+  {
+   "msg": {
+    "cmd": "fw-start"
+   },
+   "cbor": "a163636d646866772d7374617274",
+   "port59_wire": "0010efa163636d646866772d737461727400",
+   "port3_wire": "00020f1413a163636d646866772d737461727474f20f160100"
+  },
+  {
+   "msg": {
+    "cmd": "fw-block",
+    "data": {
+     "hex": "000102030405060708090a0b0c0d0e0f"
+    }
+   },
+   "cbor": "a263636d646866772d626c6f636b646461746150000102030405060708090a0b0c0d0e0f",
+   "port59_wire": "0016efa263636d646866772d626c6f636b646461746150100102030405060708090a0b0c0d0e0f00",
+   "port3_wire": "00020f2a15a263636d646866772d626c6f636b646461746150140102030405060708090a0b0c0d0e0fedbc5ffb0100"
+  },
+  {
+   "msg": {
+    "cmd": "fw-schedule",
+    "timestamp": 1767225605
+   },
+   "cbor": "a263636d646b66772d7363686564756c656974696d657374616d701a6955b905",
+   "port59_wire": "0022efa263636d646b66772d7363686564756c656974696d657374616d701a6955b90500",
+   "port3_wire": "00020f2625a263636d646b66772d7363686564756c656974696d657374616d701a6955b90526148cae0100"
+  }
+ ],
+ "replies": [
+  {
+   "msg": {
+    "rsp": "set-time"
+   },
+   "cbor": "a163727370687365742d74696d65",
+   "port59_wire": "0010efa163727370687365742d74696d6500",
+   "port3_wire": "00020f1413a163727370687365742d74696d653683ae120100",
+   "ignored": false
+  },
+  {
+   "msg": {
+    "rsp": "fw-start",
+    "block-size": 512
+   },
+   "cbor": "a2637273706866772d73746172746a626c6f636b2d73697a65190200",
+   "port59_wire": "001defa2637273706866772d73746172746a626c6f636b2d73697a6519020100",
+   "port3_wire": "00020f221ca2637273706866772d73746172746a626c6f636b2d73697a6519020566eed7650100",
+   "ignored": false
+  },
+  {
+   "msg": {
+    "rsp": "fw-block"
+   },
+   "cbor": "a1637273706866772d626c6f636b",
+   "port59_wire": "0010efa1637273706866772d626c6f636b00",
+   "port3_wire": "00020f1413a1637273706866772d626c6f636b37a8e83f0100",
+   "ignored": false
+  },
+  {
+   "msg": {
+    "rsp": "fw-schedule"
+   },
+   "cbor": "a1637273706b66772d7363686564756c65",
+   "port59_wire": "0013efa1637273706b66772d7363686564756c6500",
+   "port3_wire": "00020f1716a1637273706b66772d7363686564756c656b5894ab0100",
+   "ignored": false
+  },
+  {
+   "msg": {
+    "rsp": "fw-schedule",
+    "error": "image verification failed"
+   },
+   "cbor": "a2637273706b66772d7363686564756c65656572726f727819696d61676520766572696669636174696f6e206661696c6564",
+   "port59_wire": "0034efa2637273706b66772d7363686564756c65656572726f727819696d61676520766572696669636174696f6e206661696c656400",
+   "port3_wire": "00020f3837a2637273706b66772d7363686564756c65656572726f727819696d61676520766572696669636174696f6e206661696c65643f61db660100",
+   "ignored": false
+  },
+  {
+   "msg": {
+    "event": "progress"
+   },
+   "cbor": "a1656576656e746870726f6772657373",
+   "port59_wire": "0012efa1656576656e746870726f677265737300",
+   "port3_wire": "00020f1615a1656576656e746870726f67726573732dfe69d60100",
+   "ignored": true
+  }
+ ]
+}

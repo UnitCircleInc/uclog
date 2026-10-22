@@ -1,0 +1,210 @@
+{
+ "description": "Log decoding with sample.logdata (protocol.md \u00a76). For each case, scan the wire bytes, decode the frame, and compare level/file/line/text. Text must match exactly for these cases; other formatting is C-printf best effort. errors: decoding must fail with an error record of the given kind (\u00a77).",
+ "logdata": "sample.logdata",
+ "logdata_target": 1,
+ "cases": [
+  {
+   "name": "string arg",
+   "wire": "0001010810f074686572650100",
+   "target": 1,
+   "expect": {
+    "level": "INFO",
+    "file": "src/main.c",
+    "line": "10",
+    "text": "Hello World! there"
+   }
+  },
+  {
+   "name": "int32/uint32/hex",
+   "wire": "0002400910f0f4ffffffe40c0103efbe010100",
+   "target": 1,
+   "expect": {
+    "level": "WARN",
+    "file": "src/main.c",
+    "line": "11",
+    "text": "temp=-12 mV=3300 flags=0x0000beef"
+   }
+  },
+  {
+   "name": "64-bit args; %lu carries uint64",
+   "wire": "0002800310f00101010104ffffff0101010101010880452301efcdab010100",
+   "target": 1,
+   "expect": {
+    "level": "DEBUG",
+    "file": "src/main.c",
+    "line": "12",
+    "text": "big=-1099511627776 ubig=9223372036854775808 hex=0xabcdef012345"
+   }
+  },
+  {
+   "name": "enum known",
+   "wire": "0002c00410f00401010100",
+   "target": 1,
+   "expect": {
+    "level": "ERROR",
+    "file": "src/main.c",
+    "line": "13",
+    "text": "reason: K_ERR_KERNEL_PANIC"
+   }
+  },
+  {
+   "name": "enum unknown value",
+   "wire": "0002c00410f00901010100",
+   "target": 1,
+   "expect": {
+    "level": "ERROR",
+    "file": "src/main.c",
+    "line": "13",
+    "text": "reason: <k_fatal_error_reason:9>"
+   }
+  },
+  {
+   "name": "typedef enum",
+   "wire": "0006800110f00201010100",
+   "target": 1,
+   "expect": {
+    "level": "INFO",
+    "file": "src/main.c",
+    "line": "16",
+    "text": "mode MODE_SLOW"
+   }
+  },
+  {
+   "name": "sym in function (thumb bit cleared)",
+   "wire": "0001060110f0451002080101022000",
+   "target": 1,
+   "expect": {
+    "level": "INFO",
+    "file": "src/main.c",
+    "line": "14",
+    "text": "cb=on_timer+0x4 ptr=0x20000000"
+   }
+  },
+  {
+   "name": "sym in variable range",
+   "wire": "0001060110f0040102200101010100",
+   "target": 1,
+   "expect": {
+    "level": "INFO",
+    "file": "src/main.c",
+    "line": "14",
+    "text": "cb=src/main.c:counter+0x4 ptr=0x00000000"
+   }
+  },
+  {
+   "name": "sym unresolved",
+   "wire": "0001040110f0010103300101010100",
+   "target": 1,
+   "expect": {
+    "level": "INFO",
+    "file": "src/main.c",
+    "line": "14",
+    "text": "cb=0x30000000 ptr=0x00000001"
+   }
+  },
+  {
+   "name": "double, %e, %c and %%",
+   "wire": "0016400110f06e861bf0f92109405839b4c8d61cc8404101010100",
+   "target": 1,
+   "expect": {
+    "level": "INFO",
+    "file": "src/main.c",
+    "line": "15",
+    "text": "v=3.142 e=1.234568e+04 A%"
+   }
+  },
+  {
+   "name": "mem dump (type 1)",
+   "wire": "0006c10110f010010220080102030405060700",
+   "target": 1,
+   "expect": {
+    "level": "INFO",
+    "file": "src/main.c",
+    "line": "17",
+    "text": "buffer 20000010: 00 01 02 03 04 05 06 07"
+   }
+  },
+  {
+   "name": "zephyr text via type 1",
+   "wire": "0005010210f00101010f7a6570687972207361797320686900",
+   "target": 1,
+   "expect": {
+    "level": "INFO",
+    "file": "zephyr",
+    "line": "",
+    "text": "zephyr says hi"
+   }
+  },
+  {
+   "name": "width/flags",
+   "wire": "0006400210f02a0101022a0101022a0101022a01010100",
+   "target": 1,
+   "expect": {
+    "level": "FATAL",
+    "file": "src/main.c",
+    "line": "19",
+    "text": "|   42|42   |00042|+42|"
+   }
+  },
+  {
+   "name": "no args",
+   "wire": "0005800210f000",
+   "target": 1,
+   "expect": {
+    "level": "INFO",
+    "file": "src/main.c",
+    "line": "20",
+    "text": "no args"
+   }
+  },
+  {
+   "name": "string escaping: quote kept, backslash/newline/control escaped, UTF-8 kept",
+   "wire": "000fc00210f06122625c0a630120c3a90100",
+   "target": 1,
+   "expect": {
+    "level": "INFO",
+    "file": "src/main.c",
+    "line": "21",
+    "text": "path \"a\"b\\\\\\nc\\x01 \u00e9\""
+   }
+  },
+  {
+   "name": "invalid UTF-8 becomes U+FFFD",
+   "wire": "0008c00210f078ff790100",
+   "target": 1,
+   "expect": {
+    "level": "INFO",
+    "file": "src/main.c",
+    "line": "21",
+    "text": "path \"x\ufffdy\""
+   }
+  }
+ ],
+ "errors": [
+  {
+   "name": "missing arg",
+   "wire": "0002400410f00101010100",
+   "error": "missing_arg"
+  },
+  {
+   "name": "extra bytes",
+   "wire": "0007800210f0010200",
+   "error": "extra_bytes"
+  },
+  {
+   "name": "unknown format address",
+   "wire": "0005c00310f000",
+   "error": "unknown_format"
+  },
+  {
+   "name": "missing string terminator",
+   "wire": "0001010610f061626300",
+   "error": "missing_arg"
+  }
+ ],
+ "no_logdata_for_target": {
+  "wire": "0001010320f000",
+  "target": 2,
+  "error": "no_logdata"
+ }
+}

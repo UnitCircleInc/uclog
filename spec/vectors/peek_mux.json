@@ -1,0 +1,232 @@
+{
+ "description": "Two-byte peek on the encoded frame and full mux decode of the payload (protocol.md \u00a73). peek must only read encoded[0..2].",
+ "cases": [
+  {
+   "name": "pulse (empty payload)",
+   "payload": "",
+   "encoded": "01",
+   "peek": {
+    "kind": "pulse"
+   },
+   "mux": {
+    "kind": "pulse"
+   }
+  },
+  {
+   "name": "type-0 log, addr low byte 00",
+   "payload": "000010f001000000",
+   "encoded": "01010410f001010101",
+   "peek": {
+    "kind": "log",
+    "type": 0
+   },
+   "mux": {
+    "kind": "log",
+    "type": 0,
+    "target": 1,
+    "addr": 4027580416,
+    "args": "01000000"
+   }
+  },
+  {
+   "name": "type-0 log, addr low byte 04",
+   "payload": "040010f0",
+   "encoded": "02040310f0",
+   "peek": {
+    "kind": "log",
+    "type": 0
+   },
+   "mux": {
+    "kind": "log",
+    "type": 0,
+    "target": 1,
+    "addr": 4027580420,
+    "args": ""
+   }
+  },
+  {
+   "name": "type-1 mem log",
+   "payload": "490010f000000020dead",
+   "encoded": "02490310f001010420dead",
+   "peek": {
+    "kind": "log",
+    "type": 1
+   },
+   "mux": {
+    "kind": "log",
+    "type": 1,
+    "target": 1,
+    "addr": 4027580489,
+    "args": "00000020dead"
+   }
+  },
+  {
+   "name": "type-2 reserved",
+   "payload": "0a0010f0",
+   "encoded": "020a0310f0",
+   "peek": {
+    "kind": "log",
+    "type": 2
+   },
+   "mux": {
+    "kind": "log",
+    "type": 2,
+    "target": 1,
+    "addr": 4027580426,
+    "args": ""
+   }
+  },
+  {
+   "name": "port 0 text command",
+   "payload": "0368656c700d",
+   "encoded": "070368656c700d",
+   "peek": {
+    "kind": "port",
+    "port": 0
+   },
+   "mux": {
+    "kind": "port",
+    "port": 0,
+    "data": "68656c700d"
+   }
+  },
+  {
+   "name": "port 0 CBOR command",
+   "payload": "03a163636d64686765742d696e666f",
+   "encoded": "1003a163636d64686765742d696e666f",
+   "peek": {
+    "kind": "port",
+    "port": 0
+   },
+   "mux": {
+    "kind": "port",
+    "port": 0,
+    "data": "a163636d64686765742d696e666f"
+   }
+  },
+  {
+   "name": "port 3 (legacy fw)",
+   "payload": "0f000100",
+   "encoded": "020f020101",
+   "peek": {
+    "kind": "port",
+    "port": 3
+   },
+   "mux": {
+    "kind": "port",
+    "port": 3,
+    "data": "000100"
+   }
+  },
+  {
+   "name": "port 59 (fw)",
+   "payload": "efa263636d64687365742d74696d656974696d657374616d7000",
+   "encoded": "1aefa263636d64687365742d74696d656974696d657374616d7001",
+   "peek": {
+    "kind": "port",
+    "port": 59
+   },
+   "mux": {
+    "kind": "port",
+    "port": 59,
+    "data": "a263636d64687365742d74696d656974696d657374616d7000"
+   }
+  },
+  {
+   "name": "port 60 plot",
+   "payload": "f3a364706c6f74617061788101637931318102",
+   "encoded": "14f3a364706c6f74617061788101637931318102",
+   "peek": {
+    "kind": "port",
+    "port": 60
+   },
+   "mux": {
+    "kind": "port",
+    "port": 60,
+    "data": "a364706c6f74617061788101637931318102"
+   }
+  },
+  {
+   "name": "port 61 terminal",
+   "payload": "f71b5b33326d6f6b1b5b306d0d0a",
+   "encoded": "0ff71b5b33326d6f6b1b5b306d0d0a",
+   "peek": {
+    "kind": "port",
+    "port": 61
+   },
+   "mux": {
+    "kind": "port",
+    "port": 61,
+    "data": "1b5b33326d6f6b1b5b306d0d0a"
+   }
+  },
+  {
+   "name": "port 62 device info",
+   "payload": "fba165626f6172646162",
+   "encoded": "0bfba165626f6172646162",
+   "peek": {
+    "kind": "port",
+    "port": 62
+   },
+   "mux": {
+    "kind": "port",
+    "port": 62,
+    "data": "a165626f6172646162"
+   }
+  },
+  {
+   "name": "port 63 syscall",
+   "payload": "ff10",
+   "encoded": "03ff10",
+   "peek": {
+    "kind": "port",
+    "port": 63
+   },
+   "mux": {
+    "kind": "port",
+    "port": 63,
+    "data": "10"
+   }
+  },
+  {
+   "name": "port 63, byte after header is zero",
+   "payload": "ff0000",
+   "encoded": "02ff0101",
+   "peek": {
+    "kind": "port",
+    "port": 63
+   },
+   "mux": {
+    "kind": "port",
+    "port": 63,
+    "data": "0000"
+   }
+  },
+  {
+   "name": "port frame with empty body",
+   "payload": "f7",
+   "encoded": "02f7",
+   "peek": {
+    "kind": "port",
+    "port": 61
+   },
+   "mux": {
+    "kind": "port",
+    "port": 61,
+    "data": ""
+   }
+  },
+  {
+   "name": "log frame too short",
+   "payload": "0001",
+   "encoded": "010201",
+   "peek": {
+    "kind": "log",
+    "type": 0
+   },
+   "mux": {
+    "kind": "error"
+   }
+  }
+ ]
+}

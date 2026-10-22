@@ -1,0 +1,21 @@
+name: spec
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  vectors:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Vectors are up to date
+        run: python3 -I spec/reference/gen_vectors.py --check
+      - name: Vectors pass against the reference
+        run: python3 -I spec/reference/check_vectors.py
