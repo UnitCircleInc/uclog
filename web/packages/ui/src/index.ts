@@ -1,6 +1,7 @@
 // © 2026 Unit Circle Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+export * from './host.ts';
 export * from './settings.ts';
 export * from './util.ts';
 export * from './log-view.ts';

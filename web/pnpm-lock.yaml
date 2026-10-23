@@ -200,6 +200,24 @@ importers:
         specifier: workspace:*
         version: link:../../packages/workers
 
+  apps/vscode:
+    devDependencies:
+      '@types/vscode':
+        specifier: 1.100.0
+        version: 1.100.0
+      '@uclog/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@uclog/transports-web':
+        specifier: workspace:*
+        version: link:../../packages/transports-web
+      '@uclog/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      '@uclog/workers':
+        specifier: workspace:*
+        version: link:../../packages/workers
+
   packages/core: {}
 
   packages/element:
@@ -389,6 +407,9 @@ packages:
 
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
+
+  '@types/vscode@1.100.0':
+    resolution: {integrity: sha512-4uNyvzHoraXEeCamR3+fzcBlh7Afs4Ifjs4epINyUX/jvdk0uzLnwiDY35UKDKnkCHP5Nu3dljl2H8lR6s+rQw==}
 
   '@types/w3c-web-hid@1.0.7':
     resolution: {integrity: sha512-/y97wBH7fYB5vKoDIn11O1ZDMNFLCAVqZ9af0OWDN7VSO2ClErEN2HlGbBuPgHBTUmZOVx1og2ZHX1U2gEJM4Q==}
@@ -779,6 +800,8 @@ snapshots:
       undici-types: 7.24.6
 
   '@types/trusted-types@2.0.7': {}
+
+  '@types/vscode@1.100.0': {}
 
   '@types/w3c-web-hid@1.0.7': {}
 

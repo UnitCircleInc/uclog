@@ -21,35 +21,35 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// List local USB devices (serial and HID), for scripts that only have `uclog-hub` (the Python
-    /// library's wheels). `uclog list` also shows hubs and BLE devices.
+    /// List local USB devices (serial and HID), for programs that only have `uclog-hub` (the
+    /// Python library's wheels, the VS Code extension). Hubs and BLE devices on request.
     List {
         /// One JSON array on stdout
         #[arg(long)]
         json: bool,
+        /// Also scan for BLE devices for this many seconds
+        #[arg(long, value_name = "SECS")]
+        ble_scan: Option<f64>,
+        /// Also list hubs: the ones on this machine, and those found over mDNS within SECS (0 = this
+        /// machine only)
+        #[arg(long, value_name = "SECS")]
+        hubs: Option<f64>,
         /// USB serial filter VID:PID; repeatable; replaces the defaults
         #[arg(long = "usb-filter", value_name = "VID:PID")]
         usb_filter: Vec<uclog_link::discover::UsbFilter>,
     },
 }
 
-fn list(json: bool, filters: &[uclog_link::discover::UsbFilter]) {
-    let all = uclog_link::discover::local_devices(filters);
-    if json {
-        println!("[{}]", all.iter().map(uclog_link::Device::to_json).collect::<Vec<_>>().join(","));
-    } else if all.is_empty() {
-        println!("no devices found");
-    } else {
-        for d in &all {
-            println!("{:<6} {:<44} {:<28} {:<24} {}", d.kind.as_str(), d.uri, d.name, d.serial, d.description);
-        }
-    }
-}
-
 fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
-    if let Some(Cmd::List { json, usb_filter }) = &cli.cmd {
-        list(*json, usb_filter);
+    if let Some(Cmd::List { json, ble_scan, hubs, usb_filter }) = &cli.cmd {
+        let secs = |s: &Option<f64>| s.map(|s| std::time::Duration::from_secs_f64(s.max(0.0)));
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let (all, notes) = rt.block_on(uclog_hub::list::devices(usb_filter, secs(ble_scan), secs(hubs)));
+        uclog_hub::list::print(&all, *json);
+        for n in notes {
+            eprintln!("uclog-hub: {n}");
+        }
         return std::process::ExitCode::SUCCESS;
     }
     let level = if cli.verbose >= 2 { "debug" } else { "info" };

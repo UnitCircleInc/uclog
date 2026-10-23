@@ -1,5 +1,6 @@
-# The web version (plan 02): type check, unit tests with spec/vectors, the <uc-log> bundles, and
-# Playwright end-to-end tests in Chromium (including the native hub over WebSocket).
+# The web version (plan 02) and the VS Code extension (plan 03): type check, unit tests with
+# spec/vectors, the <uc-log> bundles, Playwright end-to-end tests in Chromium (including the native
+# hub over WebSocket), and the extension in a real VS Code (Playwright's Electron driver, xvfb).
 name: web
 
 on:
@@ -29,7 +30,9 @@ jobs:
       - name: Install
         run: npx -y pnpm@12.10.1 install --frozen-lockfile
       - name: Type check
-        run: npx tsc -p tsconfig.json
+        run: |
+          npx tsc -p tsconfig.json
+          npx tsc -p apps/vscode/tsconfig.json
       - name: Unit tests
         run: npx vitest run
       - name: Build the element bundles
@@ -41,8 +44,23 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npx playwright test
+      - name: Build the VS Code extension (with this build's uclog-hub)
+        working-directory: web/apps/vscode
+        run: |
+          npx vite build --mode host && npx vite build
+          node scripts/package.mjs --local --no-package
+      - name: VS Code end-to-end tests
+        env:
+          VSCODE_VERSION: 1.133.0
+        run: |
+          curl -fsSL -o /tmp/vscode.tar.gz "https://update.code.visualstudio.com/${VSCODE_VERSION}/linux-x64/stable"
+          mkdir -p /tmp/vscode && tar xzf /tmp/vscode.tar.gz -C /tmp/vscode --strip-components 1
+          sudo apt-get install -y xvfb
+          UCLOG_VSCODE=/tmp/vscode/code xvfb-run -a npx playwright test -c apps/vscode/playwright.config.ts
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: playwright-results
-          path: web/test-results
+          path: |
+            web/test-results
+            web/apps/vscode/test-results

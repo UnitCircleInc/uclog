@@ -12,10 +12,13 @@ import { BLE_SERVICE, HID_IN, HID_OUT, HID_VENDOR, hidReports, SERIAL_FILTERS, s
 export type CloseReason = 'closed' | 'lost' | 'error';
 
 export interface MainLink {
-  readonly kind: 'serial' | 'hid' | 'ble';
+  readonly kind: 'serial' | 'hid' | 'ble' | 'hub';
   readonly description: string;
   onData: (b: Uint8Array) => void;
   onClose: (reason: CloseReason, detail?: string) => void;
+  /** A hub asking its operator before accepting us (set by the client before `open`). */
+  onApproval?: () => void;
+  /** Rejects with an error whose `state` may be `busy` or `timeout` (hubs). */
   open(): Promise<void>;
   write(b: Uint8Array): Promise<void>;
   close(): Promise<void>;

@@ -8,9 +8,10 @@
  * dropped (counted, with an error record), never port 63/59/61 traffic.
  */
 
-import { LoopbackDevice, parseLoopbackOptions, TransportSession, type RawLink, type ToDecoder } from '@uclog/core';
+import { LoopbackDevice, parseLoopbackOptions, TransportSession, type FsProvider, type RawLink, type ToDecoder } from '@uclog/core';
 import { DirectoryFs, WebSocketLink } from '@uclog/transports-web';
-import type { DecoderToTransport, MainToTransport, TransportToDecoder, TransportToMain } from './protocol.ts';
+import type { DecoderToTransport, FsInit, LinkInit, MainToTransport, TransportToDecoder, TransportToMain } from './protocol.ts';
+import { HostFsProvider, RpcClient } from './rpc.ts';
 
 /** Unacknowledged batches before log frames are dropped. */
 export const MAX_OUTSTANDING = 64;
@@ -29,7 +30,8 @@ export class TransportHost {
   private acked = 0;
   private dropped = 0;
   private droppedReported = 0;
-  private fs: DirectoryFs | null = null;
+  private fs: FsProvider | null = null;
+  private hostRpc: RpcClient | null = null;
   private fwAbort: AbortController | null = null;
   private statsTimer: ReturnType<typeof setInterval>;
   private gen = 0;
@@ -84,6 +86,9 @@ export class TransportHost {
           if (e.data.t === 'ack') this.acked = Math.max(this.acked, e.data.id);
         };
         return;
+      case 'host':
+        this.hostRpc = new RpcClient(m.port);
+        return;
       case 'connect':
         return this.connect(m.link, m.fs);
       case 'rx':
@@ -99,7 +104,7 @@ export class TransportHost {
         this.disconnect();
         return;
       case 'set-fs':
-        this.fs = m.fs ? new DirectoryFs(m.fs) : null;
+        this.fs = this.makeFs(m.fs);
         void this.session?.semihost.setFs(this.fs);
         return;
       case 'fw-start':
@@ -110,10 +115,16 @@ export class TransportHost {
     }
   }
 
-  private connect(link: import('./protocol.ts').LinkInit, fs: FileSystemDirectoryHandle | null) {
+  private makeFs(fs: FsInit): FsProvider | null {
+    if (!fs) return null;
+    if ('host' in fs) return this.hostRpc ? new HostFsProvider(this.hostRpc, fs.host) : null;
+    return new DirectoryFs(fs);
+  }
+
+  private connect(link: LinkInit, fs: FsInit) {
     this.stop();
     const gen = ++this.gen;
-    this.fs = fs ? new DirectoryFs(fs) : null;
+    this.fs = this.makeFs(fs);
     this.dropped = this.droppedReported = 0;
     let raw: RawLink;
     let session: TransportSession;
@@ -160,7 +171,7 @@ export class TransportHost {
       }
       case 'forward': {
         raw = {
-          hub: false,
+          hub: !!link.hub,
           write: (b) => {
             const c = b.slice();
             this.post({ t: 'tx', data: c }, [c.buffer]);

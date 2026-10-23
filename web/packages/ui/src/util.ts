@@ -3,7 +3,19 @@
 
 /** Small helpers: downloads, a store-only zip writer, timestamps for file names. */
 
+/** Where downloads go instead, when the host saves files itself (VS Code). */
+let saveHook: ((name: string, data: Uint8Array) => void) | null = null;
+export function setSaveHook(f: ((name: string, data: Uint8Array) => void) | null) {
+  saveHook = f;
+}
+
 export function download(name: string, data: Blob | string, type = 'text/plain') {
+  if (saveHook) {
+    const save = saveHook;
+    if (typeof data === 'string') save(name, new TextEncoder().encode(data));
+    else void data.arrayBuffer().then((b) => save(name, new Uint8Array(b)));
+    return;
+  }
   const blob = typeof data === 'string' ? new Blob([data], { type }) : data;
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);

@@ -17,7 +17,8 @@ import {
   SerialLink,
   type MainLink,
 } from '@uclog/transports-web';
-import type { DecodeState, DecodeToMain, LinkInit, LinkState, MainToDecode, MainToTransport, PlotData, TransportToMain } from './protocol.ts';
+import type { DecodeState, DecodeToMain, FsInit, LinkInit, LinkState, MainToDecode, MainToTransport, PlotData, TransportToMain } from './protocol.ts';
+import { hostCaps, serveHost, type HostServices } from './rpc.ts';
 
 export interface WorkerFactories {
   transport(): Worker;
@@ -34,12 +35,14 @@ export function workersAt(base: string): WorkerFactories {
 }
 
 /** What `connect()` takes: a URI (`ws://host:9000`, `loopback:rate=5`, `serial`, `hid`, `ble`;
- * the last three open the browser's chooser) or a device object. */
+ * the last three open the browser's chooser), a device object, or a link the embedding host
+ * provides (VS Code: a hub connection in the extension host). */
 export type LinkSpec =
   | string
   | { kind: 'serial'; port: SerialPort; baud?: number }
   | { kind: 'hid'; device: HIDDevice }
-  | { kind: 'ble'; device: BluetoothDevice };
+  | { kind: 'ble'; device: BluetoothDevice }
+  | { kind: 'external'; link: MainLink };
 
 export interface ConnectionState {
   link: LinkState | 'idle';
@@ -79,8 +82,11 @@ export class Client extends EventTarget {
   private writeChain: Promise<void> = Promise.resolve();
   private nextId = 1;
   private waiting = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
-  private fs: FileSystemDirectoryHandle | null = null;
+  private fs: FsInit = null;
+  private hasHostFs: boolean;
   private lastSpec: LinkSpec | null = null;
+  /** Bumped by every connect() and disconnect(), so a slow open can tell it was overtaken. */
+  private connGen = 0;
   /** Reopen a serial/HID device when it comes back (unplug, reset). */
   autoReconnect = true;
   conn: ConnectionState = { link: 'idle', liveness: null, stdinWanted: false, rx: 0, tx: 0 };
@@ -88,13 +94,25 @@ export class Client extends EventTarget {
   deviceInfo: ClientEvents['device-info'] | null = null;
   logdata: ClientEvents['logdata'] | null = null;
 
-  constructor(workers: WorkerFactories) {
+  constructor(workers: WorkerFactories, services: HostServices | null = null) {
     super();
     this.transport = workers.transport();
     this.decodeW = workers.decode();
     const ch = new MessageChannel();
     this.transport.postMessage({ t: 'init', decoder: ch.port1 } satisfies MainToTransport, [ch.port1]);
-    this.decodeW.postMessage({ t: 'init', transport: ch.port2 } satisfies MainToDecode, [ch.port2]);
+    if (services) {
+      const d = new MessageChannel();
+      serveHost(d.port2, services);
+      this.decodeW.postMessage({ t: 'init', transport: ch.port2, host: d.port1, caps: hostCaps(services) } satisfies MainToDecode, [ch.port2, d.port1]);
+    } else {
+      this.decodeW.postMessage({ t: 'init', transport: ch.port2 } satisfies MainToDecode, [ch.port2]);
+    }
+    this.hasHostFs = !!services?.fs;
+    if (services?.fs) {
+      const t = new MessageChannel();
+      serveHost(t.port2, services);
+      this.toT({ t: 'host', port: t.port1 }, [t.port1]);
+    }
     this.transport.onmessage = (e: MessageEvent<TransportToMain>) => this.onTransport(e.data);
     this.decodeW.onmessage = (e: MessageEvent<DecodeToMain>) => this.onDecode(e.data);
     const err = (w: string) => (e: ErrorEvent) => this.emit('note', `${w} worker: ${e.message}`);
@@ -218,6 +236,7 @@ export class Client extends EventTarget {
   /** Connect. `serial`, `hid` and `ble` open the browser's chooser, so call them from a click. */
   async connect(spec: LinkSpec): Promise<void> {
     await this.disconnect();
+    const gen = ++this.connGen;
     this.deviceInfo = null;
     this.logdata = null;
     let s = spec;
@@ -235,13 +254,28 @@ export class Client extends EventTarget {
       return;
     }
     const link: MainLink =
-      s.kind === 'serial' ? new SerialLink(s.port, s.baud) : s.kind === 'hid' ? new HidLink(s.device) : new BleLink(s.device);
+      s.kind === 'external'
+        ? s.link
+        : s.kind === 'serial'
+          ? new SerialLink(s.port, s.baud)
+          : s.kind === 'hid'
+            ? new HidLink(s.device)
+            : new BleLink(s.device);
     this.setConn({ link: 'connecting', uri: link.kind, description: link.description, detail: undefined, liveness: null, rx: 0, tx: 0, stdinWanted: false });
+    link.onApproval = () => gen === this.connGen && this.setConn({ link: 'approval' });
     try {
       await link.open();
     } catch (e) {
-      this.setConn({ link: 'error', detail: `${link.description}: ${(e as Error).message}` });
+      if (gen !== this.connGen) return;
+      const state = (e as { state?: string }).state;
+      if (state === 'busy') this.setConn({ link: 'busy', detail: 'hub busy: another client is connected' });
+      else this.setConn({ link: state === 'timeout' ? 'timeout' : 'error', detail: `${link.description}: ${(e as Error).message}` });
       throw e;
+    }
+    if (gen !== this.connGen) {
+      // Another connect() or disconnect() came first.
+      await link.close();
+      return;
     }
     this.mainLink = link;
     link.onData = (b) => this.toT({ t: 'rx', data: b }, [b.buffer]);
@@ -250,12 +284,13 @@ export class Client extends EventTarget {
       this.mainLink = null;
       this.toT({ t: 'link-closed', reason: detail ? `${reason}: ${detail}` : reason === 'lost' ? 'device lost' : reason });
     };
-    this.toT({ t: 'connect', link: { kind: 'forward', description: link.description }, fs: this.fs });
+    this.toT({ t: 'connect', link: { kind: 'forward', description: link.description, hub: link.kind === 'hub' }, fs: this.fs });
   }
 
   async disconnect() {
     const l = this.mainLink;
     this.mainLink = null;
+    this.connGen++;
     this.toT({ t: 'disconnect' });
     if (l) await l.close();
     if (this.conn.link !== 'idle') this.setConn({ link: 'closed', detail: 'disconnected', liveness: null, stdinWanted: false });
@@ -318,8 +353,22 @@ export class Client extends EventTarget {
     this.toT({ t: 'set-fs', fs: h });
   }
 
-  get filesDir() {
-    return this.fs;
+  /** Semihost files served by the host (`services.fs`), shown as `name`; null: none. */
+  setHostFiles(name: string | null) {
+    if (!this.hasHostFs) throw new Error('the host serves no files');
+    this.fs = name === null ? null : { host: name };
+    this.toT({ t: 'set-fs', fs: this.fs });
+  }
+
+  /** The semihost files folder's name (null: none). */
+  get filesName(): string | null {
+    if (!this.fs) return null;
+    return 'host' in this.fs ? this.fs.host : this.fs.name;
+  }
+
+  /** Files served from a folder the user granted (not the host's). */
+  get filesDir(): FileSystemDirectoryHandle | null {
+    return this.fs && !('host' in this.fs) ? this.fs : null;
   }
 
   // -------------------------------------------------------------------------------------------

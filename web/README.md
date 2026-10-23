@@ -1,18 +1,20 @@
 # Web workspace (TypeScript)
 
-Phase 5 of [docs/plans](../docs/plans/README.md): the browser client from
-[plan 02](../docs/plans/02-web.md), as the embeddable `<uc-log>` element and a standalone page. It
-connects over Web Serial, WebHID, Web Bluetooth, or a WebSocket to a `uclog hub`, and has a
-simulated device for trying it without hardware.
+Phases 5 and 6 of [docs/plans](../docs/plans/README.md): the browser client from
+[plan 02](../docs/plans/02-web.md), as the embeddable `<uc-log>` element and a standalone page, and
+the VS Code extension from [plan 03](../docs/plans/03-vscode.md). The browser client connects over
+Web Serial, WebHID, Web Bluetooth, or a WebSocket to a `uclog hub`, and has a simulated device for
+trying it without hardware.
 
 | Package | Contents |
 |---|---|
 | `@uclog/core` | CBOR, COBS, frame scanner, 2-byte peek, mux; logdata (CBOR or ELF `.logdata_cbor`) and the C-printf decoder; semihost with a pluggable file system; FW update (59 → 3); logdata resolver (pluggable cache and fetch); the session's transport and decode halves; log store, plot model; the simulated `loopback:` device. No DOM |
 | `@uclog/transports-web` | `SerialLink`, `HidLink`, `BleLink` (main thread), `WebSocketLink` (busy and approval states), `DirectoryFs` (semihost files in a folder the user granted) |
-| `@uclog/workers` | the transport and decode workers, their message protocol, and `Client`, the main-thread side |
+| `@uclog/workers` | the transport and decode workers, their message protocol, `Client` (the main-thread side), and the host services an embedder can provide (`rpc.ts`) |
 | `@uclog/ui` | Lit components: `uc-log`, `uc-device-picker`, `uc-log-view`, `uc-terminal`, `uc-commands`, `uc-plots`, `uc-device-info`, `uc-fw-update`, `uc-settings` |
 | `@uclog/element` | the `<uc-log>` bundles: ESM and IIFE with the workers inlined, plus the workers as files for `worker-base` |
 | `apps/demo` | the standalone page |
+| `apps/vscode` | the VS Code extension ([README](apps/vscode/README.md)): the logger in a webview, devices through a private `uclog-hub` |
 
 ```sh
 npx -y pnpm@12.10.1 install
@@ -22,6 +24,21 @@ npx vitest run                   # unit tests, spec/vectors, worker hosts
 npx playwright test              # end-to-end in Chrome (the hub test needs native/target/*/uclog-hub)
 npx -y pnpm@12.10.1 build        # packages/element/dist and apps/demo/dist
 ```
+
+The VS Code extension (in `apps/vscode`):
+
+```sh
+npx tsc -p apps/vscode/tsconfig.json
+(cd apps/vscode && npx vite build --mode host && npx vite build)   # dist/extension.cjs, dist/webview
+(cd apps/vscode && node scripts/package.mjs --local)              # bin/ from native/target, then uclog-0.1.0.vsix
+npx playwright test -c apps/vscode/playwright.config.ts           # in the installed VS Code (UCLOG_VSCODE=…)
+UCLOG_VSIX=apps/vscode/uclog-0.1.0.vsix npx playwright test -c apps/vscode/playwright.config.ts
+UCLOG_TEST_DEVICE=serial:/dev/cu.usbmodem… npx playwright test -c apps/vscode/playwright.config.ts hw
+```
+
+To try it by hand, build it and fill `bin/` (the first three lines), then open `apps/vscode` in VS
+Code and press F5 (*Run Extension*), or install the VSIX
+(`code --install-extension apps/vscode/uclog-0.1.0.vsix`).
 
 The demo page's query parameters set the element's attributes, for example
 `?hub-url=ws://lab-pc:9000&theme=dark&layout=grid`, and `?connect=loopback:rate=5` connects at
@@ -56,6 +73,16 @@ counts).
 - **Logdata** is found by the device's `app_hash`: files loaded manually, then the IndexedDB
   cache, then the logdata service. A file loaded manually is saved in the cache under the
   device's `app_hash`, so the next connection finds it.
+
+A runnable example page (both bundles, a strict CSP, the element's methods and events):
+[examples/embed](examples/embed/README.md).
+
+## Embedding in an application
+
+An application that is more than a web page (the VS Code extension) sets `UcLog.host` before the
+element starts. It can provide its own Connect UI, file pickers, saving and settings, and services
+the workers call through the main thread: a logdata cache, a fetch without CORS, logdata from local
+builds, and semihost files. A link the host owns is passed as `connect({kind: 'external', link})`.
 
 ## Embedding
 

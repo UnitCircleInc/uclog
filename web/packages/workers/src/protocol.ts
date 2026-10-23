@@ -4,19 +4,26 @@
 /** Messages between the main thread and the two workers (plan 02 §3). */
 
 import type { FilterSpec, FwProgress, Liveness, ResolverConfig, Row, SourceKind, ToDecoder } from '@uclog/core';
+import type { HostCaps } from './rpc.ts';
 
 /** How the transport worker reaches the device. */
 export type LinkInit =
   | { kind: 'ws'; url: string }
   | { kind: 'loopback'; opts: string }
-  /** Serial/HID/BLE: the main thread owns the device and forwards bytes both ways. */
-  | { kind: 'forward'; description: string };
+  /** Serial/HID/BLE, or a host's connection (VS Code: TCP to a hub): the main thread owns the
+   * link and forwards bytes both ways. `hub`: the far end is a hub (it answers time syscalls). */
+  | { kind: 'forward'; description: string; hub?: boolean };
+
+/** Semihost files: a folder the user granted, the host's files (by name, see `host`), or none. */
+export type FsInit = FileSystemDirectoryHandle | { host: string } | null;
 
 export type LinkState = 'connecting' | 'approval' | 'open' | 'busy' | 'closed' | 'error' | 'timeout';
 
 export type MainToTransport =
   | { t: 'init'; decoder: MessagePort }
-  | { t: 'connect'; link: LinkInit; fs: FileSystemDirectoryHandle | null }
+  /** The host's services (semihost files), once. */
+  | { t: 'host'; port: MessagePort }
+  | { t: 'connect'; link: LinkInit; fs: FsInit }
   | { t: 'rx'; data: Uint8Array }
   | { t: 'link-closed'; reason: string }
   | { t: 'send'; port: number; data: Uint8Array }
@@ -24,7 +31,7 @@ export type MainToTransport =
   | { t: 'disconnect' }
   | { t: 'fw-start'; image: Uint8Array }
   | { t: 'fw-cancel' }
-  | { t: 'set-fs'; fs: FileSystemDirectoryHandle | null };
+  | { t: 'set-fs'; fs: FsInit };
 
 export type TransportToMain =
   | { t: 'link'; state: LinkState; detail?: string; description?: string }
@@ -97,7 +104,7 @@ export type PlotData =
     };
 
 export type MainToDecode =
-  | { t: 'init'; transport: MessagePort }
+  | { t: 'init'; transport: MessagePort; host?: MessagePort; caps?: HostCaps }
   | { t: 'config'; resolver: ResolverConfig; maxLines: number; emitLogs: boolean }
   | { t: 'load-logdata'; id: number; name: string; data: Uint8Array }
   | { t: 'filter'; id: number; spec: FilterSpec; discardFiltered: boolean }

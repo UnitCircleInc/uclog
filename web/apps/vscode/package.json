@@ -1,0 +1,160 @@
+{
+  "name": "uclog",
+  "displayName": "ucLog",
+  "description": "Logs, terminal, plots and FW updates for ucLog devices (Serial, HID, BLE, UDP) and hubs",
+  "version": "0.1.0",
+  "publisher": "unitcircle",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/unitcircle/uclog-clientv2"
+  },
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": ["Debuggers", "Other"],
+  "keywords": ["embedded", "logging", "zephyr", "serial", "firmware"],
+  "extensionKind": ["ui", "workspace"],
+  "main": "./dist/extension.cjs",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      { "command": "uclog.open", "title": "Open Logger", "category": "ucLog" },
+      { "command": "uclog.connect", "title": "Connect…", "category": "ucLog", "icon": "$(plug)" },
+      { "command": "uclog.disconnect", "title": "Disconnect", "category": "ucLog", "icon": "$(debug-disconnect)" },
+      { "command": "uclog.loadLogdata", "title": "Load Logdata…", "category": "ucLog" },
+      { "command": "uclog.flashFirmware", "title": "Flash Firmware…", "category": "ucLog" },
+      { "command": "uclog.openTerminal", "title": "Open Device Terminal", "category": "ucLog" },
+      { "command": "uclog.setToken", "title": "Set Logdata Token", "category": "ucLog" },
+      { "command": "uclog.clearCache", "title": "Clear Logdata Cache", "category": "ucLog" },
+      { "command": "uclog.resetAll", "title": "Reset All Data", "category": "ucLog" },
+      { "command": "uclog.showOutput", "title": "Show Hub Output", "category": "ucLog" },
+      { "command": "uclog.refreshDevices", "title": "Refresh", "category": "ucLog", "icon": "$(refresh)" },
+      { "command": "uclog.scanBle", "title": "Scan for Bluetooth Devices", "category": "ucLog", "icon": "$(bluetooth)" },
+      { "command": "uclog.addHub", "title": "Enter Hub Address…", "category": "ucLog", "icon": "$(add)" },
+      { "command": "uclog.connectDevice", "title": "Connect", "category": "ucLog", "icon": "$(plug)" }
+    ],
+    "viewsContainers": {
+      "activitybar": [{ "id": "uclog", "title": "ucLog", "icon": "media/uclog.svg" }]
+    },
+    "views": {
+      "uclog": [{ "id": "uclog.devices", "name": "Devices" }]
+    },
+    "viewsWelcome": [
+      {
+        "view": "uclog.devices",
+        "contents": "No ucLog devices or hubs found.\n[Refresh](command:uclog.refreshDevices)\n[Scan for Bluetooth Devices](command:uclog.scanBle)\n[Enter Hub Address…](command:uclog.addHub)\n[Open Logger](command:uclog.open)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "uclog.refreshDevices", "when": "view == uclog.devices", "group": "navigation@1" },
+        { "command": "uclog.scanBle", "when": "view == uclog.devices", "group": "navigation@2" },
+        { "command": "uclog.addHub", "when": "view == uclog.devices", "group": "navigation@3" },
+        { "command": "uclog.disconnect", "when": "view == uclog.devices && uclog.connected", "group": "navigation@4" }
+      ],
+      "view/item/context": [
+        { "command": "uclog.connectDevice", "when": "view == uclog.devices && viewItem == device", "group": "inline" }
+      ],
+      "commandPalette": [
+        { "command": "uclog.connectDevice", "when": "false" },
+        { "command": "uclog.disconnect", "when": "uclog.connected" }
+      ]
+    },
+    "configuration": {
+      "title": "ucLog",
+      "properties": {
+        "uclog.hubPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Path to a `uclog-hub` executable to use instead of the bundled one."
+        },
+        "uclog.keepHubRunning": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Keep the private hub running after disconnecting or closing the logger, so logs keep buffering (the hub's backlog is shown on reconnect). Hubs stop when the window closes."
+        },
+        "uclog.baud": {
+          "type": "number",
+          "default": 1000000,
+          "description": "Serial baud rate."
+        },
+        "uclog.usbFilters": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[0-9A-Fa-f]{4}:([0-9A-Fa-f]{4}|\\*)$" },
+          "default": [],
+          "markdownDescription": "USB serial filters `VID:PID` (hex, PID may be `*`). Empty: STLINK, FTDI and Zephyr CDC-ACM."
+        },
+        "uclog.logdata.domain": {
+          "type": "string",
+          "default": "",
+          "description": "Logdata service domain (needed to look logdata up remotely)."
+        },
+        "uclog.logdata.url": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Logdata service URL (default `https://fw.unitcircle.ca`). The token is set with **ucLog: Set Logdata Token**."
+        },
+        "uclog.semihost.root": {
+          "type": "string",
+          "default": "${workspaceFolder}",
+          "markdownDescription": "Folder the device may open and create files in (semihost). `${workspaceFolder}` is the first workspace folder. Empty: file operations fail."
+        },
+        "uclog.maxLogLines": {
+          "type": "number",
+          "default": 100000,
+          "minimum": 1000,
+          "description": "Log lines kept in the logger."
+        },
+        "uclog.commands.buttons": {
+          "type": "array",
+          "default": [],
+          "markdownDescription": "Buttons in the Commands view: `{\"label\": \"Reset\", \"cmd\": \"reset\"}` sends a text line; a `cmd` object is sent as CBOR, and `$name` values are asked for.",
+          "items": {
+            "type": "object",
+            "required": ["label", "cmd"],
+            "properties": { "label": { "type": "string" }, "cmd": { "type": ["string", "object"] } }
+          }
+        },
+        "uclog.terminal.buttons": {
+          "type": "array",
+          "default": [{ "label": "Help", "cmd": "help" }],
+          "description": "Buttons in the Terminal view (text lines).",
+          "items": {
+            "type": "object",
+            "required": ["label", "cmd"],
+            "properties": { "label": { "type": "string" }, "cmd": { "type": "string" } }
+          }
+        },
+        "uclog.terminal.onConnect": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Lines sent to the device terminal after connecting."
+        },
+        "uclog.terminal.mode": {
+          "type": "string",
+          "enum": ["webview", "pseudoterminal"],
+          "enumDescriptions": ["The Terminal view in the logger", "Also a VS Code terminal (ucLog: Open Device Terminal) opened on connect"],
+          "default": "webview",
+          "description": "Where the device terminal (port 61) is shown."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "vite build --mode host && vite build",
+    "package": "pnpm build && node scripts/package.mjs"
+  },
+  "devDependencies": {
+    "@types/vscode": "1.100.0",
+    "@uclog/core": "workspace:*",
+    "@uclog/transports-web": "workspace:*",
+    "@uclog/ui": "workspace:*",
+    "@uclog/workers": "workspace:*"
+  }
+}

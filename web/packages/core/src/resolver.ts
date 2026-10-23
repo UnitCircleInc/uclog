@@ -3,8 +3,9 @@
 
 /**
  * Choosing logdata by the device's app_hash (protocol.md §6.4, plans README §5.3): manual files,
- * then the cache, then the logdata service. The cache and the fetch are pluggable (IndexedDB in
- * the browser, a map in tests).
+ * then the cache, then the logdata service, then a local build whose image matches (where the host
+ * can see files: VS Code). The cache, the fetch and the local lookup are pluggable (IndexedDB in the
+ * browser, a map in tests).
  */
 
 import { hex } from './cbor.ts';
@@ -33,7 +34,10 @@ export interface ResolverConfig {
   token?: string;
 }
 
-export type SourceKind = 'manual' | 'cache' | 'remote' | 'fallback';
+export type SourceKind = 'manual' | 'cache' | 'remote' | 'sibling' | 'fallback';
+
+/** Finds logdata next to a local FW image whose hash is the app_hash (VS Code's workspace). */
+export type SiblingLookup = (hashHex: string) => Promise<{ name: string; data: Uint8Array } | undefined>;
 export interface Resolved {
   logdata: LogData[];
   source: { kind: SourceKind; name: string } | null;
@@ -80,6 +84,7 @@ export class Resolver {
     public cfg: ResolverConfig = {},
     public cache: LogdataCache | null = null,
     public fetcher: typeof fetch | null = typeof fetch === 'function' ? fetch.bind(globalThis) : null,
+    public sibling: SiblingLookup | null = null,
   ) {}
 
   async resolve(appHash: Uint8Array): Promise<Resolved> {
@@ -118,6 +123,19 @@ export class Resolver {
         notes.push(`${url}: not found`);
       } catch (e) {
         notes.push(`${url}: ${e instanceof LogDataError || e instanceof HttpError ? e.message : String(e)}`);
+      }
+    }
+
+    if (this.sibling) {
+      try {
+        const f = await this.sibling(h);
+        if (f) {
+          const ld = LogData.fromFile(f.data, f.name);
+          ld.appHash = appHash;
+          return { logdata: [ld], source: { kind: 'sibling', name: f.name }, notes };
+        }
+      } catch (e) {
+        notes.push(`local build: ${(e as Error).message}`);
       }
     }
 

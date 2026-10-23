@@ -4,7 +4,7 @@ Shared context, protocol and decisions: [README.md](README.md). D# = decisions (
 
 ## 1. Goal
 
-Phases 1–5 and 2b are built and verified on macOS, with the NUCLEO-L452RE-P over serial. This
+Phases 1–6 and 2b are built and verified on macOS, with the NUCLEO-L452RE-P over serial. This
 phase collects what is still missing before a first public release:
 
 - signed packages and published artefacts;
@@ -13,17 +13,17 @@ phase collects what is still missing before a first public release:
 - the few features the earlier phases left out.
 
 These items came from the "Not done yet" notes of plans [01](01-hub-server.md),
-[02](02-web.md), [04](04-native-gui.md), [05](05-tui.md) and [06](06-python-client.md), and from
-`.github/workflows/release.yml`. This phase does not depend on Phase 6. Its packaging work
-is reused by Plan 03, which bundles the signed hub binaries.
+[02](02-web.md), [03](03-vscode.md), [04](04-native-gui.md), [05](05-tui.md) and
+[06](06-python-client.md), and from `.github/workflows/release.yml`. The VSIX (Plan 03) bundles
+the hub binaries this phase signs.
 
 ## 2. Repository and CI
 
 | # | Task | From | Size |
 |---|---|---|---|
-| 1 | Create the GitHub repository and push. Check that `native.yml`, `python.yml` and `spec.yml` pass on Linux, Windows and macOS; they have never run (no remote yet) | 06 §9 | S |
+| 1 | Create the GitHub repository and push. Check that `native.yml`, `python.yml`, `spec.yml` and `web.yml` pass (the native and Python ones on Linux, Windows and macOS; `web.yml` includes the VS Code tests under xvfb); they have never run (no remote yet) | 06 §9, 03 §8 | S |
 | 2 | Repository secrets for signing (§3): Apple Developer ID certificate + notarisation API key, Windows code-signing certificate | 01 §9.10 | S |
-| 3 | A dry run of `release.yml` (`workflow_dispatch`): every target builds, checksums, draft GitHub release, wheels artifact | 01 §9.10 | S |
+| 3 | A dry run of `release.yml` (`workflow_dispatch`): every target builds, checksums, draft GitHub release, wheels artifact, VSIX artifact | 01 §9.10, 03 §8 | S |
 
 ## 3. Packaging and signing
 
@@ -33,9 +33,9 @@ is reused by Plan 03, which bundles the signed hub binaries.
 | 5 | macOS GUI: a `ucLog.app` bundle in a `.dmg`, signed, notarised and stapled, alongside the plain binary | 04 §6 | M |
 | 6 | Windows: sign `uclog.exe` and `uclog-hub.exe` (x64, arm64). Optional MSI | 01 §9.10, 04 §6 | M |
 | 7 | Linux: an AppImage for the GUI; the tarball keeps `70-uclog.rules` | 04 §6 | M |
-| 8 | Linux armv7 build (`cross`) in `release.yml`, for the Pi and the armv7 wheel | 01 §9.10 | S |
+| 8 | Linux armv7 build (`cross`) in `release.yml`, for the Pi, the armv7 wheel and the VSIX (`linux-armv7` archive → `bin/linux-arm`) | 01 §9.10, 03 §8 | S |
 | 9 | First-run hint when serial or hidraw access is denied on Linux: show how to install the udev rules (GUI dialog, TUI/CLI message) | 04 §6 | S |
-| 10 | Python wheels take the **signed** `uclog-hub` from the release build | 06 §1 | S |
+| 10 | Python wheels and the VSIX take the **signed** `uclog-hub` from the release build | 06 §1, 03 §2 | S |
 
 ## 4. Publishing
 
@@ -45,6 +45,7 @@ is reused by Plan 03, which bundles the signed hub binaries.
 | 12 | A publish job in `release.yml` (`pypa/gh-action-pypi-publish`, `id-token: write`, no API token). It publishes the wheels and sdist on a `v*` tag, after the build jobs. Publish to TestPyPI first, then install from it on 3 OS | 06 §9 | S |
 | 13 | Versioning: one version for the Rust workspace and the Python package (both `0.1.0` now); the tag must match, checked in CI | — | S |
 | 13a | npm: publish `@uclog/element` (Changesets, provenance) and a versioned single-file build on GitHub Releases or a CDN | 02 §7, §10 | S |
+| 13b | VS Code: create the `unitcircle` publisher (Marketplace) and namespace (Open VSX); a publish job in `release.yml` with `vsce publish` and `ovsx publish` (tokens as secrets, `--require-all` targets). Check the repository URL in the manifest | 03 §6 | S |
 | 14 | First release: tag, publish the draft GitHub release, release notes | — | S |
 
 ## 5. Platforms
@@ -70,6 +71,7 @@ is reused by Plan 03, which bundles the signed hub binaries.
 | 26 | Hub soak: 1 h at the maximum log rate with an intermittently stalled client; memory stays bounded by `--backlog` | 01 §10 | S |
 | 27 | GUI and TUI against each device kind and through a hub (the manual matrix of 04 §7 task 12) | 04 §7 | M |
 | 27a | Web: Web Serial, WebHID and Web Bluetooth with real devices (the choosers cannot be automated); Chrome and Edge on Windows, macOS and Linux | 02 §10 | M |
+| 27b | VS Code: the extension on Windows and Linux (private hubs, serial, HID, BLE scan), over Remote-SSH and WSL (`extensionKind` ui: USB stays local), and semihost file calls from a real device. *Load Logdata…* and *Browse…* use native dialogs, so they are checked by hand | 03 §8 | M |
 
 ## 7. Remaining features
 
@@ -83,4 +85,3 @@ is reused by Plan 03, which bundles the signed hub binaries.
 
 - The firmware implementation of F1–F7 in the product firmware (Phase 0). It lives outside this
   repository; the test firmware in `firmware/` already has F6 and F7.
-- The VS Code extension (Phase 6).

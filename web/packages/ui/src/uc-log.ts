@@ -15,7 +15,8 @@ import { css, html, LitElement, nothing } from 'lit';
 import { Client, workersAt, type ConnectionState, type LinkSpec, type WorkerFactories } from '@uclog/workers';
 import { base } from './styles.ts';
 import { SettingsStore } from './settings.ts';
-import { download, readFile, stamp, zip } from './util.ts';
+import { download, readFile, setSaveHook, stamp, zip } from './util.ts';
+import type { UcHost } from './host.ts';
 import './log-view.ts';
 import './terminal.ts';
 import './commands.ts';
@@ -28,6 +29,7 @@ import type { UcDevicePicker } from './device-picker.ts';
 import type { UcSettings } from './settings-dialog.ts';
 import type { UcTerminal } from './terminal.ts';
 import type { UcPlots } from './plots.ts';
+import type { UcFwUpdate } from './fw-update.ts';
 
 export const PANELS = ['log', 'terminal', 'commands', 'plots', 'device', 'fw-update'] as const;
 export type Panel = (typeof PANELS)[number];
@@ -79,6 +81,8 @@ export class UcLog extends LitElement {
   /** Worker factories when `worker-base` is not set: the element bundle sets inlined ones, an app
    * built with Vite can use `@uclog/workers/default-workers`. */
   static workers: WorkerFactories | null = null;
+  /** Set by an embedding host that provides its own pickers, settings and services (VS Code). */
+  static host: UcHost | null = null;
 
   static properties = {
     logdataDomain: { type: String, attribute: 'logdata-domain' },
@@ -322,10 +326,13 @@ export class UcLog extends LitElement {
 
   private start() {
     if (this.client || !this.isConnected) return;
-    this.settings = new SettingsStore(this.storageKey);
+    const host = UcLog.host;
+    this.settings = new SettingsStore(this.storageKey, host?.settings ?? null);
     const w = this.workerBase ? workersAt(this.workerBase) : UcLog.workers;
     if (!w) throw new Error('<uc-log>: set UcLog.workers or the worker-base attribute');
-    this.client = new Client(w);
+    this.client = new Client(w, host?.services ?? null);
+    if (host?.services?.fs && host.files) this.client.setHostFiles(host.files);
+    if (host?.save) setSaveHook(host.save);
     this.wire();
     this.configure();
     this.requestUpdate();
@@ -450,8 +457,18 @@ export class UcLog extends LitElement {
     return this.client.loadLogdata(file.name, data);
   }
 
-  /** Show the connect dialog. */
+  /** Choose the image and start the update (connected) or wait for Start (not connected). */
+  async fwUpdate(name: string, data: Uint8Array) {
+    await this.ready();
+    if (!this.enabled.includes('fw-update')) throw new Error('the fw-update panel is not enabled');
+    this.active = 'fw-update';
+    await this.updateComplete;
+    await (this.renderRoot.querySelector('uc-fw-update') as UcFwUpdate).startWith(name, data);
+  }
+
+  /** Show the connect dialog (or the host's). */
   showPicker() {
+    if (UcLog.host?.showConnect) return UcLog.host.showConnect();
     const p = this.renderRoot.querySelector('uc-device-picker') as UcDevicePicker;
     if (this.hubUrl && !this.settings.s.recentHubs.length) this.settings.s.lastHub = this.hubUrl;
     void p.show();
@@ -517,7 +534,7 @@ export class UcLog extends LitElement {
   private panel(p: Panel) {
     switch (p) {
       case 'log':
-        return html`<uc-log-view .client=${this.client} .settings=${this.settings} ?dark=${this.dark}></uc-log-view>`;
+        return html`<uc-log-view .client=${this.client} .settings=${this.settings} .host=${UcLog.host} ?dark=${this.dark}></uc-log-view>`;
       case 'terminal':
         return html`<uc-terminal .client=${this.client} .settings=${this.settings} ?dark=${this.dark}></uc-terminal>`;
       case 'commands':
@@ -525,9 +542,9 @@ export class UcLog extends LitElement {
       case 'plots':
         return html`<uc-plots .client=${this.client} ?dark=${this.dark}></uc-plots>`;
       case 'device':
-        return html`<uc-device-info .client=${this.client} .notes=${this.notes}></uc-device-info>`;
+        return html`<uc-device-info .client=${this.client} .notes=${this.notes} .host=${UcLog.host}></uc-device-info>`;
       case 'fw-update':
-        return html`<uc-fw-update .client=${this.client}></uc-fw-update>`;
+        return html`<uc-fw-update .client=${this.client} .host=${UcLog.host}></uc-fw-update>`;
     }
   }
 
@@ -577,7 +594,8 @@ export class UcLog extends LitElement {
             <button
               @click=${() => {
                 this.menuOpen = false;
-                (this.renderRoot.querySelector('uc-settings') as UcSettings).show();
+                if (UcLog.host?.openSettings) UcLog.host.openSettings();
+                else (this.renderRoot.querySelector('uc-settings') as UcSettings).show();
               }}
             >
               Settings…

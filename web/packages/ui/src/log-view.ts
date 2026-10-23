@@ -12,6 +12,7 @@ import { LEVELS, NO_FILTER, plainLine, type FilterSpec, type Row } from '@uclog/
 import type { Client, DecodeState } from '@uclog/workers';
 import { base } from './styles.ts';
 import { autoColour, type SettingsStore } from './settings.ts';
+import type { UcHost } from './host.ts';
 import { download, stamp } from './util.ts';
 
 const ROW_H = 20;
@@ -21,6 +22,7 @@ export class UcLogView extends LitElement {
   static properties = {
     client: { attribute: false },
     settings: { attribute: false },
+    host: { attribute: false },
     dark: { type: Boolean },
     rows: { state: true },
     total: { state: true },
@@ -33,6 +35,7 @@ export class UcLogView extends LitElement {
   };
   declare client: Client;
   declare settings: SettingsStore;
+  declare host: UcHost | null;
   declare dark: boolean;
   declare rows: Row[];
   declare total: number;
@@ -53,6 +56,7 @@ export class UcLogView extends LitElement {
   constructor() {
     super();
     this.dark = false;
+    this.host = null;
     this.rows = [];
     this.total = 0;
     this.filter = { ...NO_FILTER };
@@ -110,6 +114,13 @@ export class UcLogView extends LitElement {
       .r > span {
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+      .r > .src {
+        cursor: pointer;
+      }
+      .r > .src:hover {
+        text-decoration: underline;
+        color: var(--uc-accent);
       }
       .r.sel {
         outline: 1px solid var(--uc-accent);
@@ -380,8 +391,17 @@ export class UcLogView extends LitElement {
                     this.menu = { x: e.clientX, y: e.clientY, row: r };
                   }}
                 >
-                  <span class="ts">${r.ts.toFixed(3)}</span><span class="lvl">${r.level}</span><span>${src}</span
-                  ><span>${r.text}</span>
+                  <span class="ts">${r.ts.toFixed(3)}</span><span class="lvl">${r.level}</span>${this.host?.openSource && r.line
+                    ? html`<span
+                        class="src"
+                        title="Open ${src}"
+                        @click=${(e: MouseEvent) => {
+                          e.stopPropagation();
+                          this.host!.openSource!(r.file, r.line);
+                        }}
+                        >${src}</span
+                      >`
+                    : html`<span>${src}</span>`}<span>${r.text}</span>
                 </div>`;
               })}
             </div>`}
@@ -394,6 +414,9 @@ export class UcLogView extends LitElement {
     const r = m.row;
     const done = () => (this.menu = null);
     return html`<div class="menu" style="left:${m.x}px;top:${m.y}px" role="menu">
+      ${this.host?.openSource && r.line
+        ? html`<button @click=${() => (done(), this.host!.openSource!(r.file, r.line))}>Open ${r.file}:${r.line}</button>`
+        : nothing}
       <button @click=${() => (done(), this.applyFilter({ ...this.filter, source: r.file }))}>Show only ${r.file}</button>
       ${r.line
         ? html`<button @click=${() => (done(), this.applyFilter({ ...this.filter, source: r.file, line: r.line }))}>

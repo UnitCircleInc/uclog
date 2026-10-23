@@ -9,7 +9,7 @@ Next-generation ucLog clients for Unit Circle devices. Every client shares one w
 | Bare-metal device library + NUCLEO-L452RE-P test firmware | [`firmware/`](firmware/README.md) | — | test target for the hosts |
 | Hub (Serial/HID/BLE/UDP ↔ TCP/WebSocket/UDP) | [`native/`](native/README.md) (`uclog hub`, `uclog-hub`) | [01](docs/plans/01-hub-server.md) | **Phase 2**: done; verified on hardware over serial |
 | Web version / `<uc-log>` component | [`web/`](web/README.md) (TypeScript) | [02](docs/plans/02-web.md) | **Phase 5**: done; verified in Chrome (Playwright) with the simulated device and the native hub, and on hardware through the hub; Web Serial/HID/BLE with real devices and npm publishing: Phase 7 |
-| VS Code extension | `web/apps/vscode` | [03](docs/plans/03-vscode.md) | planned |
+| VS Code extension | [`web/apps/vscode`](web/apps/vscode/README.md) | [03](docs/plans/03-vscode.md) | **Phase 6**: done; verified in VS Code (Playwright) with the simulated device and hubs, and on hardware through a private hub; Marketplace publishing and other OSes: Phase 7 |
 | Native GUI (`uclog gui`) | [`native/`](native/README.md) | [04](docs/plans/04-native-gui.md) | **Phase 4**: done; verified with the loopback device (headless UI tests) and on hardware (macOS); packaging and other platforms: Phase 7 |
 | Native TUI (`uclog tui`) | [`native/`](native/README.md) | [05](docs/plans/05-tui.md) | **Phase 3**: done; verified on hardware (macOS) |
 | Python library for scripts | [`python/`](python/README.md) | [06](docs/plans/06-python-client.md) | **Phase 2b**: done; verified with the loopback device and on hardware (macOS); PyPI publishing: Phase 7 |

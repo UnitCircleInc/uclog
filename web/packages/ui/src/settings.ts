@@ -7,6 +7,7 @@
  */
 
 import { encode, type CborValue } from '@uclog/core';
+import type { SettingsBackend } from './host.ts';
 
 export interface Button {
   label: string;
@@ -55,15 +56,20 @@ export class SettingsStore extends EventTarget {
   token = '';
   rememberToken = false;
 
-  constructor(readonly key = 'uclog') {
+  constructor(
+    readonly key = 'uclog',
+    /** Settings kept by the host (VS Code) instead of localStorage; the token stays with the host. */
+    readonly backend: SettingsBackend | null = null,
+  ) {
     super();
     let raw: unknown;
     try {
-      raw = JSON.parse(localStorage.getItem(`${key}:settings`) || 'null');
+      raw = backend ? backend.load() : JSON.parse(localStorage.getItem(`${key}:settings`) || 'null');
     } catch {
       raw = null;
     }
     this.s = merge(structuredClone(DEFAULT_SETTINGS), raw);
+    if (backend) return;
     try {
       this.token = sessionStorage.getItem(`${key}:token`) || '';
     } catch {
@@ -80,10 +86,17 @@ export class SettingsStore extends EventTarget {
 
   save() {
     try {
-      localStorage.setItem(`${this.key}:settings`, JSON.stringify(this.s));
+      if (this.backend) this.backend.save(structuredClone(this.s));
+      else localStorage.setItem(`${this.key}:settings`, JSON.stringify(this.s));
     } catch {
       /* storage blocked or full */
     }
+    this.changed();
+  }
+
+  /** New settings from the host (its settings changed). */
+  replace(raw: unknown) {
+    this.s = merge(structuredClone(DEFAULT_SETTINGS), raw);
     this.changed();
   }
 

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Embedding example</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+    header { padding: 10px 16px; border-bottom: 1px solid #8884; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    header h1 { font-size: 16px; margin: 0 12px 0 0; }
+    main { display: grid; grid-template-columns: 1fr 320px; min-height: 0; }
+    uc-log { margin: 12px; min-height: 0; }
+    /* Branding through custom properties (see web/README.md, "Styling"). */
+    uc-log.branded { --uc-accent: #0f766e; --uc-radius: 12px; }
+    aside { border-left: 1px solid #8884; padding: 8px 12px; overflow: auto; font: 12px ui-monospace, monospace; }
+    aside div { padding: 2px 0; border-bottom: 1px solid #8882; white-space: pre-wrap; word-break: break-all; }
+    input { width: 14em; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Acme device portal</h1>
+    <button id="sim">Simulated device</button>
+    <button id="serial">Serial…</button>
+    <input id="hub" value="ws://localhost:9000" aria-label="Hub URL"><button id="hubgo">Hub</button>
+    <button id="disc">Disconnect</button>
+    <button id="hello">send "echo hello"</button>
+    <button id="logdata">Load sample.logdata</button>
+    <label><input type="checkbox" id="brand" style="width:auto"> branding</label>
+  </header>
+  <main>
+    <!-- The element. Every attribute is optional. -->
+    <uc-log
+      panels="log,terminal,commands,plots,device,fw-update"
+      layout="tabs"
+      theme="auto"
+      storage-key="acme-portal"
+      emit-logs></uc-log>
+    <aside id="events"><b>Events</b></aside>
+  </main>
+  <script type="module" src="page.js"></script>
+</body>
+</html>

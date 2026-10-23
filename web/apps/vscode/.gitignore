@@ -1,0 +1,7 @@
+dist/
+bin/
+*.vsix
+.vscode-test/
+LICENSE
+# The Run Extension launch configuration is shared.
+!.vscode/

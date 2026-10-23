@@ -10,16 +10,19 @@ import { css, html, LitElement, nothing } from 'lit';
 import type { Client } from '@uclog/workers';
 import { base } from './styles.ts';
 import { readFile } from './util.ts';
+import type { UcHost } from './host.ts';
 
 export class UcDeviceInfo extends LitElement {
   static properties = {
     client: { attribute: false },
     notes: { attribute: false },
+    host: { attribute: false },
     loadError: { state: true },
     tick: { state: true },
   };
   declare client: Client;
   declare notes: string[];
+  declare host: UcHost | null;
   declare loadError: string;
   declare tick: number;
   private off: (() => void)[] = [];
@@ -27,6 +30,7 @@ export class UcDeviceInfo extends LitElement {
   constructor() {
     super();
     this.notes = [];
+    this.host = null;
     this.loadError = '';
     this.tick = 0;
   }
@@ -84,8 +88,22 @@ export class UcDeviceInfo extends LitElement {
     const f = input.files?.[0];
     input.value = '';
     if (!f) return;
+    await this.loadBytes(f.name, await readFile(f));
+  }
+
+  private async pickLogdata(e: Event) {
+    if (!this.host?.pickFile) {
+      ((e.currentTarget as HTMLElement).nextElementSibling as HTMLInputElement).click();
+      return;
+    }
+    const f = await this.host.pickFile('logdata');
+    if (f) await this.loadBytes(f.name, f.data);
+  }
+
+  private async loadBytes(name: string, data: Uint8Array) {
+    const f = { name };
     try {
-      const r = await this.client.loadLogdata(f.name, await readFile(f));
+      const r = await this.client.loadLogdata(name, data);
       this.loadError = '';
       this.dispatchEvent(new CustomEvent('uc-note', { detail: `logdata ${f.name} loaded for target ${r.target}`, bubbles: true, composed: true }));
     } catch (err) {
@@ -111,8 +129,9 @@ export class UcDeviceInfo extends LitElement {
     const info = this.client.deviceInfo;
     const ld = this.client.logdata;
     const st = this.client.decodeState;
-    const fs = this.client.filesDir;
-    const canPickDir = 'showDirectoryPicker' in window;
+    const fs = this.client.filesName;
+    const hostFiles = !!this.host?.services?.fs;
+    const canPickDir = !hostFiles && 'showDirectoryPicker' in window;
     return html`
       <table>
         <tr>
@@ -139,7 +158,8 @@ export class UcDeviceInfo extends LitElement {
         <tr>
           <td>Semihost files</td>
           <td>
-            ${fs ? html`serving <b>${fs.name}</b>` : html`<span class="muted">no folder: file ops fail with EACCES</span>`}
+            ${fs ? html`serving <b>${fs}</b>` : html`<span class="muted">no folder: file ops fail with EACCES</span>`}
+            ${hostFiles && this.host?.filesHint ? html`<div class="muted">${this.host.filesHint}</div>` : nothing}
           </td>
         </tr>
         <tr>
@@ -165,13 +185,13 @@ export class UcDeviceInfo extends LitElement {
       </table>
       <div class="row" style="margin-top:10px">
         <label class="row">
-          <button @click=${(e: Event) => ((e.currentTarget as HTMLElement).nextElementSibling as HTMLInputElement).click()}>Load logdata…</button>
+          <button @click=${this.pickLogdata}>Load logdata…</button>
           <input type="file" accept=".logdata,.elf,application/octet-stream" hidden @change=${this.load} />
         </label>
         ${canPickDir
           ? html`<button @click=${this.pickFolder} title="Let the device open and create files in a folder (semihost)">Serve files from folder…</button>`
           : nothing}
-        ${fs ? html`<button @click=${() => (this.client.setFilesDir(null), this.tick++)}>Stop serving files</button>` : nothing}
+        ${fs && !hostFiles ? html`<button @click=${() => (this.client.setFilesDir(null), this.tick++)}>Stop serving files</button>` : nothing}
       </div>
       ${this.loadError ? html`<p class="err">${this.loadError}</p>` : nothing}
       ${this.notes.length

@@ -17,5 +17,6 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["packages/*/src", "packages/*/test", "packages/*/vite.config.ts", "apps/*/src", "apps/*/vite.config.ts", "e2e", "vitest.config.ts", "playwright.config.ts"]
+  "include": ["packages/*/src", "packages/*/test", "packages/*/vite.config.ts", "apps/*/src", "apps/*/vite.config.ts", "apps/vscode/webview", "e2e", "vitest.config.ts", "playwright.config.ts"],
+  "exclude": ["apps/vscode/src", "apps/vscode/test", "apps/vscode/scripts"]
 }
