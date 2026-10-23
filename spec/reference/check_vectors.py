@@ -163,6 +163,8 @@ def run_device_info():
     info = ucref.cbor_loads(m[2])
     check(m[:2] == ('port', 62) and info['app_hash'].hex() == c['app_hash_hex'] and
           len(info['app_hash']) == 64, f"device info {c['name']}")
+  m = ucref.mux_dec(scan_one(B(load('device_info.json')['request']['wire'])))
+  check(m[:2] == ('port', 62) and m[2] == b'', 'device info request')
 
 
 for fn in (run_cobs, run_scanner, run_peek_mux, run_logs, run_fw, run_semihost, run_links,

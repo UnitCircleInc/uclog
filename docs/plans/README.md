@@ -52,6 +52,7 @@ still unresolved** (§7).
 | 31 | Who answers time calls at a hub | **The hub always answers the time calls itself** (SYS_CLOCK, SYS_TIME, SYS_ELAPSED, SYS_TICKFREQ, TIMEOFDAY), whether or not a client is connected. They are never forwarded. The device sees one continuous clock for the hub's lifetime |
 | 32 | Port 63 op set | **The ucLog op set implemented by the legacy `uclog/protocol/semihost.py`** (ops 0–13, incl. FSTAT, MKDIR and TIMEOFDAY), plus the time ops `0x10 0x11 0x30 0x31` (decision 21). This is *not* ARM semihosting; moving to [ARM semihosting](https://github.com/ARM-software/abi-aa/blob/main/semihosting/semihosting.rst) is a later, separate transition |
 | 30 | Python-started hubs | A hub started by the Python library is **stopped when the script exits**. Hubs that were already running are left alone. FW update from Python is out of scope for v1 (`uclog fw-update`), possibly added later |
+| 33 | Requesting the device info (Q1, Phase 2) | A host MAY send an **empty port-62 frame**; the device answers with its device info (F7, protocol.md §5.2). Hubs send it when they open a device; direct clients on connect. Older firmware ignores it or logs "no handler for port 62" |
 
 ---
 
@@ -421,9 +422,9 @@ Hub flags are in the hub plan.
 
 | Phase | Work | Unblocks |
 |---|---|---|
-| 0 | ✅ Questions closed (§7). ✅ `spec/protocol.md`, reference, vectors and CI. ✅ Firmware requirements agreed (F1–F5, C1–C10 in [`spec/firmware-changes.md`](../../spec/firmware-changes.md)). ⏳ Firmware implementation of F1–F5 (outside this repository) | everything |
+| 0 | ✅ Questions closed (§7). ✅ `spec/protocol.md`, reference, vectors and CI. ✅ Firmware requirements agreed (F1–F7, C1–C10 in [`spec/firmware-changes.md`](../../spec/firmware-changes.md)). ⏳ Firmware implementation of F1–F7 (outside this repository; the test firmware in `firmware/` has F6 and F7) | everything |
 | 1 | ✅ Rust crates: proto, logdata, semihost, link, session (+ `uclog list/decode/term/fw-update`) in [`native/`](../../native/README.md). ✅ Serial verified on a NUCLEO-L452RE-P with the [test firmware](../../firmware/README.md) (logs, port 0/61, semihost incl. stdin and files, reconnect, fatal/reset). ⏳ HID, BLE, UDP, FW update | hub, TUI, GUI |
-| 2 | ✅ Hub ([01](01-hub-server.md)): `uclog-hub` crate, `uclog hub` + `uclog-hub`, `loopback:` device, release workflow. ✅ Verified on the NUCLEO-L452RE-P (TCP, WebSocket, UDP clients; busy; backlog replay; device reset; `--syscalls`). ⏳ Device-info request (open question, §7), signing/notarisation, `--config`, `--hid-poll` | VS Code; remote use; Python library |
+| 2 | ✅ Hub ([01](01-hub-server.md)): `uclog-hub` crate, `uclog hub` + `uclog-hub`, `loopback:` device, release workflow. ✅ Verified on the NUCLEO-L452RE-P (TCP, WebSocket, UDP clients; busy; backlog replay; device reset; `--syscalls`). ✅ Device-info request (F7, decision 33). ⏳ Signing/notarisation, `--config`, `--hid-poll` | VS Code; remote use; Python library |
 | 2b | Python library ([06](06-python-client.md)), in parallel with Phase 3 | script users; retire the legacy repository |
 | 3 | ✅ TUI ([05](05-tui.md)): `uclog tui` with all views, Connect/Settings/Help, `--plain`/`--json`, `--plot-csv`; settings + keyring + legacy import shared for the GUI. ✅ Verified with the loopback device (TestBackend tests, pty runs) and on the NUCLEO directly and through the hub. ⏳ Manual terminal matrix (Windows Terminal/conhost, Linux, SSH) | GUI |
 | 4 | GUI ([04](04-native-gui.md)) | retire Python |
@@ -434,11 +435,5 @@ Hub flags are in the hub plan.
 
 ## 7. Open questions
 
-All questions from rounds 1–4 are answered and recorded as decisions 1–31 (§1) and in §3.5.
-
-- **Q1 (Phase 2): requesting the device info.** The device sends port 62 at boot and when the host
-  returns after more than 2 s of silence. A host that connects sooner (a hub restarted within 2 s,
-  or a client reconnecting directly) never receives it, so it cannot pick logdata from `app_hash`
-  (`-l` works around it). Seen on hardware. Proposal: a host MAY send an **empty port-62 frame**;
-  the device replies with its device info. Hubs send it when they open a device; direct clients
-  send it on connect. Older firmware ignores it, or logs "no handler for port 62".
+All questions are answered and recorded as decisions 1–33 (§1) and in §3.5. Q1 (requesting
+the device info) became decision 33 and F7.

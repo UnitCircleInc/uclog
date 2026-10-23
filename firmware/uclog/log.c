@@ -9,7 +9,7 @@
 // drains (DMA on the STM32L4 board). While the host is absent (nothing received for 2 s) the
 // port is paused, so boot logs are kept until a host connects; when the ring is full, new frames
 // are dropped and counted. When bytes arrive again, the port-62 device info is sent first, then
-// the backlog.
+// the backlog. An empty port-62 frame from the host asks for the device info again (F7).
 //
 // RX: log_poll() reads the port's RX ring (DMA on the STM32L4 board), splits it into frames and
 // dispatches them to the port handlers, or to a waiting log_rx().
@@ -328,7 +328,15 @@ static void dispatch(uint8_t *p, size_t n) {
     LOG_WARN("unexpected frame type %d from host", type);
     return;
   }
-  if (port == s.wait_port && !s.wait_done) {
+  if (port == DEVICE_INFO_PORT) {
+    // F7: an empty port-62 frame asks for the device info; other payloads are reserved.
+    if (n == 1) {
+      log_send_device_info();
+    } else {
+      s.rx_errors++;
+      LOG_WARN("port %d: unexpected %zu-byte payload", port, n - 1);
+    }
+  } else if (port == s.wait_port && !s.wait_done) {
     size_t m = n - 1 < s.wait_cap ? n - 1 : s.wait_cap;
     if (n - 1 > s.wait_cap) LOG_WARN("log_rx(%d): buffer too small (%zu < %zu)", port, s.wait_cap, n - 1);
     memcpy(s.wait_data, p + 1, m);

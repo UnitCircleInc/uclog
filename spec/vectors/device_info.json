@@ -9,5 +9,9 @@
    "board": "nrf5340dk",
    "image_type": "app"
   }
- ]
+ ],
+ "request": {
+  "description": "host -> device: an empty port-62 frame asks for the device info",
+  "wire": "0002fb00"
+ }
 }

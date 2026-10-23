@@ -126,6 +126,19 @@ async fn backlog_replay_starts_with_device_info() {
     h.shutdown().await;
 }
 
+/// F7: the hub asks for the device info when it opens the device, so the client gets the device
+/// info the device sent at start (the oldest backlog entry) and the reply to the request.
+#[tokio::test]
+async fn hub_requests_device_info() {
+    let h = hub(&[]).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let mut c = Raw::connect(h.port).await;
+    let infos = |r: &Rx| r.frames.iter().filter(|p| is_info(p)).count();
+    c.pump(Duration::from_secs(2), |r| infos(r) >= 2).await;
+    assert_eq!(infos(&c.rx), 2);
+    h.shutdown().await;
+}
+
 #[tokio::test]
 async fn second_client_is_busy() {
     let h = hub(&[]).await;

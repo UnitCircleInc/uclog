@@ -97,6 +97,19 @@ fn device_info() -> Vec<u8> {
     cbor::to_vec(&cbor::map([("board", Value::Text("test".into())), ("app_hash", Value::Bytes(HASH.to_vec()))]))
 }
 
+/// F7: on a direct link the session asks for the device info; the simulated device answers, so
+/// a second device info follows the one it sends at start.
+#[tokio::test]
+async fn direct_link_requests_device_info() {
+    let spec: uclog_link::LinkSpec = "loopback:rate=0".parse().unwrap();
+    let link = uclog_link::open(&spec).await.unwrap();
+    let (h, mut ev) = uclog_session::start(link, Config::default());
+    for _ in 0..2 {
+        next_event(&mut ev, |e| matches!(e, Event::DeviceInfo(_))).await;
+    }
+    h.close().await;
+}
+
 #[tokio::test]
 async fn logs_semihost_and_timing() {
     let cache = tempfile::tempdir().unwrap();
@@ -113,7 +126,8 @@ async fn logs_semihost_and_timing() {
     assert!(p.is_empty(), "first thing sent is a pulse");
     assert!(first.duration_since(t0) < Duration::from_millis(600));
 
-    // Wake gap: the first real frame comes ≥ 50 ms after the first (wake) pulse.
+    // Wake gap: the first real frame comes ≥ 50 ms after the first (wake) pulse. (A tcp:// link
+    // is a hub, so the session does not ask for the device info: `help` is the first frame.)
     h.send(61, b"help\r".to_vec()).await.unwrap();
     let (t, p) = dev.frame().await;
     assert_eq!(p, uclog_proto::frame::mux_encode(61, b"help\r"));

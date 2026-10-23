@@ -186,6 +186,11 @@ impl Device {
         let Ok(p) = uclog_proto::cobs::decode(enc) else { return true };
         match mux_decode(&p) {
             Mux::Port { port: ports::SEMIHOST, data } => self.on_semihost(data).await,
+            // F7: an empty port-62 frame asks for the device info.
+            Mux::Port { port: ports::DEVICE_INFO, data: [] } => {
+                let info = device_info(&self.o.board);
+                self.send(info).await
+            }
             Mux::Port { port: port @ (0 | ports::TERMINAL), data } => {
                 let mut ok = true;
                 for &b in data {

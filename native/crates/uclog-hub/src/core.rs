@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tokio::sync::{mpsc, watch, Notify};
-use tokio::time::{interval, sleep, sleep_until, Instant};
+use tokio::time::{interval, sleep, Instant};
 use tracing::{debug, info, warn};
 use uclog_link::{CloseReason, Link, LinkError, LinkEvent};
 use uclog_proto::frame::{peek, wire_port, Peek};
@@ -191,8 +191,13 @@ async fn run_link(shared: &Arc<Shared>, link: &mut Link, to_device: &mut mpsc::R
     if link.tx.send(vec![0]).await.is_err() {
         return CloseReason::Eof;
     }
+    // Then ask for the device info (F7, protocol.md §5.2): the device sends it on its own only at
+    // boot or after 2 s without a host, so a hub restarted sooner would not get it.
+    sleep(WAKE_GAP).await;
+    if link.tx.send(wire_port(ports::DEVICE_INFO, &[])).await.is_err() {
+        return CloseReason::Eof;
+    }
     let mut last_tx = Instant::now();
-    let ready_at = last_tx + WAKE_GAP;
     let mut last_rx: Option<Instant> = None;
     let mut tick = interval(Duration::from_millis(100));
     loop {
@@ -222,7 +227,6 @@ async fn run_link(shared: &Arc<Shared>, link: &mut Link, to_device: &mut mpsc::R
             },
             d = to_device.recv() => {
                 let Some(d) = d else { return CloseReason::Eof };
-                if Instant::now() < ready_at { sleep_until(ready_at).await; }
                 shared.counters.to_dev_frames.fetch_add(1, Relaxed);
                 if link.tx.send(d).await.is_err() { return CloseReason::Eof; }
                 last_tx = Instant::now();

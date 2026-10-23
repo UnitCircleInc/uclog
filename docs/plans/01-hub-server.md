@@ -45,6 +45,8 @@ Crates: `uclog-proto` (scanner, peek, semihost codec), `uclog-semihost` (sandbox
 - **Pulse to device every 0.5 s of TX idle, always**, whether or not a client is connected (D5/D6).
   The device keeps its UART RX powered while the hub runs. Every frame is written with its leading
   `00` (the wake byte).
+- **On open**: a wake pulse, the 50 ms wake gap, then an empty port-62 frame to ask for the device
+  info (F7, protocol.md §5.2). Without it, a hub restarted within 2 s gets no `app_hash`.
 - **Liveness**: device bytes (including its idle pulses) mark it alive. No bytes for more than 2 s →
   state `silent` (logged; the client infers the same thing from silence). OS-level events
   (HID/BLE disconnect, serial port vanishing) → state `detached` → reopen loop: every 0.5 s for

@@ -414,6 +414,9 @@ def gen_device_info():
     'cases': [{'name': 'typical', 'cbor': h(c), 'wire': h(ucref.wire(ucref.mux_enc(62, c))),
                'app_hash_hex': h(info['app_hash']), 'board': info['board'],
                'image_type': info['image_type']}],
+    # F7: the host's request is an empty port-62 frame.
+    'request': {'description': 'host -> device: an empty port-62 frame asks for the device info',
+                'wire': h(ucref.wire(ucref.mux_enc(62, b'')))},
   }
 
 

@@ -47,6 +47,8 @@ removed. App signatures and FW update are not included.
   - When bytes arrive again, the device skips the rest of any frame that was cut off. It then
     sends the port-62 device info (`app_hash`, `board`, `image_type`, packed with ucComm
     `cbor_pack`), followed by the backlog.
+  - An empty port-62 frame from the host asks for the device info again (F7). It is sent
+    straight away, so a host that reconnects within 2 s still gets it.
 - **RX**:
   - `log_poll()` splits the RX ring into frames: it drops bytes before the first `00` and rejects
     runs over 1450 bytes or invalid COBS (ucComm `cobs_dec`).

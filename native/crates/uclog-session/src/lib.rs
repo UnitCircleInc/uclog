@@ -224,9 +224,13 @@ struct Session {
     resolve_tx: mpsc::Sender<(Vec<u8>, resolver::Outcome)>,
     resolve_rx: Option<mpsc::Receiver<(Vec<u8>, resolver::Outcome)>>,
     app_hash: Option<Vec<u8>>,
+    /// Log frames are held until this instant while the device info we asked for is awaited.
+    info_wait: Option<Instant>,
 }
 
 const PENDING_MAX: usize = 5000;
+/// How long log frames are held after asking for the device info (F7).
+const INFO_WAIT: Duration = Duration::from_secs(1);
 
 impl Session {
     fn new(cfg: Config, ev: mpsc::Sender<Event>, out: mpsc::Sender<Vec<u8>>) -> Self {
@@ -249,6 +253,7 @@ impl Session {
             resolve_tx,
             resolve_rx: Some(resolve_rx),
             app_hash: None,
+            info_wait: None,
         }
     }
 
@@ -289,6 +294,17 @@ impl Session {
             }
         }
         self.emit(Event::Liveness(Liveness::Waiting)).await;
+        // Direct links ask for the device info (F7, protocol.md §5.2); a hub asks when it opens
+        // the device and replays it to each client.
+        if !link.spec.is_hub() {
+            let _ = self.out.send(wire_port(ports::DEVICE_INFO, &[])).await;
+            // Log frames already on their way would arrive before the reply; hold them so they
+            // decode with the logdata it selects.
+            if self.decoders.is_empty() {
+                self.pending = Some(VecDeque::new());
+                self.info_wait = Some(Instant::now() + INFO_WAIT);
+            }
+        }
         let mut resolve_rx = self.resolve_rx.take().unwrap();
         let mut tick = tokio::time::interval(Duration::from_millis(250));
         loop {
@@ -304,6 +320,15 @@ impl Session {
                 },
                 r = resolve_rx.recv() => if let Some((hash, outcome)) = r { self.on_resolved(hash, outcome).await },
                 _ = tick.tick() => {
+                    if self.info_wait.is_some_and(|t| Instant::now() >= t) {
+                        // No device info (firmware without F7): decode what was held.
+                        self.info_wait = None;
+                        if self.app_hash.is_none() {
+                            for (t, a, args) in self.pending.take().unwrap_or_default() {
+                                self.decode_log(t, a, &args).await;
+                            }
+                        }
+                    }
                     if self.liveness == Liveness::Alive && self.last_rx.is_some_and(|t| t.elapsed() > LIVENESS_TIMEOUT) {
                         self.liveness = Liveness::NotResponding;
                         self.emit(Event::Liveness(Liveness::NotResponding)).await;
@@ -523,8 +548,10 @@ impl Session {
             return;
         }
         self.app_hash = Some(hash.clone());
-        // Hold log frames until resolution finishes so they decode with the right logdata.
-        self.pending = Some(VecDeque::new());
+        self.info_wait = None;
+        // Hold log frames until resolution finishes so they decode with the right logdata (and
+        // keep those held while waiting for this device info).
+        self.pending.get_or_insert_with(VecDeque::new);
         let cfg = self.cfg.resolver.clone();
         let tx = self.resolve_tx.clone();
         tokio::spawn(async move {

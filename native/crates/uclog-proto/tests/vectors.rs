@@ -2,7 +2,7 @@
 
 use serde_json::Value as J;
 use uclog_proto::semihost::{self, Request, TimeSample};
-use uclog_proto::{cbor, cobs, crc32c::crc32c, fw, link, mux_decode, peek, FrameScanner, Mux, Peek, ScanEvent};
+use uclog_proto::{cbor, cobs, crc32c::crc32c, fw, link, mux_decode, peek, ports, FrameScanner, Mux, Peek, ScanEvent};
 
 fn load(name: &str) -> J {
     let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../spec/vectors").join(name);
@@ -209,4 +209,7 @@ fn device_info_vectors() {
         assert_eq!(hex::encode(cbor::get_bytes(&info, "app_hash").unwrap()), c["app_hash_hex"].as_str().unwrap());
         assert_eq!(cbor::get_text(&info, "board"), c["board"].as_str());
     }
+    // F7: the host's request is an empty port-62 frame.
+    let req = hx(&load("device_info.json")["request"]["wire"]);
+    assert_eq!(uclog_proto::frame::wire_port(ports::DEVICE_INFO, &[]), req);
 }

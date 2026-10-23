@@ -99,6 +99,8 @@ uclog hub -d loopback:rate=10 --port 0 --json-ready --exit-on-stdin-eof   # simu
     config directory). Without a console the client is rejected, and a log line says how to allow
     it.
 - **Backlog:**
+  - On opening the device, the hub asks for its device info (an empty port-62 frame, F7). Direct
+    clients do the same on connect.
   - Device frames are kept while no client is connected (`--backlog`, default 1 MiB).
   - A new client gets the device info that applies to its first frame, then the backlog, then live
     data.

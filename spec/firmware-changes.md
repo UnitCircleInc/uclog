@@ -18,6 +18,7 @@ transition (protocol.md §5.5).
 | F4 | Expect **newlib errno** values in semihost replies | §5.5.4 |
 | F5 | Accept `-1, ENOSYS` for ops the host does not implement (SYSTEM, RENAME, UNLINK, LINK, STAT, LSEEK, unknown). Legacy hosts never replied, so this path was never exercised | §5.5.4 |
 | F6 | **Frame size limit** (requested by the firmware team, 2026-10-23): `LOG_MAX_PACKET_SIZE` 1500 → **1443**, so every frame is at most 1452 bytes on the wire (one unfragmented UDP datagram on a 1500-byte MTU with IPv6). The semihost `WRITE` data is at most 1438 bytes per request and `READ` replies at most 1024; FW update `block-size` ≤ 1024 | §2.4 |
+| F7 | **Device info on request** (agreed 2026-10-23): answer an **empty port-62 frame** from the host with the device info, even if it was just sent. Ignore a non-empty port-62 payload. Hubs send the request when they open a device and direct clients on connect, so a host that returns within 2 s still gets `app_hash`. Firmware without F7 ignores it or logs "no handler for port 62" | §5.2 |
 
 ## Confirmed by the firmware team (2026-10-22)
 
@@ -36,5 +37,5 @@ transition (protocol.md §5.5).
 
 ## Not changed
 
-Framing (COBS), the frame header, log frame layout, ports 0/1/60/61/62, BLE UUIDs, HID report IDs
+Framing (COBS), the frame header, log frame layout, ports 0/1/60/61 (62 gains only the F7 request), BLE UUIDs, HID report IDs
 (`0xA1` in, `0xA2` out) and the `.logdata` format are unchanged.

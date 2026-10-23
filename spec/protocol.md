@@ -235,7 +235,7 @@ These carry exactly the §2 byte stream. Admission and session rules are in §8.
 | 59 | both | **FW update**, plain CBOR | §5.4 |
 | 60 | dev→host | plots, CBOR | §5.6 |
 | 61 | both | terminal: UTF-8 + VT100 | §5.7 |
-| 62 | dev→host | device info, CBOR | §5.2 |
+| 62 | both | device info, CBOR; host → device: empty = request | §5.2 |
 | 63 | both | semihost syscalls | §5.5 |
 
 Ports not listed are reserved. Receivers show the first frame on an unhandled port as an error
@@ -243,7 +243,8 @@ record, then only count further frames (§7).
 
 ### 5.2 Port 62 — device info
 
-A CBOR map, sent by the device at boot (and MAY be sent on request). Keys:
+A CBOR map, sent by the device at boot, when a host returns after more than 2 s of silence
+(§2.3), and on request. Keys:
 
 | Key | Type | Meaning |
 |---|---|---|
@@ -254,6 +255,20 @@ A CBOR map, sent by the device at boot (and MAY be sent on request). Keys:
 
 **Every port-62 frame starts a new decoding context**: the device may have reset or changed
 image. Hosts re-resolve logdata when `app_hash` changes. Vectors: `device_info.json`.
+
+**Request (F7).** A host MAY send an **empty port-62 frame** (`00 02 FB 00` on the wire); the
+device answers with its device info. A host that returns within 2 s (a hub restarted, or a client
+reconnecting directly) gets no device info otherwise, so it cannot select logdata.
+
+- A **hub** sends the request when it opens a device, after the wake gap (§2.3). The reply is
+  handled like any other port-62 frame: it is cached and goes into the backlog.
+- A **direct client** (serial, HID, BLE, UDP) sends it on connect. A client connected to a hub
+  does not; the hub replays the device info (§8).
+- The device sends the device info for every request, even if it has just sent it. Hosts ignore a
+  repeated device info with the same `app_hash`.
+- A non-empty port-62 payload from the host is reserved; devices ignore it.
+- Firmware without F7 ignores the request, or logs "no handler for port 62". The host carries on
+  without the device info (`-l` selects the logdata).
 
 ### 5.3 Port 0 — commands
 
@@ -557,6 +572,8 @@ section covers what a client sees.
   3. live data.
 
   Port-62 frames inside the backlog mark resets and image changes at the right place (§5.2).
+- The hub asks for the device info when it opens the device (§5.2, F7), so clients need not.
+  A client MAY still send the request; it is forwarded to the device.
 - Port-63 time ops are answered by the hub. The client sees only the other syscalls (§5.5.5).
 - **Discovery**:
   - mDNS `_uclog._tcp.local.` (and `_uclog._udp`), instance `"{hostname}-{interface}"`, TXT keys

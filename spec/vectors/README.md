@@ -24,7 +24,7 @@ All byte strings are lowercase hex. Every file has a `description` field.
 | `fw_update.json` | §5.4 | every FW update request/reply as CBOR, as port-59 wire bytes, and as legacy port-3 wire bytes; CRC-32C check value |
 | `semihost.json` | §5.5 | request parsing (incl. WRITE bit 31 and the 31-bit fid), time-op replies for POSIX and Windows clock sources (incl. SYS_CLOCK wrap), error replies, newlib errno table |
 | `links.json` | §4 | HID output report chunking, HID input example, STLINK split writes |
-| `device_info.json` | §5.2 | a port-62 frame with a 64-byte `app_hash` |
+| `device_info.json` | §5.2 | a port-62 frame with a 64-byte `app_hash`; `request`: the host's empty port-62 frame (F7) |
 
 Notes for runners:
 
