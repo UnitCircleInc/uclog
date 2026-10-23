@@ -19,7 +19,7 @@ pub fn hid_reports(data: &[u8]) -> Vec<[u8; HID_PAYLOAD + 1]> {
 /// STLINK VCP workaround: a write whose length is a multiple of 8 is split so the last write is
 /// one byte (the caller waits ≥ 10 ms between the two writes).
 pub fn stlink_split(data: &[u8]) -> Vec<&[u8]> {
-    if data.len() > 1 && data.len() % 8 == 0 {
+    if data.len() > 1 && data.len().is_multiple_of(8) {
         vec![&data[..data.len() - 1], &data[data.len() - 1..]]
     } else {
         vec![data]

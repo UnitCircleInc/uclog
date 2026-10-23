@@ -1,7 +1,9 @@
-//! `uclog`: ucLog client tools (list, decode, term, tui, fw-update, hub).
-//! `gui` arrives in a later phase (plans README §6).
+//! `uclog`: ucLog client tools (list, decode, term, tui, gui, fw-update, hub).
 
 mod cmd;
+mod front;
+#[cfg(feature = "gui")]
+mod gui;
 mod settings;
 mod tui;
 
@@ -31,6 +33,9 @@ enum Command {
     Term(cmd::term::TermArgs),
     /// Terminal UI: logs, terminal, commands, device info, FW update; replaces uclog-cli.py.
     Tui(tui::TuiArgs),
+    /// Graphical client: logs, terminal, commands, plots, device info, FW update; replaces uclog-gui.py.
+    #[cfg(feature = "gui")]
+    Gui(gui::GuiArgs),
     /// Update device firmware with a signed image (port 59, falling back to port 3).
     FwUpdate(cmd::fw::FwArgs),
     /// Share one device with one TCP/WebSocket/UDP client at a time (also `uclog-hub`).
@@ -111,6 +116,12 @@ fn main() -> std::process::ExitCode {
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
     let r = rt.block_on(async {
         match cli.cmd {
+            // The GUI owns the main thread (macOS requires it); its session runs on the runtime.
+            #[cfg(feature = "gui")]
+            Command::Gui(a) => tokio::task::block_in_place(|| {
+                let _g = tokio::runtime::Handle::current().enter();
+                gui::run(a)
+            }),
             Command::List(a) => cmd::list::run(a).await,
             Command::Decode(a) => cmd::decode::run(a).await,
             Command::Term(a) => cmd::term::run(a).await,

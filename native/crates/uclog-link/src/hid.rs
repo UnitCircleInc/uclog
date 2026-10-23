@@ -2,11 +2,43 @@
 //! Interrupt IN reads (`read_timeout`) on every OS, including Windows (plans issue 7).
 
 use std::ffi::CString;
-use std::sync::mpsc::TryRecvError;
+use std::sync::mpsc::{self, TryRecvError};
+use std::sync::OnceLock;
 
 use uclog_proto::link::{hid_reports, HID_INTERFACE, HID_PAYLOAD, HID_REPORT_IN, HID_VID};
 
 use crate::{channels, CloseReason, Link, LinkError, LinkEvent, LinkSpec};
+
+type Job = Box<dyn FnOnce(Result<&mut hidapi::HidApi, String>) + Send>;
+
+/// Run `f` on the one thread that owns the process' `HidApi`.
+///
+/// hidapi keeps one device manager per process. On macOS it is scheduled on the run loop of the
+/// thread that first used it, so every later call must come from a thread that is still alive: a
+/// `HidApi` created on a short-lived thread (e.g. a tokio blocking thread, which exits when
+/// idle) leaves the next enumeration calling into a dead run loop, and CoreFoundation traps.
+fn with_api<R: Send + 'static>(f: impl FnOnce(Result<&mut hidapi::HidApi, String>) -> R + Send + 'static) -> R {
+    static JOBS: OnceLock<mpsc::Sender<Job>> = OnceLock::new();
+    let jobs = JOBS.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<Job>();
+        std::thread::Builder::new()
+            .name("hidapi".into())
+            .spawn(move || {
+                let mut api = hidapi::HidApi::new().map_err(|e| e.to_string());
+                for job in rx {
+                    job(api.as_mut().map_err(|e| e.clone()));
+                }
+            })
+            .expect("spawning the hidapi thread");
+        tx
+    });
+    let (rtx, rrx) = mpsc::sync_channel(1);
+    let job: Job = Box::new(move |api| {
+        let _ = rtx.send(f(api));
+    });
+    jobs.send(job).expect("the hidapi thread runs for the life of the process");
+    rrx.recv().expect("the hidapi thread answers every job")
+}
 
 /// Find the device path for an id that is either a path or a serial number.
 fn find(api: &hidapi::HidApi, id: &str) -> Option<(CString, String)> {
@@ -24,13 +56,15 @@ pub(crate) async fn open(spec: LinkSpec, id: &str) -> Result<Link, LinkError> {
     let id = id.to_string();
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
     // hidapi handles are not Sync: one thread does both reads and writes.
-    std::thread::Builder::new().name(format!("hid {id}")).spawn(move || {
-        let opened = (|| {
-            let api = hidapi::HidApi::new().map_err(|e| LinkError::Hid(e.to_string()))?;
-            let (path, desc) = find(&api, &id).ok_or_else(|| LinkError::NotFound(format!("no HID device {id}")))?;
+    let name = format!("hid {id}");
+    std::thread::Builder::new().name(name).spawn(move || {
+        let opened = with_api(move |api| {
+            let api = api.map_err(LinkError::Hid)?;
+            let _ = api.refresh_devices();
+            let (path, desc) = find(api, &id).ok_or_else(|| LinkError::NotFound(format!("no HID device {id}")))?;
             let dev = api.open_path(&path).map_err(|e| LinkError::Hid(e.to_string()))?;
             Ok::<_, LinkError>((dev, desc))
-        })();
+        });
         let dev = match opened {
             Ok((dev, desc)) => {
                 let _ = ready_tx.send(Ok(desc));
@@ -92,7 +126,14 @@ pub(crate) async fn open(spec: LinkSpec, id: &str) -> Result<Link, LinkError> {
 
 /// HID devices matching the filter.
 pub(crate) fn list() -> Vec<crate::Device> {
-    let Ok(api) = hidapi::HidApi::new() else { return vec![] };
+    with_api(|api| {
+        let Ok(api) = api else { return vec![] };
+        let _ = api.refresh_devices();
+        list_from(api)
+    })
+}
+
+fn list_from(api: &hidapi::HidApi) -> Vec<crate::Device> {
     let mut v: Vec<_> = api
         .device_list()
         .filter(|d| d.vendor_id() == HID_VID && d.interface_number() == HID_INTERFACE)
@@ -120,4 +161,18 @@ pub(crate) fn list() -> Vec<crate::Device> {
     v.sort_by(|a, b| a.uri.cmp(&b.uri));
     v.dedup_by(|a, b| a.uri == b.uri);
     v
+}
+
+#[cfg(test)]
+mod tests {
+    /// Listing from a thread that has since exited, then from other threads (what the Connect
+    /// lists do via tokio blocking threads). This trapped on macOS when each call created its own
+    /// `HidApi` on the calling thread.
+    #[test]
+    fn list_from_short_lived_threads() {
+        for _ in 0..3 {
+            std::thread::spawn(super::list).join().unwrap();
+        }
+        let _ = super::list();
+    }
 }

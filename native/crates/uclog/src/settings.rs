@@ -1,7 +1,8 @@
-//! Settings shared by the front ends (TUI now, GUI later): `settings.json` in the platform
-//! config directory, the logdata token in the OS keyring, and a one-time import of the legacy
-//! `~/ucLogger.json` (buttons, history, max lines, files directory).
+//! Settings shared by the front ends (TUI and GUI): `settings.json` in the platform config
+//! directory, the logdata token in the OS keyring, and a one-time import of the legacy
+//! `~/ucLogger.json` (buttons, history, max lines, files directory, source colours).
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -52,6 +53,25 @@ pub struct CommandSettings {
     pub buttons: Vec<Button>,
 }
 
+/// GUI-only settings.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GuiSettings {
+    /// UI zoom factor.
+    pub scale: f32,
+    /// `system`, `dark` or `light`.
+    pub theme: String,
+    /// Log row background per source (file name without directory and extension, as the legacy
+    /// GUI keyed it). Sources without an entry get a colour derived from their name.
+    pub log_colors: BTreeMap<String, [u8; 3]>,
+}
+
+impl Default for GuiSettings {
+    fn default() -> Self {
+        GuiSettings { scale: 1.0, theme: "system".into(), log_colors: BTreeMap::new() }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -65,6 +85,7 @@ pub struct Settings {
     pub max_log_lines: usize,
     pub terminal: TerminalSettings,
     pub commands: CommandSettings,
+    pub gui: GuiSettings,
 }
 
 impl Default for Settings {
@@ -77,6 +98,7 @@ impl Default for Settings {
             max_log_lines: 10_000,
             terminal: TerminalSettings::default(),
             commands: CommandSettings::default(),
+            gui: GuiSettings::default(),
         }
     }
 }
@@ -153,6 +175,10 @@ impl Settings {
         h.reverse();
         s.terminal.history = h;
         s.commands.buttons = buttons(&v["commands"]["buttons"]);
+        for (k, c) in v["sources"].as_object().into_iter().flatten() {
+            let ch = |n: &str| c[n].as_u64().unwrap_or(0).min(255) as u8;
+            s.gui.log_colors.insert(k.clone(), [ch("r"), ch("g"), ch("b")]);
+        }
         Ok(s)
     }
 
@@ -201,7 +227,7 @@ mod tests {
                 "terminal": {"buttons": [{"label": "Help", "cmd": "help"}, {"label": "Ver", "cmd": "version s"}],
                              "history": ["newest", "older", "oldest"]},
                 "commands": {"buttons": [{"label": "Ping", "cmd": {"f": "cmd_ping"}}]},
-                "sources": {}}"#,
+                "sources": {"main": {"r": 175, "g": 82, "b": 101, "a": 60}}}"#,
         )
         .unwrap();
         let s = Settings::import_legacy(&p).unwrap();
@@ -210,6 +236,7 @@ mod tests {
         assert_eq!(s.terminal.buttons.len(), 2);
         assert_eq!(s.terminal.history, vec!["oldest", "older", "newest"]);
         assert_eq!(s.commands.buttons[0].cmd, serde_json::json!({"f": "cmd_ping"}));
+        assert_eq!(s.gui.log_colors["main"], [175, 82, 101]);
     }
 
     #[test]

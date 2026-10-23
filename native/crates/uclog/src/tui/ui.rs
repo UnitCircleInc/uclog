@@ -9,7 +9,7 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, Gauge, List, ListItem, ListState, Paragraph, Tabs, Wrap};
 use ratatui::Frame;
 use uclog_proto::cbor::{self, Value};
-use uclog_session::{FwProgress, Liveness};
+use uclog_session::Liveness;
 
 use super::app::{button_args, App, Modal, PickFor, Tab, SETTINGS_FIELDS, TABS};
 use super::lineedit::LineEdit;
@@ -366,16 +366,7 @@ fn draw_device(f: &mut Frame, app: &App, area: Rect) {
     );
 }
 
-pub fn fw_ratio(p: &FwProgress) -> (f64, String) {
-    match p {
-        FwProgress::Probing => (0.0, "probing port 59 / 3…".into()),
-        FwProgress::Port(n) => (0.0, format!("using port {n}")),
-        FwProgress::Starting => (0.0, "erasing (fw-start)…".into()),
-        FwProgress::Block { done, total } => (*done as f64 / (*total).max(1) as f64, format!("block {done}/{total}")),
-        FwProgress::Scheduling => (1.0, "scheduling…".into()),
-        FwProgress::Done => (1.0, "done".into()),
-    }
-}
+pub use crate::front::fw_ratio;
 
 fn draw_fw(f: &mut Frame, app: &App, area: Rect) {
     let block = Block::default().borders(Borders::ALL).title(" FW Update (port 59, falling back to port 3) ");

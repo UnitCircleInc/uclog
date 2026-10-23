@@ -187,36 +187,10 @@ fn shellexpand_home(s: &str) -> String {
     }
 }
 
-/// `zephyr.signed.bin` files under `root` (build directories), at most `depth` levels down.
-pub fn signed_images(root: &Path, depth: usize) -> Vec<PathBuf> {
-    fn walk(d: &Path, depth: usize, out: &mut Vec<PathBuf>) {
-        let Ok(rd) = std::fs::read_dir(d) else { return };
-        for e in rd.flatten() {
-            let p = e.path();
-            let name = e.file_name();
-            let name = name.to_string_lossy();
-            if name.starts_with('.') || name == "node_modules" || name == "target" {
-                continue;
-            }
-            if p.is_dir() {
-                if depth > 0 {
-                    walk(&p, depth - 1, out);
-                }
-            } else if name.ends_with(".signed.bin") {
-                out.push(p);
-            }
-        }
-    }
-    let mut out = vec![];
-    walk(root, depth, &mut out);
-    out.sort();
-    out.truncate(20);
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::front::signed_images;
     use crossterm::event::KeyModifiers;
 
     #[test]

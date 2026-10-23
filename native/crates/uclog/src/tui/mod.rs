@@ -3,7 +3,7 @@
 
 pub mod app;
 pub mod lineedit;
-pub mod logs;
+pub use crate::front::logs;
 pub mod picker;
 pub mod plotcsv;
 pub mod ui;
@@ -24,7 +24,7 @@ use futures_lite::StreamExt;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use tokio::sync::mpsc;
-use uclog_link::{discover, CloseReason, Device, Kind, LinkSpec};
+use uclog_link::{discover, CloseReason, LinkSpec};
 use uclog_session::{Event, SessionHandle};
 
 use self::app::{Action, App, Bg};
@@ -59,35 +59,12 @@ pub struct TuiArgs {
     config: Option<PathBuf>,
 }
 
-/// Session configuration from the command line, the settings and the keyring (in that order).
 fn session_config(a: &TuiArgs, s: &Settings) -> uclog_session::Config {
-    let mut resolver = a.logdata.resolver();
-    if resolver.domain.is_none() {
-        resolver.domain = s.logdata.domain.clone();
-    }
-    if a.logdata.logdata_url == crate::DEFAULT_LOGDATA_URL {
-        if let Some(u) = &s.logdata.url {
-            resolver.url = Some(u.clone());
-        }
-    }
-    if resolver.token.is_none() && resolver.domain.is_some() {
-        resolver.token = settings::keyring_token();
-    }
-    uclog_session::Config {
-        resolver,
-        semihost: uclog_session::SemihostConfig {
-            files_dir: a.files_dir.clone().or_else(|| s.files_dir.clone()),
-            ..Default::default()
-        },
-        ..Default::default()
-    }
+    crate::front::session_config(&a.logdata, a.files_dir.clone(), s)
 }
 
 fn usb_filters(a: &TuiArgs, s: &Settings) -> Vec<discover::UsbFilter> {
-    if !a.device.usb_filter.is_empty() {
-        return a.device.usb_filter.clone();
-    }
-    s.usb_filters.iter().filter_map(|f| f.parse().ok()).collect()
+    crate::front::usb_filters(&a.device.usb_filter, s)
 }
 
 pub async fn run(a: TuiArgs) -> anyhow::Result<ExitCode> {
@@ -310,7 +287,7 @@ impl Runner {
                     let mut v = tokio::task::spawn_blocking(move || discover::local_devices(&filters))
                         .await
                         .unwrap_or_default();
-                    v.extend(local_hub_devices());
+                    v.extend(crate::front::local_hub_devices());
                     let names: Vec<String> = v.iter().map(|d| d.name.clone()).collect();
                     let _ = bg.send(Bg::Devices(v.clone())).await;
                     if let Ok(h) = discover::hubs(Duration::from_secs(1)).await {
@@ -356,7 +333,7 @@ impl Runner {
             Action::Export { name, content } => {
                 let dir = app.settings.export_dir.clone().unwrap_or_else(|| app.cwd.clone());
                 let (stem, ext) = name.rsplit_once('.').unwrap_or((&name, "txt"));
-                let path = dir.join(format!("uclog-{stem}-{}.{ext}", timestamp()));
+                let path = dir.join(format!("uclog-{stem}-{}.{ext}", crate::front::timestamp()));
                 match std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, content)) {
                     Ok(()) => app.say(format!("exported {}", path.display())),
                     Err(e) => app.say(format!("{}: {e}", path.display())),
@@ -365,23 +342,6 @@ impl Runner {
         }
         true
     }
-}
-
-fn local_hub_devices() -> Vec<Device> {
-    uclog_hub::announce::local_hubs()
-        .into_iter()
-        .map(|j| {
-            let s = |k: &str| j[k].as_str().unwrap_or("").to_string();
-            Device {
-                kind: Kind::Hub,
-                uri: format!("tcp://localhost:{}", j["port"].as_u64().unwrap_or(9000)),
-                name: s("name"),
-                serial: s("serial_number"),
-                description: format!("{} {} (local hub)", s("kind"), s("device")),
-                busy: j["busy"].as_bool(),
-            }
-        })
-        .collect()
 }
 
 /// Clipboard: OSC 52 (works over SSH in most terminals), plus the OS clipboard when available.
@@ -408,23 +368,6 @@ fn base64(d: &[u8]) -> String {
         }
     }
     s
-}
-
-/// `YYYYmmdd-HHMMSS` (UTC).
-fn timestamp() -> String {
-    let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) as i64;
-    let (days, secs) = (t.div_euclid(86400), t.rem_euclid(86400));
-    // Civil date from days since 1970-01-01 (Howard Hinnant).
-    let z = days + 719468;
-    let era = z.div_euclid(146097);
-    let doe = z - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = yoe + era * 400 + (m <= 2) as i64;
-    format!("{y:04}{m:02}{d:02}-{:02}{:02}{:02}", secs / 3600, secs / 60 % 60, secs % 60)
 }
 
 async fn run_ui(
@@ -587,7 +530,7 @@ mod tests {
         assert_eq!(base64(b"hello"), "aGVsbG8=");
         assert_eq!(base64(b"hi!"), "aGkh");
         assert_eq!(base64(b"a"), "YQ==");
-        let t = timestamp();
+        let t = crate::front::timestamp();
         assert_eq!(t.len(), 15);
         assert!(t.starts_with("20"));
     }

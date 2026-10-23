@@ -17,6 +17,9 @@
 //! - `sh`: semihost requests on port 63 (TIMEOFDAY, then a WRITE to stdout with a reply); the
 //!   results are reported as text
 //! - `read`: a semihost stdin READ; the reply is reported as text
+//! - `plot` / `plot stop`: create plots on port 60 (protocol.md §5.6) and stream data to them, 20
+//!   times a second: a line plot `loopback` with two y-axes (`sin`, `cos`; `ramp` on y2), a
+//!   spectrogram `spectrum` (32 rows) and an 8×8 heatmap `grid`
 
 use std::time::Duration;
 
@@ -101,11 +104,83 @@ struct Device {
     last_tx: Instant,
     pending: Option<(Pending, Instant)>,
     line: Vec<u8>,
+    /// `plot` running: samples sent so far.
+    plot: Option<u64>,
+}
+
+fn f64s(v: impl IntoIterator<Item = f64>) -> cbor::Value {
+    cbor::Value::Array(v.into_iter().map(cbor::Value::Float).collect())
+}
+
+fn texts(v: &[&str]) -> cbor::Value {
+    cbor::Value::Array(v.iter().map(|s| cbor::Value::Text((*s).into())).collect())
+}
+
+/// Port-60 messages that create the demo plots.
+fn plot_create() -> Vec<cbor::Value> {
+    use cbor::Value::{Integer, Text};
+    vec![
+        cbor::map([
+            ("plot", Text("loopback".into())),
+            ("xlabel", Text("t (s)".into())),
+            ("ylabel", texts(&["value", "ramp (%)"])),
+            ("yser", texts(&["sin", "cos"])),
+            ("y2ser", texts(&["ramp"])),
+            ("y2limits", f64s([0.0, 100.0])),
+            ("xscroll", Integer(400.into())),
+        ]),
+        cbor::map([
+            ("spectrogram", Text("spectrum".into())),
+            ("heatmap_rows", Integer(32.into())),
+            ("heatmap_cols", Integer(100.into())),
+            ("xlabel", Text("t (s)".into())),
+            ("ylabel", texts(&["bin"])),
+            ("yser", texts(&["power"])),
+        ]),
+        cbor::map([
+            ("heatmap", Text("grid".into())),
+            ("heatmap_rows", Integer(8.into())),
+            ("heatmap_cols", Integer(8.into())),
+            ("xlabel", Text("column".into())),
+            ("ylabel", texts(&["row"])),
+            ("yser", texts(&["level"])),
+        ]),
+    ]
+}
+
+/// Port-60 data for the 50 ms step `n`: 5 line-plot samples, a spectrogram column, and every
+/// 20th step a new heatmap.
+fn plot_data(n: u64) -> Vec<cbor::Value> {
+    use cbor::Value::{Float, Text};
+    let t: Vec<f64> = (0..5).map(|i| (n * 5 + i) as f64 * 0.01).collect();
+    let mut out = vec![cbor::map([
+        ("plot", Text("loopback".into())),
+        ("x", f64s(t.iter().copied())),
+        ("y11", f64s(t.iter().map(|t| (t * 6.0).sin()))),
+        ("y12", f64s(t.iter().map(|t| (t * 6.0).cos() * 0.5))),
+        ("y21", f64s(t.iter().map(|t| (t * 20.0) % 100.0))),
+    ])];
+    let ts = n as f64 * 0.05;
+    let peak = 16.0 + 12.0 * (ts * 0.8).sin();
+    out.push(cbor::map([
+        ("spectrogram", Text("spectrum".into())),
+        ("x", Float(ts)),
+        ("y11", f64s((0..32).map(|r| (-((r as f64 - peak) / 3.0).powi(2)).exp() * 100.0))),
+    ]));
+    if n.is_multiple_of(20) {
+        let k = (n / 20) as f64;
+        out.push(cbor::map([
+            ("heatmap", Text("grid".into())),
+            ("x", Float(ts)),
+            ("y11", f64s((0..64).map(|i| (((i / 8) as f64 + k) * 0.7).sin() + ((i % 8) as f64 * 0.9).cos()))),
+        ]));
+    }
+    out
 }
 
 impl Device {
     fn new(o: Options, ev: mpsc::Sender<LinkEvent>) -> Self {
-        Device { o, ev, seq: 0, quiet_until: None, last_tx: Instant::now(), pending: None, line: vec![] }
+        Device { o, ev, seq: 0, quiet_until: None, last_tx: Instant::now(), pending: None, line: vec![], plot: None }
     }
 
     async fn send(&mut self, b: Vec<u8>) -> bool {
@@ -159,6 +234,12 @@ impl Device {
                     if !self.one_log().await { return; }
                 }
                 _ = tick.tick() => {
+                    if let Some(n) = self.plot {
+                        self.plot = Some(n + 1);
+                        for m in plot_data(n) {
+                            if !self.send(wire_port(ports::PLOT, &cbor::to_vec(&m))).await { return; }
+                        }
+                    }
                     if self.quiet_until.is_some_and(|q| Instant::now() >= q) {
                         self.quiet_until = None;
                     }
@@ -215,7 +296,7 @@ impl Device {
             "help" => {
                 self.text(
                     port,
-                    "loopback commands: help, echo <text>, reset, burst <n>, big, quiet <secs>, sh, read\r\n",
+                    "loopback commands: help, echo <text>, reset, burst <n>, big, quiet <secs>, sh, read, plot [stop]\r\n",
                 )
                 .await
             }
@@ -249,6 +330,19 @@ impl Device {
             "sh" => {
                 self.pending = Some((Pending::TimeOfDay { port }, Instant::now()));
                 self.send(wire_port(ports::SEMIHOST, &[uclog_proto::semihost::op::TIMEOFDAY])).await
+            }
+            "plot" if arg == "stop" => {
+                self.plot = None;
+                self.text(port, "plots stopped\r\n").await
+            }
+            "plot" => {
+                for m in plot_create() {
+                    if !self.send(wire_port(ports::PLOT, &cbor::to_vec(&m))).await {
+                        return false;
+                    }
+                }
+                self.plot = Some(0);
+                self.text(port, "plots: loopback (lines), spectrum, grid; `plot stop` to stop\r\n").await
             }
             "read" => {
                 self.pending = Some((Pending::Read { port }, Instant::now()));

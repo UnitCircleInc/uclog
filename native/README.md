@@ -1,7 +1,7 @@
 # Native workspace (Rust)
 
-Phases 1–3 of [docs/plans](../docs/plans/README.md): the shared crates, the `uclog`
-subcommands, the hub, and the terminal UI. `gui` comes in a later phase.
+Phases 1–4 of [docs/plans](../docs/plans/README.md): the shared crates, the `uclog`
+subcommands, the hub, the terminal UI and the GUI.
 
 | Crate | Contents |
 |---|---|
@@ -11,7 +11,7 @@ subcommands, the hub, and the terminal UI. `gui` comes in a later phase.
 | `uclog-link` | Serial, HID, BLE, UDP (Don't Fragment), TCP and WebSocket links; the simulated `loopback:` device; device URIs; USB/HID/BLE/mDNS discovery |
 | `uclog-session` | pulses and wake gap, liveness, dispatch, logdata resolver, semihost bridge, FW update (59 → 3) |
 | `uclog-hub` | the hub ([plan 01](../docs/plans/01-hub-server.md)): backlog ring, device task, raw/WebSocket/TLS on one port, UDP clients, admission, port-63 routing, mDNS, local registry. Library plus the small `uclog-hub` executable |
-| `uclog` | the executable: `list`, `decode`, `term`, `tui`, `fw-update`, `hub`; settings shared by the front ends |
+| `uclog` | the executable: `list`, `decode`, `term`, `tui`, `gui`, `fw-update`, `hub`; settings shared by the front ends. `--no-default-features` leaves out the GUI (no windowing dependencies) |
 
 ```sh
 cargo test                       # unit tests, spec/vectors, fake-device session tests, hub tests, CLI tests
@@ -31,6 +31,50 @@ uclog fw-update -d auto build/zephyr/zephyr.signed.bin
 ```
 
 `-v` logs info, `-vv` adds a hex trace of every byte sent and received (`uclog::wire`).
+
+## GUI
+
+```sh
+uclog gui                                          # connects when exactly one device matches, else opens Connect
+uclog gui -d tcp://lab-pc:9000 -l build/zephyr/zephyr.elf --files-dir ./files
+uclog gui -d loopback: -l spec/vectors/sample.logdata   # simulated device; type `plot` in the Terminal
+```
+
+- **Views**, as dock tabs (drag to split, float or rearrange; the layout is remembered):
+  - **Logs**, **Terminal**, **Commands**, **Device**, **FW Update**.
+  - **One tab per plot** the device creates on port 60. New plot tabs open in the background.
+- **Logs:**
+  - Filters: level, source, line and regex search.
+  - Follow, *Discard filtered*, copy and CSV export.
+  - Click, ⌘/Ctrl-click and Shift-click select rows.
+  - Double-click a row to show only its source. Right-click it for more filters, copy, and the
+    source's background colour.
+  - Colours are saved per source; ones from the legacy GUI are imported.
+  - Error records are always shown, with counters.
+- **Terminal:**
+  - ANSI colours, scrollback, an input line with history, and the configured buttons.
+  - Semihost stdout and stderr appear here, and stdin reads take the next line.
+- **Commands:**
+  - Buttons from the settings, with their `$arg` fields beside them.
+  - A free line: text, or a JSON object sent as CBOR.
+  - CBOR replies are shown readably.
+- **Plots:**
+  - Line plots with up to three y-axes, labelled on the right.
+  - `scatter`, `digital` and `infinite` series.
+  - *Fit* follows the data; panning or zooming stops it, and double-click resets the view.
+  - Two draggable **cursors** with Δx, 1/Δx and values.
+  - ⌘/Ctrl-click to drop a **marker**.
+  - Heatmaps and spectrograms; CSV export.
+- **Device:** device info, logdata source, frame and error counters, and resolver notes.
+  *Load logdata…* also saves the file in the cache under the device's `app_hash`, so it is found
+  next time.
+- **FW Update:** pick an image (`*.signed.bin` under the working directory are suggested); then
+  progress and cancel.
+- **File menu:** Connect (⌘K), Load logdata (⌘L), Screenshot (PNG), Export all (⌘E: logs,
+  terminal and every plot), export directory, Settings (⌘,).
+- **View menu:** UI scale (⌘+/⌘−), theme, reset layout.
+- **Status bar:** connected, waiting for the device or hub approval, hub busy, device not
+  responding, or reconnecting.
 
 ## TUI
 

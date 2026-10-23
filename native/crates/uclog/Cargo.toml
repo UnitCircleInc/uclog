@@ -6,6 +6,11 @@ license.workspace = true
 authors.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["gui"]
+# `uclog gui` (egui). Without it: the CLI, TUI and hub only, with no windowing dependencies.
+gui = ["dep:eframe", "dep:egui", "dep:egui_dock", "dep:egui_extras", "dep:egui_plot", "dep:image", "dep:rfd", "dep:vte"]
+
 [dependencies]
 ansi-to-tui = "8.0.1"
 anyhow = "1.0.104"
@@ -30,5 +35,15 @@ uclog-proto = { version = "0.1.0", path = "../uclog-proto" }
 uclog-semihost = { version = "0.1.0", path = "../uclog-semihost" }
 uclog-session = { version = "0.1.0", path = "../uclog-session" }
 
+eframe = { version = "0.36.2", optional = true, default-features = false, features = ["glow", "default_fonts", "wayland", "x11", "persistence", "accesskit"] }
+egui = { version = "0.36.2", optional = true }
+egui_dock = { version = "0.21.1", optional = true, features = ["serde"] }
+egui_extras = { version = "0.36.2", optional = true }
+egui_plot = { version = "0.37.0", optional = true }
+image = { version = "0.25.9", optional = true, default-features = false, features = ["png"] }
+rfd = { version = "0.17.2", optional = true, default-features = false, features = ["xdg-portal", "wayland"] }
+vte = { version = "0.15.0", optional = true }
+
 [dev-dependencies]
+egui_kittest = "0.36.2"
 tempfile = "3.27.0"

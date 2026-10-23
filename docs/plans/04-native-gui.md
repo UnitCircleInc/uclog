@@ -105,3 +105,58 @@ uclog gui [-d URI|auto] [--baud N] [--usb-filter VID:PID]... [-l FILE]...
 - Pi GPUs: `glow` with GLES 3.0; test on Pi 4/5.
 - egui looks less "native" than Qt. That is acceptable for an engineering tool, and keeps the
   executable small and self-contained.
+
+## 9. Implementation notes (Phase 4)
+
+Implemented in `native/crates/uclog/src/gui/` behind the default-on `gui` feature
+(`--no-default-features` builds `uclog` without windowing dependencies). Where it differs from the
+plan above:
+
+- **Versions:**
+  - eframe/egui **0.36** with egui_dock 0.21 and egui_plot 0.37. egui_dock has no release for
+    egui 0.37 yet.
+  - The workspace MSRV is now **1.95**.
+- **Structure:**
+  - `gui/` has `app.rs` (state, menus, status bar, dock), `backend.rs` (the tokio side),
+    `connect.rs`, `settings_dlg.rs`, `term.rs` (vte model), `plots.rs` (port-60 model) and
+    `views/`.
+  - Code shared with the TUI moved to `front/`: the log store, buttons, session config, the
+    device list, export names, FW image suggestions and `fw_ratio`.
+- **Plots:**
+  - Secondary y-axes are mapped onto the primary axis' range. Their labels are on the right,
+    rounded to the axis span.
+  - Heatmaps and spectrograms use egui_plot's `Heatmap` item, not a texture.
+  - Series are decimated (min/max per bucket, ends kept) to about 2 points per pixel column.
+  - Markers are placed with ⌘/Ctrl-click; the plot's own double-click resets the view.
+- **Logdata memory (replaces `target_info_archive`):** a file loaded manually is saved in the
+  logdata cache as `<app_hash>.logdata`, so the resolver finds it on the next connection.
+- **Terminal:** line mode only. The TUI's character mode is not in the GUI.
+- **Test support:**
+  - `loopback:` gained `plot` / `plot stop`. It creates a two-axis line plot, a spectrogram and a
+    heatmap, and streams to them.
+  - Hidden flags for screenshots and docs: `--screenshot PNG --screenshot-after SECS --show VIEW
+    --send LINE --size WxH`.
+- **macOS quit:** closing the window can make AppKit throw from winit's Touch Bar observer
+  (`NSRangeException`) and abort. On macOS the app exits with `process::exit` in `on_exit`, after
+  eframe has saved; screenshot runs do the same.
+- **Tests:**
+  - Unit tests for the terminal and plot models.
+  - Headless UI tests (egui_kittest) with the real backend and session against `loopback:`:
+    logs/terminal/status, typed input and history, filters; plots opening as background tabs and
+    the cursor readout; command buttons and the free line; hub busy, then Connect by clicking a
+    listed device; *Export all*.
+- **hidapi fix (found in the GUI, affects every front end):** hidapi's macOS manager is scheduled
+  on the run loop of the first thread that uses it. Device lists ran on tokio blocking threads,
+  which exit after 10 s idle, so a later Connect list called into a freed run loop and trapped
+  (SIGTRAP). All hidapi calls now run on one thread that lives as long as the process
+  (`uclog-link` `hid::with_api`).
+- **Size:** the release `uclog`, stripped, is about 9 MB (macOS arm64).
+- **Verified:** on the NUCLEO-L452RE-P over serial (logdata from the cache, the `test` selftest
+  decoded with no errors, terminal), and screenshots of every view with `loopback:`.
+- **Not done yet:**
+  - Packaging: `.app`/`.dmg` with notarisation, AppImage, signed Windows exe, the first-run udev
+    hint.
+  - Runs on Linux, Windows and the Pi.
+  - HID, BLE and UDP devices.
+  - Glyphs missing from egui's default fonts (some symbols and emoji) show as boxes.
+

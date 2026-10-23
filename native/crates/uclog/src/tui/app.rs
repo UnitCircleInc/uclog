@@ -15,7 +15,8 @@ use uclog_session::{Event, FwProgress, Liveness};
 use super::lineedit::{Edit, LineEdit};
 use super::logs::{Filter, LogStore, LEVELS};
 use super::picker::{Pick, Picker};
-use crate::settings::{Button, Settings};
+pub use crate::front::{button_args, button_payload, strip_ansi, Answer};
+use crate::settings::Settings;
 
 pub const TERM_LINES_MAX: usize = 5000;
 pub const RESPONSES_MAX: usize = 500;
@@ -212,85 +213,6 @@ pub struct App {
 }
 
 /// (key, placeholder, answer) for a command button's `$arg`.
-pub type Answer = (String, String, String);
-
-fn json_to_cbor(v: &serde_json::Value) -> Value {
-    match v {
-        serde_json::Value::Null => Value::Null,
-        serde_json::Value::Bool(b) => Value::Bool(*b),
-        serde_json::Value::Number(n) => match n.as_i64() {
-            Some(i) => Value::Integer(i.into()),
-            None => match n.as_u64() {
-                Some(u) => Value::Integer(u.into()),
-                None => Value::Float(n.as_f64().unwrap_or(0.0)),
-            },
-        },
-        serde_json::Value::String(s) => Value::Text(s.clone()),
-        serde_json::Value::Array(a) => Value::Array(a.iter().map(json_to_cbor).collect()),
-        serde_json::Value::Object(o) => {
-            Value::Map(o.iter().map(|(k, v)| (Value::Text(k.clone()), json_to_cbor(v))).collect())
-        }
-    }
-}
-
-/// `$name` placeholders in a button's map values: (key, placeholder).
-pub fn button_args(b: &Button) -> Vec<(String, String)> {
-    let re = Regex::new(r"\$\w+").unwrap();
-    let mut out = vec![];
-    if let serde_json::Value::Object(o) = &b.cmd {
-        for (k, v) in o {
-            if let Some(s) = v.as_str() {
-                for m in re.find_iter(s) {
-                    out.push((k.clone(), m.as_str().to_string()));
-                }
-            }
-        }
-    }
-    out
-}
-
-/// The bytes a button sends on port 0 (legacy `UnitCommands.py` semantics): a string is a text
-/// line; a map is CBOR, with `$name` placeholders replaced (a value that is a single
-/// placeholder becomes a number when the answer parses as one).
-pub fn button_payload(b: &Button, answers: &[Answer]) -> Vec<u8> {
-    match &b.cmd {
-        serde_json::Value::String(s) => format!("{s}\r").into_bytes(),
-        serde_json::Value::Object(o) => {
-            let re = Regex::new(r"\$\w+").unwrap();
-            let mut m = o.clone();
-            for (k, v) in o {
-                let Some(s) = v.as_str() else { continue };
-                let args: Vec<&str> = re.find_iter(s).map(|x| x.as_str()).collect();
-                if args.is_empty() {
-                    continue;
-                }
-                let val = |a: &str| {
-                    answers.iter().find(|(kk, aa, _)| kk == k && aa == a).map(|x| x.2.clone()).unwrap_or_default()
-                };
-                let new = if args.len() == 1 && s == args[0] {
-                    let a = val(args[0]);
-                    if let Ok(i) = a.parse::<i64>() {
-                        serde_json::json!(i)
-                    } else if let Ok(f) = a.parse::<f64>() {
-                        serde_json::json!(f)
-                    } else {
-                        serde_json::Value::String(a)
-                    }
-                } else {
-                    let mut t = s.to_string();
-                    for a in args {
-                        t = t.replacen(a, &val(a), 1);
-                    }
-                    serde_json::Value::String(t)
-                };
-                m.insert(k.clone(), new);
-            }
-            cbor::to_vec(&json_to_cbor(&serde_json::Value::Object(m)))
-        }
-        other => cbor::to_vec(&json_to_cbor(other)),
-    }
-}
-
 /// Bytes for one key in character mode (as `uclog term --raw`).
 pub fn key_bytes(k: KeyEvent) -> Option<Vec<u8>> {
     Some(match k.code {
@@ -881,7 +803,7 @@ impl App {
     // Device / FW -----------------------------------------------------------------------------
 
     fn open_logdata_picker(&mut self) {
-        let sug = super::picker::signed_images(&self.cwd, 4)
+        let sug = crate::front::signed_images(&self.cwd, 4)
             .into_iter()
             .filter_map(|p| p.parent().map(|d| d.join("zephyr.elf")))
             .filter(|p| p.exists())
@@ -913,7 +835,7 @@ impl App {
                 return vec![Action::FwCancel];
             }
             KeyCode::Enter | KeyCode::Char('o') if !self.fw.running => {
-                let sug = super::picker::signed_images(&self.cwd, 4);
+                let sug = crate::front::signed_images(&self.cwd, 4);
                 self.modal = Modal::Picker(
                     Box::new(Picker::new("FW image (.bin)", &["bin"], self.cwd.clone(), sug)),
                     PickFor::FwImage,
@@ -1060,10 +982,4 @@ impl App {
             _ => vec![Action::Export { name: "terminal.txt".into(), content: strip_ansi(&self.term.text()) }],
         }
     }
-}
-
-/// Remove ANSI escape sequences (for exports).
-pub fn strip_ansi(s: &str) -> String {
-    let re = Regex::new(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07").unwrap();
-    re.replace_all(s, "").into_owned()
 }
