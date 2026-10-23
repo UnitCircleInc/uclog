@@ -105,4 +105,4 @@ crates (README §6, Phase 3).
   - `src/tui/tests_ui.rs` renders the real UI into `TestBackend`, fed by the loopback device.
   - Pseudo-terminal runs of the release binary on macOS, against loopback, the NUCLEO, and the
     NUCLEO through a hub.
-  - Still to do: the manual Windows/Linux/SSH matrix.
+  - Still to do: the manual Windows/Linux/SSH matrix ([Plan 07](07-release.md)).

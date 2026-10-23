@@ -187,7 +187,7 @@ Implemented in [`python/`](../../python/README.md). Where it differs from the pl
   - On the NUCLEO-L452RE-P: hub started by serial number, device info, logdata from the cache,
     terminal, semihost selftest (printf, stderr, files 32/1438/4000 bytes), stdin callback, the
     1443-byte frame, hub stopped on close.
-- **Not done yet:**
+- **Not done yet** (moved to [Plan 07](07-release.md)):
   - PyPI publishing (trusted publisher, then a publish job). The release workflow builds the
     wheels as an artifact.
   - CI on Linux and Windows has not run (no remote yet).

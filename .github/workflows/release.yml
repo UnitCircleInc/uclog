@@ -3,7 +3,7 @@
 # On a tag v*: build every target, package, checksum, and attach to a draft GitHub release. Also
 # build the Python wheels (with uclog-hub bundled) as an artifact.
 # Not yet done (needs certificates as repository secrets): macOS codesign + notarize, Windows
-# signing, and linux armv7 (needs cross).
+# signing, and linux armv7 (needs cross). See docs/plans/07-release.md.
 name: release
 
 on:

@@ -5,14 +5,15 @@ Next-generation ucLog clients for Unit Circle devices. Every client shares one w
 | Component | Directory | Plan | Status |
 |---|---|---|---|
 | Protocol spec + test vectors | [`spec/`](spec/protocol.md) | [README §3](docs/plans/README.md) | Phase 0 done (firmware changes pending) |
-| Shared Rust crates + `uclog list/decode/term/fw-update` | [`native/`](native/README.md) | [README §4, §6](docs/plans/README.md) | **Phase 1**: done; verified on hardware over serial (HID, BLE, UDP and FW update not yet) |
+| Shared Rust crates + `uclog list/decode/term/fw-update` | [`native/`](native/README.md) | [README §4, §6](docs/plans/README.md) | **Phase 1**: done; verified on hardware over serial (HID, BLE, UDP and FW update: Phase 7) |
 | Bare-metal device library + NUCLEO-L452RE-P test firmware | [`firmware/`](firmware/README.md) | — | test target for the hosts |
 | Hub (Serial/HID/BLE/UDP ↔ TCP/WebSocket/UDP) | [`native/`](native/README.md) (`uclog hub`, `uclog-hub`) | [01](docs/plans/01-hub-server.md) | **Phase 2**: done; verified on hardware over serial |
 | Web version / `<uc-log>` component | `web/` (TypeScript) | [02](docs/plans/02-web.md) | planned |
 | VS Code extension | `web/apps/vscode` | [03](docs/plans/03-vscode.md) | planned |
-| Native GUI (`uclog gui`) | [`native/`](native/README.md) | [04](docs/plans/04-native-gui.md) | **Phase 4**: done; verified with the loopback device (headless UI tests) and on hardware (macOS); packaging (dmg, AppImage, signing) not yet |
+| Native GUI (`uclog gui`) | [`native/`](native/README.md) | [04](docs/plans/04-native-gui.md) | **Phase 4**: done; verified with the loopback device (headless UI tests) and on hardware (macOS); packaging and other platforms: Phase 7 |
 | Native TUI (`uclog tui`) | [`native/`](native/README.md) | [05](docs/plans/05-tui.md) | **Phase 3**: done; verified on hardware (macOS) |
-| Python library for scripts | [`python/`](python/README.md) | [06](docs/plans/06-python-client.md) | **Phase 2b**: done; verified with the loopback device and on hardware (macOS); wheels not yet published |
+| Python library for scripts | [`python/`](python/README.md) | [06](docs/plans/06-python-client.md) | **Phase 2b**: done; verified with the loopback device and on hardware (macOS); PyPI publishing: Phase 7 |
+| Release: CI, signing, PyPI, platforms, hardware coverage | — | [07](docs/plans/07-release.md) | **Phase 7**: planned |
 
 Start with [docs/plans/README.md](docs/plans/README.md): decisions, architecture and phasing.
 

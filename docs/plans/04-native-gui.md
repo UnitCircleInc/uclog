@@ -153,10 +153,11 @@ plan above:
 - **Size:** the release `uclog`, stripped, is about 9 MB (macOS arm64).
 - **Verified:** on the NUCLEO-L452RE-P over serial (logdata from the cache, the `test` selftest
   decoded with no errors, terminal), and screenshots of every view with `loopback:`.
-- **Not done yet:**
+- **Not done yet** (moved to [Plan 07](07-release.md)):
   - Packaging: `.app`/`.dmg` with notarisation, AppImage, signed Windows exe, the first-run udev
     hint.
   - Runs on Linux, Windows and the Pi.
   - HID, BLE and UDP devices.
+  - Terminal character mode.
   - Glyphs missing from egui's default fonts (some symbols and emoji) show as boxes.
 

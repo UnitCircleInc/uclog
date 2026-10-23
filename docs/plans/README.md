@@ -1,6 +1,6 @@
 # ucLog client re-architecture — overview
 
-This directory holds six separate plans plus this shared overview:
+This directory holds seven separate plans plus this shared overview:
 
 | Plan | File | Code family |
 |---|---|---|
@@ -10,6 +10,7 @@ This directory holds six separate plans plus this shared overview:
 | Native graphical client | [04-native-gui.md](04-native-gui.md) | Native (Rust) |
 | Native TUI client | [05-tui.md](05-tui.md) | Native (Rust) |
 | Python client library for scripts | [06-python-client.md](06-python-client.md) | Python (uses the native hub) |
+| Release, platforms and hardware coverage | [07-release.md](07-release.md) | Native, Python, CI |
 
 Read this overview first. It records the decisions made so far (§1), the wire protocol (§3),
 the shared architecture (§4), cross-cutting requirements (§5), and the **open questions that are
@@ -423,13 +424,14 @@ Hub flags are in the hub plan.
 | Phase | Work | Unblocks |
 |---|---|---|
 | 0 | ✅ Questions closed (§7). ✅ `spec/protocol.md`, reference, vectors and CI. ✅ Firmware requirements agreed (F1–F7, C1–C10 in [`spec/firmware-changes.md`](../../spec/firmware-changes.md)). ⏳ Firmware implementation of F1–F7 (outside this repository; the test firmware in `firmware/` has F6 and F7) | everything |
-| 1 | ✅ Rust crates: proto, logdata, semihost, link, session (+ `uclog list/decode/term/fw-update`) in [`native/`](../../native/README.md). ✅ Serial verified on a NUCLEO-L452RE-P with the [test firmware](../../firmware/README.md) (logs, port 0/61, semihost incl. stdin and files, reconnect, fatal/reset). ⏳ HID, BLE, UDP, FW update | hub, TUI, GUI |
-| 2 | ✅ Hub ([01](01-hub-server.md)): `uclog-hub` crate, `uclog hub` + `uclog-hub`, `loopback:` device, release workflow. ✅ Verified on the NUCLEO-L452RE-P (TCP, WebSocket, UDP clients; busy; backlog replay; device reset; `--syscalls`). ✅ Device-info request (F7, decision 33). ⏳ Signing/notarisation, `--config`, `--hid-poll` | VS Code; remote use; Python library |
-| 2b | ✅ Python library ([06](06-python-client.md)): `uclog` package in [`python/`](../../python/README.md), stdlib only; hub discovery/start, ports, `command()`, logdata + resolver, port 63, `aio`; platform wheels with `uclog-hub` in the release workflow. ✅ Verified against `uclog-hub` with the loopback device (Python 3.9–3.14) and on the NUCLEO-L452RE-P. Hub fixes found on the way: `--exit-on-stdin-eof` with a pipe, `busy` in the registry, abort when stderr closes, end-of-backlog pulse, `uclog-hub list`. ⏳ PyPI publishing, CI on Windows/Linux not yet run | script users; retire the legacy repository |
-| 3 | ✅ TUI ([05](05-tui.md)): `uclog tui` with all views, Connect/Settings/Help, `--plain`/`--json`, `--plot-csv`; settings + keyring + legacy import shared for the GUI. ✅ Verified with the loopback device (TestBackend tests, pty runs) and on the NUCLEO directly and through the hub. ⏳ Manual terminal matrix (Windows Terminal/conhost, Linux, SSH) | GUI |
-| 4 | ✅ GUI ([04](04-native-gui.md)): `uclog gui` (egui 0.36, egui_dock, egui_plot), all views of §3 incl. plots with three y-axes, cursors/markers, heatmap/spectrogram; settings/colours shared with the TUI; `loopback:` `plot` demo. ✅ Verified with headless UI tests (egui_kittest + loopback, incl. hub busy) and on the NUCLEO-L452RE-P (macOS). ⏳ Packaging (dmg/notarise, AppImage, signed exe), Linux/Windows/Pi runs, HID/BLE/UDP | retire Python |
+| 1 | ✅ Rust crates: proto, logdata, semihost, link, session (+ `uclog list/decode/term/fw-update`) in [`native/`](../../native/README.md). ✅ Serial verified on a NUCLEO-L452RE-P with the [test firmware](../../firmware/README.md) (logs, port 0/61, semihost incl. stdin and files, reconnect, fatal/reset). HID, BLE, UDP and FW update on hardware: Phase 7 | hub, TUI, GUI |
+| 2 | ✅ Hub ([01](01-hub-server.md)): `uclog-hub` crate, `uclog hub` + `uclog-hub`, `loopback:` device, release workflow. ✅ Verified on the NUCLEO-L452RE-P (TCP, WebSocket, UDP clients; busy; backlog replay; device reset; `--syscalls`). ✅ Device-info request (F7, decision 33). Signing/notarisation, `--config`, `--hid-poll` if needed: Phase 7 | VS Code; remote use; Python library |
+| 2b | ✅ Python library ([06](06-python-client.md)): `uclog` package in [`python/`](../../python/README.md), stdlib only; hub discovery/start, ports, `command()`, logdata + resolver, port 63, `aio`; platform wheels with `uclog-hub` in the release workflow. ✅ Verified against `uclog-hub` with the loopback device (Python 3.9–3.14) and on the NUCLEO-L452RE-P. Hub fixes found on the way: `--exit-on-stdin-eof` with a pipe, `busy` in the registry, abort when stderr closes, end-of-backlog pulse, `uclog-hub list`. PyPI publishing and CI on Windows/Linux: Phase 7 | script users; retire the legacy repository |
+| 3 | ✅ TUI ([05](05-tui.md)): `uclog tui` with all views, Connect/Settings/Help, `--plain`/`--json`, `--plot-csv`; settings + keyring + legacy import shared for the GUI. ✅ Verified with the loopback device (TestBackend tests, pty runs) and on the NUCLEO directly and through the hub. Manual terminal matrix: Phase 7 | GUI |
+| 4 | ✅ GUI ([04](04-native-gui.md)): `uclog gui` (egui 0.36, egui_dock, egui_plot), all views of §3 incl. plots with three y-axes, cursors/markers, heatmap/spectrogram; settings/colours shared with the TUI; `loopback:` `plot` demo. ✅ Verified with headless UI tests (egui_kittest + loopback, incl. hub busy) and on the NUCLEO-L452RE-P (macOS). Packaging, Linux/Windows/Pi runs, HID/BLE/UDP, character mode, fonts: Phase 7 | retire Python |
 | 5 | Web ([02](02-web.md)), parallel from Phase 0 | VS Code |
 | 6 | VS Code ([03](03-vscode.md)) | — |
+| 7 | Release ([07](07-release.md)): GitHub repository and CI on 3 OS; signing and notarisation, `.dmg`, AppImage, signed exe, armv7; PyPI trusted publisher and publish job; GUI/TUI/Python/hub on Linux, Windows and the Pi; HID, BLE, UDP, FTDI/Zephyr CDC, FW update, mDNS and soak on hardware; hub `--config`, GUI character mode and fonts. Independent of Phases 5–6 | first public release; signed hub for VS Code |
 
 ---
 
