@@ -46,7 +46,7 @@ static struct {
   bool panic;
   uint32_t rx_mark;
   volatile uint32_t last_rx_ms, last_tx_ms;
-  volatile uint32_t tx_dropped, tx_dropped_reported;
+  volatile uint32_t tx_dropped, tx_dropped_reported, tx_bytes;
 
   uint8_t frame[MAX_FRAME];
   size_t frame_n;
@@ -70,6 +70,7 @@ static void tx_buffer(const uint8_t *b, size_t n) {
   uint32_t key = log_port_lock();
   if (cb_write_avail(&tx_cb) >= n) {
     cb_write(&tx_cb, b, n);
+    s.tx_bytes += n;
     s.last_tx_ms = log_port_ms();
   } else {
     s.tx_dropped++;
@@ -109,6 +110,13 @@ size_t log_tx_avail(void) {
   size_t over = 3 + (a + 253) / 254;
   a = a > over ? a - over : 0;
   return a > LOG_MAX_PACKET_SIZE ? LOG_MAX_PACKET_SIZE : a;
+}
+
+bool log_tx_flushed(void) {
+  uint32_t key = log_port_lock();
+  bool done = cb_read_avail(&tx_cb) == 0 && log_port_tx_idle();
+  log_port_unlock(key);
+  return done;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -310,6 +318,7 @@ int log_is_host_ready(bool *host_ready) {
 
 void log_get_stats(log_stats_t *st) {
   st->tx_dropped = s.tx_dropped;
+  st->tx_bytes = s.tx_bytes;
   st->rx_uart_errors = s.rx_uart_errors;
   st->rx_frames = s.rx_frames;
   st->rx_errors = s.rx_errors;

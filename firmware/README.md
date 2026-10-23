@@ -150,7 +150,7 @@ used only by this test firmware.
 | `test` | One log of every kind: int32/uint32/int64/uint64, float/double, flags and widths, strings (escapes, UTF-8, truncation), pointer, `{sym}` (function, variable, unknown), `{enum}` (enum, typedef enum, unknown value), 14 arguments, `LOG_MEM`, all levels. It also runs at boot |
 | `sh` | Semihost through `syscalls.c` (printf/stderr with no-reply WRITE, `fopen`/`fgets`/`fstat`, `mkdir`, `gettimeofday`), plus a 1438-byte and a 4000-byte file round trip checked with CRC-32C. It also sends raw requests: the time ops, a WRITE with a reply, and the expected errors (`EACCES` sandbox escape, `EBADF` for close and write, `ENOSYS` for LSEEK and an unknown op, `EINVAL` for a malformed request, the 48-byte FSTAT error) |
 | `input` | Semihost READ on stdin |
-| `burst [n]` | Throughput. It waits for buffer room, so nothing is dropped |
+| `burst [n]` | Throughput. It waits for buffer room, so nothing is dropped. The reply gives bytes, bytes per log and B/s, timed until the last byte has gone out |
 | `big [n]` | One port-61 frame of `n` bytes (default 1443, which is 1452 on the wire) |
 | `info`, `stats` | Resends the device info; shows the link counters |
 | `led on/off`, `fatal` | LED control; `LOG_FATAL` (flush, then reset) |

@@ -131,10 +131,19 @@ static void burst(int port, unsigned n) {
     while (log_tx_avail() < 64) log_poll();
     LOG_INFO("burst %u/%u t=%lu", i + 1, n, (unsigned long)board_ms());
   }
-  while (log_tx_avail() < LOG_MAX_PACKET_SIZE) log_poll(); // leave room for the logs that follow
+  // Stop the clock when the last byte has gone out, not when there is room again: the 8 KiB
+  // buffer would still hold several kB.
+  uint32_t t1 = board_ms();
+  while (!log_tx_flushed() && board_ms() - t1 < 2000) log_poll();
+  bool flushed = log_tx_flushed();
+  uint32_t ms = board_ms() - t0;
   log_get_stats(&after);
-  reply(port, "burst of %u logs in %lu ms, %lu dropped\r\n", n, (unsigned long)(board_ms() - t0),
-        (unsigned long)(after.tx_dropped - before.tx_dropped));
+  uint32_t bytes = after.tx_bytes - before.tx_bytes;
+  uint32_t tenths = n ? (uint32_t)((uint64_t)bytes * 10 / n) : 0;
+  reply(port, "burst of %u logs: %lu bytes (%lu.%lu per log) in %lu ms = %lu B/s, %lu dropped%s\r\n", n,
+        (unsigned long)bytes, (unsigned long)(tenths / 10), (unsigned long)(tenths % 10), (unsigned long)ms,
+        (unsigned long)(ms ? (uint64_t)bytes * 1000 / ms : 0),
+        (unsigned long)(after.tx_dropped - before.tx_dropped), flushed ? "" : " (not flushed: no host?)");
 }
 
 // One frame of n bytes: "<n>:" then a repeating pattern, ending in "|\r\n".
@@ -211,8 +220,8 @@ static void run_command(int port, char *c) {
   } else if (strcmp(c, "stats") == 0) {
     log_stats_t s;
     log_get_stats(&s);
-    reply(port, "tx_dropped %lu rx_frames %lu rx_errors %lu rx_uart_errors %lu rx_no_handler %lu\r\n",
-          (unsigned long)s.tx_dropped, (unsigned long)s.rx_frames, (unsigned long)s.rx_errors,
+    reply(port, "tx_bytes %lu tx_dropped %lu rx_frames %lu rx_errors %lu rx_uart_errors %lu rx_no_handler %lu\r\n",
+          (unsigned long)s.tx_bytes, (unsigned long)s.tx_dropped, (unsigned long)s.rx_frames, (unsigned long)s.rx_errors,
           (unsigned long)s.rx_uart_errors, (unsigned long)s.rx_no_handler);
   } else if (strcmp(c, "led") == 0) {
     board_led(arg && strcmp(arg, "on") == 0);

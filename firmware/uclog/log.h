@@ -94,6 +94,9 @@ void log_tick(uint32_t now_ms);
 // counted) when the buffer is full; check log_tx_avail() first if it must not be.
 void log_tx(uint8_t port, const uint8_t *data, size_t n);
 size_t log_tx_avail(void);
+// Everything queued has been handed to the link: the buffer is empty and no TX is in progress.
+// Stays false while no host is connected (TX is paused).
+bool log_tx_flushed(void);
 
 // Wait for the next frame on `port`. Copies at most `n` bytes and returns the payload length.
 // Returns 0 if the host goes away while waiting, or when called from a handler.
@@ -115,6 +118,7 @@ const uint8_t *log_app_hash(size_t *n);
 // Counters for diagnostics.
 typedef struct {
   uint32_t tx_dropped;    // frames dropped because the TX buffer was full
+  uint32_t tx_bytes;      // bytes queued for the link (frames and pulses)
   uint32_t rx_uart_errors; // UART framing/noise errors (RX restarted)
   uint32_t rx_frames;     // frames received (excluding pulses)
   uint32_t rx_errors;     // COBS / oversize errors
