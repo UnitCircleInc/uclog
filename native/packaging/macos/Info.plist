@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Embedded in the uclog and uclog-hub executables (__TEXT,__info_plist, see build.rs).
+     CoreBluetooth needs NSBluetoothAlwaysUsageDescription even for command-line tools. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>ca.unitcircle.uclog</string>
+  <key>CFBundleName</key>
+  <string>uclog</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>uclog connects to ucLog devices over Bluetooth Low Energy.</string>
+</dict>
+</plist>

@@ -14,7 +14,8 @@ pub const WS_BUSY: u16 = 4001;
 const TOO_BIG: &str = "UDP: datagram refused as too large (EMSGSIZE / fragmentation needed); the path MTU is \
                        below 1500, which UDP links do not support (use TCP or WebSocket to a hub)";
 
-fn is_too_big(e: &std::io::Error) -> bool {
+/// The error a datagram too large for the path gets (EMSGSIZE).
+pub fn is_too_big(e: &std::io::Error) -> bool {
     #[cfg(unix)]
     let code = libc::EMSGSIZE;
     #[cfg(windows)]
@@ -39,7 +40,7 @@ fn udp_error(e: std::io::Error) -> CloseReason {
     )),
     allow(unused_variables)
 )]
-fn set_dont_fragment(sock: &UdpSocket, v6: bool) -> std::io::Result<()> {
+pub fn set_dont_fragment(sock: &UdpSocket, v6: bool) -> std::io::Result<()> {
     #[cfg(any(target_os = "linux", target_os = "android"))]
     let (level, name, value) = if v6 {
         (libc::IPPROTO_IPV6, libc::IPV6_MTU_DISCOVER, libc::IPV6_PMTUDISC_DO)
@@ -157,7 +158,12 @@ pub(crate) async fn open_tcp(spec: LinkSpec, addr: &str) -> Result<Link, LinkErr
                         return;
                     }
                     Ok(n) => { got_data = true; if ev.send(LinkEvent::Data(buf[..n].to_vec())).await.is_err() { return; } }
-                    Err(e) => { let _ = ev.send(LinkEvent::Closed(udp_error(e))).await; return; }
+                    // A busy hub's close can arrive as a reset when our first pulse was unread.
+                    Err(e) if !got_data && e.kind() == std::io::ErrorKind::ConnectionReset => {
+                        let _ = ev.send(LinkEvent::Closed(CloseReason::HubBusy)).await;
+                        return;
+                    }
+                    Err(e) => { let _ = ev.send(LinkEvent::Closed(CloseReason::Error(e.to_string()))).await; return; }
                 },
                 _ = ev.closed() => return,
             }

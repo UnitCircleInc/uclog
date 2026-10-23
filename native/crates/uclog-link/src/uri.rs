@@ -1,6 +1,7 @@
 //! Device URIs (plans README §5.7):
 //! `serial:/dev/ttyACM0`, `serial:COM3`, `hid:<path or serial>`, `ble:<address or name>`,
-//! `udp://host:port`, `tcp://host[:9000]`, `ws(s)://host[:9000][/path]`, `auto`.
+//! `udp://host:port`, `tcp://host[:9000]`, `ws(s)://host[:9000][/path]`, `auto`, and the simulated
+//! `loopback:[options]` device (`loopback.rs`).
 
 use std::fmt;
 use std::str::FromStr;
@@ -9,12 +10,29 @@ use uclog_proto::link::{DEFAULT_BAUD, DEFAULT_HUB_PORT};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinkSpec {
-    Serial { path: String, baud: u32 },
-    Hid { id: String },
-    Ble { id: String },
-    Udp { addr: String },
-    Tcp { addr: String },
-    Ws { url: String },
+    Serial {
+        path: String,
+        baud: u32,
+    },
+    Hid {
+        id: String,
+    },
+    Ble {
+        id: String,
+    },
+    Udp {
+        addr: String,
+    },
+    Tcp {
+        addr: String,
+    },
+    Ws {
+        url: String,
+    },
+    /// Simulated device (testing).
+    Loopback {
+        opts: String,
+    },
     Auto,
 }
 
@@ -51,6 +69,9 @@ impl FromStr for LinkSpec {
         let err = |m: &str| UriError { uri: s.into(), msg: m.into() };
         if s == "auto" {
             return Ok(LinkSpec::Auto);
+        }
+        if let Some(o) = s.strip_prefix("loopback:").or((s == "loopback").then_some("")) {
+            return Ok(LinkSpec::Loopback { opts: o.into() });
         }
         if let Some(r) = s.strip_prefix("udp://") {
             return Ok(LinkSpec::Udp { addr: with_port(r, None).ok_or_else(|| err("UDP needs host:port"))? });
@@ -90,6 +111,7 @@ impl fmt::Display for LinkSpec {
             LinkSpec::Udp { addr } => write!(f, "udp://{addr}"),
             LinkSpec::Tcp { addr } => write!(f, "tcp://{addr}"),
             LinkSpec::Ws { url } => write!(f, "{url}"),
+            LinkSpec::Loopback { opts } => write!(f, "loopback:{opts}"),
             LinkSpec::Auto => write!(f, "auto"),
         }
     }

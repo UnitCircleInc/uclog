@@ -1,0 +1,8 @@
+# ucLog devices: let users in the "plugdev" group open them without root.
+# Install: sudo cp 70-uclog.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger
+# Serial devices (STLINK, FTDI) normally need the "dialout" (Debian/Ubuntu) or "uucp" (Arch) group instead.
+
+# Zephyr USB devices (CDC-ACM and HID, VID 2FE3)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2fe3", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="2fe3", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2fe3", MODE="0660", GROUP="plugdev", TAG+="uaccess"

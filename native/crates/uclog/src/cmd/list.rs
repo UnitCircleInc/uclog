@@ -32,9 +32,27 @@ pub async fn run(a: ListArgs) -> anyhow::Result<ExitCode> {
             Err(e) => notes.push(format!("BLE scan: {e}")),
         }
     }
+    // Hubs on this machine (registry, hub plan §7.1), then remote ones (mDNS).
+    let local: Vec<Device> = uclog_hub::announce::local_hubs()
+        .into_iter()
+        .map(|j| {
+            let s = |k: &str| j[k].as_str().unwrap_or("").to_string();
+            Device {
+                kind: discover::Kind::Hub,
+                uri: format!("tcp://localhost:{}", j["port"].as_u64().unwrap_or(9000)),
+                name: s("name"),
+                serial: s("serial_number"),
+                description: format!("{} {} (local hub)", s("kind"), s("device")),
+                busy: j["busy"].as_bool(),
+            }
+        })
+        .collect();
+    let local_names: Vec<String> = local.iter().map(|d| d.name.clone()).collect();
+    all.extend(local);
     if a.mdns > 0.0 {
         match discover::hubs(Duration::from_secs_f64(a.mdns)).await {
-            Ok(v) => all.extend(v),
+            // A local hub also shows up over mDNS: list it once.
+            Ok(v) => all.extend(v.into_iter().filter(|d| !local_names.contains(&d.name))),
             Err(e) => notes.push(format!("mDNS: {e}")),
         }
     }

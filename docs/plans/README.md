@@ -423,7 +423,7 @@ Hub flags are in the hub plan.
 |---|---|---|
 | 0 | ✅ Questions closed (§7). ✅ `spec/protocol.md`, reference, vectors and CI. ✅ Firmware requirements agreed (F1–F5, C1–C10 in [`spec/firmware-changes.md`](../../spec/firmware-changes.md)). ⏳ Firmware implementation of F1–F5 (outside this repository) | everything |
 | 1 | ✅ Rust crates: proto, logdata, semihost, link, session (+ `uclog list/decode/term/fw-update`) in [`native/`](../../native/README.md). ✅ Serial verified on a NUCLEO-L452RE-P with the [test firmware](../../firmware/README.md) (logs, port 0/61, semihost incl. stdin and files, reconnect, fatal/reset). ⏳ HID, BLE, UDP, FW update | hub, TUI, GUI |
-| 2 | Hub ([01](01-hub-server.md)) + `uclog-hub` release builds | VS Code; remote use; Python library |
+| 2 | ✅ Hub ([01](01-hub-server.md)): `uclog-hub` crate, `uclog hub` + `uclog-hub`, `loopback:` device, release workflow. ✅ Verified on the NUCLEO-L452RE-P (TCP, WebSocket, UDP clients; busy; backlog replay; device reset; `--syscalls`). ⏳ Device-info request (open question, §7), signing/notarisation, `--config`, `--hid-poll` | VS Code; remote use; Python library |
 | 2b | Python library ([06](06-python-client.md)), in parallel with Phase 3 | script users; retire the legacy repository |
 | 3 | TUI ([05](05-tui.md)), the smallest complete front end, validates Phase 1 | GUI |
 | 4 | GUI ([04](04-native-gui.md)) | retire Python |
@@ -434,5 +434,11 @@ Hub flags are in the hub plan.
 
 ## 7. Open questions
 
-None. All questions from rounds 1–4 are answered and recorded as decisions 1–31 (§1) and in §3.5.
-New questions that come up during Phase 0 (`spec/protocol.md` and vectors) go here.
+All questions from rounds 1–4 are answered and recorded as decisions 1–31 (§1) and in §3.5.
+
+- **Q1 (Phase 2): requesting the device info.** The device sends port 62 at boot and when the host
+  returns after more than 2 s of silence. A host that connects sooner (a hub restarted within 2 s,
+  or a client reconnecting directly) never receives it, so it cannot pick logdata from `app_hash`
+  (`-l` works around it). Seen on hardware. Proposal: a host MAY send an **empty port-62 frame**;
+  the device replies with its device info. Hubs send it when they open a device; direct clients
+  send it on connect. Older firmware ignores it, or logs "no handler for port 62".

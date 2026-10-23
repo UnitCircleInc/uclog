@@ -7,7 +7,7 @@ Next-generation ucLog clients for Unit Circle devices. Every client shares one w
 | Protocol spec + test vectors | [`spec/`](spec/protocol.md) | [README §3](docs/plans/README.md) | Phase 0 done (firmware changes pending) |
 | Shared Rust crates + `uclog list/decode/term/fw-update` | [`native/`](native/README.md) | [README §4, §6](docs/plans/README.md) | **Phase 1**: done; verified on hardware over serial (HID, BLE, UDP and FW update not yet) |
 | Bare-metal device library + NUCLEO-L452RE-P test firmware | [`firmware/`](firmware/README.md) | — | test target for the hosts |
-| Hub (Serial/HID/BLE/UDP ↔ TCP/WebSocket/UDP) | `native/` (Rust) | [01](docs/plans/01-hub-server.md) | planned |
+| Hub (Serial/HID/BLE/UDP ↔ TCP/WebSocket/UDP) | [`native/`](native/README.md) (`uclog hub`, `uclog-hub`) | [01](docs/plans/01-hub-server.md) | **Phase 2**: done; verified on hardware over serial |
 | Web version / `<uc-log>` component | `web/` (TypeScript) | [02](docs/plans/02-web.md) | planned |
 | VS Code extension | `web/apps/vscode` | [03](docs/plans/03-vscode.md) | planned |
 | Native GUI (`uclog gui`) | `native/` (Rust) | [04](docs/plans/04-native-gui.md) | planned |

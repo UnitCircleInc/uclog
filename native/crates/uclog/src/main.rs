@@ -1,5 +1,5 @@
-//! `uclog`: ucLog client tools (Phase 1: list, decode, term, fw-update).
-//! `gui`, `tui` and `hub` arrive in later phases (plans README §6).
+//! `uclog`: ucLog client tools (list, decode, term, fw-update, hub).
+//! `gui` and `tui` arrive in later phases (plans README §6).
 
 mod cmd;
 
@@ -29,6 +29,8 @@ enum Command {
     Term(cmd::term::TermArgs),
     /// Update device firmware with a signed image (port 59, falling back to port 3).
     FwUpdate(cmd::fw::FwArgs),
+    /// Share one device with one TCP/WebSocket/UDP client at a time (also `uclog-hub`).
+    Hub(uclog_hub::HubArgs),
 }
 
 /// Device selection, shared by subcommands that open a device.
@@ -85,7 +87,10 @@ pub fn default_cache_dir() -> Option<PathBuf> {
 
 fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
+    // The hub reports connections at info level; the client tools are quiet by default.
+    let is_hub = matches!(cli.cmd, Command::Hub(_));
     let level = match cli.verbose {
+        0 if is_hub => "info",
         0 => "warn",
         1 => "info",
         _ => "debug",
@@ -101,6 +106,7 @@ fn main() -> std::process::ExitCode {
             Command::Decode(a) => cmd::decode::run(a).await,
             Command::Term(a) => cmd::term::run(a).await,
             Command::FwUpdate(a) => cmd::fw::run(a).await,
+            Command::Hub(a) => uclog_hub::run(a, cli.verbose).await.map(|_| std::process::ExitCode::SUCCESS),
         }
     });
     // Background threads (serial/HID readers) must not keep the process alive.

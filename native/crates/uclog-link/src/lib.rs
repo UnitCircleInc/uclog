@@ -7,6 +7,7 @@
 mod ble;
 pub mod discover;
 mod hid;
+pub mod loopback;
 mod net;
 mod serial;
 mod uri;
@@ -16,6 +17,7 @@ use std::fmt;
 use tokio::sync::mpsc;
 
 pub use discover::{Device, Kind};
+pub use net::{is_too_big, set_dont_fragment, WS_BUSY};
 pub use uri::{LinkSpec, UriError};
 
 #[derive(Debug, thiserror::Error)]
@@ -102,6 +104,7 @@ pub async fn open(spec: &LinkSpec) -> Result<Link, LinkError> {
         LinkSpec::Udp { addr } => net::open_udp(spec.clone(), addr).await,
         LinkSpec::Tcp { addr } => net::open_tcp(spec.clone(), addr).await,
         LinkSpec::Ws { url } => net::open_ws(spec.clone(), url).await,
+        LinkSpec::Loopback { opts } => loopback::open(spec.clone(), opts),
         LinkSpec::Auto => Err(LinkError::NotFound("`auto` must be resolved to a device first".into())),
     }
 }
