@@ -1,0 +1,9 @@
+{
+  "name": "@uclog/core",
+  "version": "0.1.0",
+  "description": "ucLog protocol core: framing, logdata decoding, semihost, FW update, session (no DOM)",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "sideEffects": false
+}

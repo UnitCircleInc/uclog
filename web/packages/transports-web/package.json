@@ -1,0 +1,10 @@
+{
+  "name": "@uclog/transports-web",
+  "version": "0.1.0",
+  "description": "ucLog links for the browser: Web Serial, WebHID, Web Bluetooth, WebSocket",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "sideEffects": false,
+  "dependencies": { "@uclog/core": "workspace:*" }
+}

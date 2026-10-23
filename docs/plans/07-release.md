@@ -4,7 +4,7 @@ Shared context, protocol and decisions: [README.md](README.md). D# = decisions (
 
 ## 1. Goal
 
-Phases 1–4 and 2b are built and verified on macOS, over serial, with the NUCLEO-L452RE-P. This
+Phases 1–5 and 2b are built and verified on macOS, with the NUCLEO-L452RE-P over serial. This
 phase collects what is still missing before a first public release:
 
 - signed packages and published artefacts;
@@ -13,8 +13,8 @@ phase collects what is still missing before a first public release:
 - the few features the earlier phases left out.
 
 These items came from the "Not done yet" notes of plans [01](01-hub-server.md),
-[04](04-native-gui.md), [05](05-tui.md) and [06](06-python-client.md), and from
-`.github/workflows/release.yml`. This phase does not depend on Phases 5 and 6. Its packaging work
+[02](02-web.md), [04](04-native-gui.md), [05](05-tui.md) and [06](06-python-client.md), and from
+`.github/workflows/release.yml`. This phase does not depend on Phase 6. Its packaging work
 is reused by Plan 03, which bundles the signed hub binaries.
 
 ## 2. Repository and CI
@@ -44,6 +44,7 @@ is reused by Plan 03, which bundles the signed hub binaries.
 | 11 | PyPI: create the `uclog` project and set up a **trusted publisher** (GitHub OIDC) for this repository, `release.yml` and a `pypi` environment with required reviewers. Do the same on TestPyPI | 06 §9 | S |
 | 12 | A publish job in `release.yml` (`pypa/gh-action-pypi-publish`, `id-token: write`, no API token). It publishes the wheels and sdist on a `v*` tag, after the build jobs. Publish to TestPyPI first, then install from it on 3 OS | 06 §9 | S |
 | 13 | Versioning: one version for the Rust workspace and the Python package (both `0.1.0` now); the tag must match, checked in CI | — | S |
+| 13a | npm: publish `@uclog/element` (Changesets, provenance) and a versioned single-file build on GitHub Releases or a CDN | 02 §7, §10 | S |
 | 14 | First release: tag, publish the draft GitHub release, release notes | — | S |
 
 ## 5. Platforms
@@ -68,6 +69,7 @@ is reused by Plan 03, which bundles the signed hub binaries.
 | 25 | mDNS hub discovery from a second machine (`uclog list`, Connect dialogs, Python) | 06 §9 | S |
 | 26 | Hub soak: 1 h at the maximum log rate with an intermittently stalled client; memory stays bounded by `--backlog` | 01 §10 | S |
 | 27 | GUI and TUI against each device kind and through a hub (the manual matrix of 04 §7 task 12) | 04 §7 | M |
+| 27a | Web: Web Serial, WebHID and Web Bluetooth with real devices (the choosers cannot be automated); Chrome and Edge on Windows, macOS and Linux | 02 §10 | M |
 
 ## 7. Remaining features
 
@@ -81,4 +83,4 @@ is reused by Plan 03, which bundles the signed hub binaries.
 
 - The firmware implementation of F1–F7 in the product firmware (Phase 0). It lives outside this
   repository; the test firmware in `firmware/` already has F6 and F7.
-- The web client and VS Code extension (Phases 5 and 6).
+- The VS Code extension (Phase 6).

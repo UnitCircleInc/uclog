@@ -1,0 +1,22 @@
+{
+  "name": "@uclog/element",
+  "version": "0.1.0",
+  "description": "<uc-log>: the embeddable ucLog web client (ESM and IIFE bundles, workers inlined)",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/uclog-element.js",
+  "module": "./dist/uclog-element.js",
+  "exports": {
+    ".": "./dist/uclog-element.js",
+    "./iife": "./dist/uclog-element.iife.js",
+    "./workers/*": "./dist/workers/*"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "vite build && vite build --mode iife && vite build --mode workers"
+  },
+  "dependencies": {
+    "@uclog/ui": "workspace:*",
+    "@uclog/workers": "workspace:*"
+  }
+}

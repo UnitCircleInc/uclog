@@ -1,0 +1,48 @@
+# The web version (plan 02): type check, unit tests with spec/vectors, the <uc-log> bundles, and
+# Playwright end-to-end tests in Chromium (including the native hub over WebSocket).
+name: web
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Linux build dependencies (hidapi, btleplug)
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev libdbus-1-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native
+      - name: Build uclog-hub (for the hub end-to-end test)
+        working-directory: native
+        run: cargo build --locked -p uclog-hub
+      - name: Install
+        run: npx -y pnpm@12.10.1 install --frozen-lockfile
+      - name: Type check
+        run: npx tsc -p tsconfig.json
+      - name: Unit tests
+        run: npx vitest run
+      - name: Build the element bundles
+        working-directory: web/packages/element
+        run: npx vite build && npx vite build --mode iife && npx vite build --mode workers
+      - name: End-to-end tests
+        env:
+          UCLOG_E2E_CHANNEL: chromium
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: web/test-results

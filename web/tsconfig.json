@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable", "WebWorker.ImportScripts"],
+    "types": ["w3c-web-serial", "w3c-web-hid", "web-bluetooth", "vite/client"],
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "noFallthroughCasesInSwitch": true,
+    "useDefineForClassFields": false,
+    "experimentalDecorators": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["packages/*/src", "packages/*/test", "packages/*/vite.config.ts", "apps/*/src", "apps/*/vite.config.ts", "e2e", "vitest.config.ts", "playwright.config.ts"]
+}

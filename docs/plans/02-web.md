@@ -165,3 +165,72 @@ Distribution: npm `@uclog/element` + versioned single-file build on GitHub Relea
   vendor-defined usage page.**
 - Whether Web Serial/WebHID objects can run in workers depends on the Chrome version. The design
   works either way (main thread forwards, or streams are transferred).
+
+## 10. Implementation notes (Phase 5)
+
+Implemented in [`web/`](../../web/README.md). Where it differs from the plan above:
+
+- **Packages and tools:**
+  - pnpm 12 (run with `npx pnpm@12.10.1`), TypeScript 5.9, Vite 8, Vitest 5, Playwright 1.64,
+    Lit 3.3, xterm.js 6, uPlot 1.6.
+  - **No `cbor-x`**: `@uclog/core` has its own small CBOR codec, like the Python library. Logdata
+    needs array map keys, and the vectors compare encoded bytes.
+  - Workspace packages export their TypeScript sources; only `@uclog/element` is built.
+  - Changesets and npm publishing are not set up yet (Plan 07).
+- **Threads:**
+  - **Web Serial stays on the main thread**, like WebHID and Web Bluetooth. It forwards raw
+    chunks and does nothing else. Transferring `port.readable`/`writable` to a worker would leave
+    the port impossible to close.
+  - Back-pressure: log frames go to the decode worker in acknowledged batches. With 64 batches
+    outstanding, log frames are dropped and then reported as one `decoder_behind` error record
+    (a new kind; protocol.md §7 lists the others).
+- **Session:**
+  - The transport half (`TransportSession`) and decode half (`DecodeSession`) are separate
+    classes in `@uclog/core`, so they run in the two workers and also together in unit tests.
+  - Direct links ask for the device info (F7) and hold log frames for up to 1 s for the reply,
+    like the native session.
+- **Resolver:**
+  - Manual files, then IndexedDB, then the logdata service.
+  - The "sibling `.bin`" step is left out: a page cannot see the files next to one the user
+    picked.
+  - A file loaded manually is saved in the cache under the device's `app_hash`.
+  - The demo page loads `spec/vectors/sample.logdata` under the simulated device's `app_hash`
+    (`5a…5a.logdata`), so it never applies to real devices.
+- **Semihost files:** *Serve files from folder…* uses the File System Access API. Writes reach the
+  file when the device closes it (`createWritable`), so a file opened read-write does not see
+  its own unflushed writes.
+- **Simulated device:** `loopback:` in TypeScript, matching the native one (same commands and
+  plots). It runs in the transport worker.
+- **Element:**
+  - `<uc-log>` starts its workers a microtask after it is connected. A page that has the element
+    before the bundle's script would otherwise upgrade it before the bundle sets its inlined
+    workers.
+  - `ready()` and a `uc-ready` event were added for that.
+- **Tests:**
+  - **Vitest (76):**
+    - every `spec/vectors` file;
+    - the session halves against the simulated device: decoding, the cache, semihost incl.
+      stdin, plots, oversize sends;
+    - FW update on 59, fallback to 3, cancel;
+    - the semihost sandbox, the resolver (fetch, token, problem details, 404), printf, the log
+      store;
+    - the worker hosts over a real `MessageChannel`, incl. back-pressure;
+    - button payloads, the zip writer.
+  - **Playwright (Chrome):**
+    - every view with the simulated device;
+    - settings and buttons;
+    - both built bundles on a third-party page (IIFE with `worker-src blob:` only; ESM with
+      `worker-base`);
+    - the native hub over WebSocket, incl. "hub busy";
+    - throughput and follow/scroll behaviour.
+  - **Hardware:** `e2e/hw.spec.ts`, the device through the native hub.
+- **Measured:**
+  - 20 000 logs in 0.11 s (about 175 000 logs/s), no main-thread long tasks.
+  - Bundle: 135 KB gzip, plus 29 KB for uPlot when the first line plot opens.
+  - On the NUCLEO-L452RE-P through the hub: the firmware's `test` lines (every argument kind)
+    and a 5000-log burst decoded with no error records.
+- **Not done yet** ([Plan 07](07-release.md)):
+  - Web Serial, WebHID and Web Bluetooth with real devices: the choosers cannot be automated, so
+    this needs a manual run.
+  - Chrome on Windows and Linux.
+  - npm publishing of `@uclog/element` and a versioned CDN build.

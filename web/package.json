@@ -1,0 +1,23 @@
+{
+  "name": "uclog-web",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.10.1",
+  "scripts": {
+    "build": "pnpm --filter @uclog/element build && pnpm --filter demo build",
+    "dev": "pnpm --filter demo dev",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@types/node": "24.19.1",
+    "@types/w3c-web-hid": "1.0.7",
+    "@types/w3c-web-serial": "1.0.8",
+    "@types/web-bluetooth": "0.0.21",
+    "typescript": "5.9.3",
+    "vite": "8.3.4",
+    "vitest": "5.0.3"
+  }
+}

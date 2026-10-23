@@ -1,0 +1,17 @@
+{
+  "name": "@uclog/workers",
+  "version": "0.1.0",
+  "description": "ucLog transport and decode workers, and the main-thread client that drives them",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./transport.worker": "./src/transport.worker.ts",
+    "./decode.worker": "./src/decode.worker.ts",
+    "./default-workers": "./src/default-workers.ts"
+  },
+  "dependencies": {
+    "@uclog/core": "workspace:*",
+    "@uclog/transports-web": "workspace:*"
+  }
+}
