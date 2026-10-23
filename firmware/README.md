@@ -165,7 +165,7 @@ Everything decoded correctly:
 
 | Check | Result |
 |---|---|
-| `burst 5000` | 944 ms with 0 dropped. All 5,000 decoded on the host |
+| `burst 5000` | 95,000 bytes (19.0 per log) in 950 ms = 100,000 B/s, the full 1 Mbaud line rate (8N1); 0 dropped. All 5,000 decoded on the host |
 | 7 queued commands, repeated runs | Every reply arrived; `rx_errors` 0, `rx_uart_errors` 0, `tx_dropped` 0 |
 | Largest frame, device → host | `big`: 1443 bytes received, 1452 on the wire, CRC-32C matching |
 | Largest frame, host → device | Port 5: 1443 bytes received with matching CRC-32C, then echoed back |
