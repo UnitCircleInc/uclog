@@ -425,7 +425,7 @@ Hub flags are in the hub plan.
 | 1 | ✅ Rust crates: proto, logdata, semihost, link, session (+ `uclog list/decode/term/fw-update`) in [`native/`](../../native/README.md). ✅ Serial verified on a NUCLEO-L452RE-P with the [test firmware](../../firmware/README.md) (logs, port 0/61, semihost incl. stdin and files, reconnect, fatal/reset). ⏳ HID, BLE, UDP, FW update | hub, TUI, GUI |
 | 2 | ✅ Hub ([01](01-hub-server.md)): `uclog-hub` crate, `uclog hub` + `uclog-hub`, `loopback:` device, release workflow. ✅ Verified on the NUCLEO-L452RE-P (TCP, WebSocket, UDP clients; busy; backlog replay; device reset; `--syscalls`). ⏳ Device-info request (open question, §7), signing/notarisation, `--config`, `--hid-poll` | VS Code; remote use; Python library |
 | 2b | Python library ([06](06-python-client.md)), in parallel with Phase 3 | script users; retire the legacy repository |
-| 3 | TUI ([05](05-tui.md)), the smallest complete front end, validates Phase 1 | GUI |
+| 3 | ✅ TUI ([05](05-tui.md)): `uclog tui` with all views, Connect/Settings/Help, `--plain`/`--json`, `--plot-csv`; settings + keyring + legacy import shared for the GUI. ✅ Verified with the loopback device (TestBackend tests, pty runs) and on the NUCLEO directly and through the hub. ⏳ Manual terminal matrix (Windows Terminal/conhost, Linux, SSH) | GUI |
 | 4 | GUI ([04](04-native-gui.md)) | retire Python |
 | 5 | Web ([02](02-web.md)), parallel from Phase 0 | VS Code |
 | 6 | VS Code ([03](03-vscode.md)) | — |

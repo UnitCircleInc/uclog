@@ -1,7 +1,9 @@
-//! `uclog`: ucLog client tools (list, decode, term, fw-update, hub).
-//! `gui` and `tui` arrive in later phases (plans README §6).
+//! `uclog`: ucLog client tools (list, decode, term, tui, fw-update, hub).
+//! `gui` arrives in a later phase (plans README §6).
 
 mod cmd;
+mod settings;
+mod tui;
 
 use std::path::PathBuf;
 
@@ -27,6 +29,8 @@ enum Command {
     Decode(cmd::decode::DecodeArgs),
     /// Interactive terminal on port 61 (or another port); replaces logcmd.py.
     Term(cmd::term::TermArgs),
+    /// Terminal UI: logs, terminal, commands, device info, FW update; replaces uclog-cli.py.
+    Tui(tui::TuiArgs),
     /// Update device firmware with a signed image (port 59, falling back to port 3).
     FwUpdate(cmd::fw::FwArgs),
     /// Share one device with one TCP/WebSocket/UDP client at a time (also `uclog-hub`).
@@ -64,7 +68,7 @@ pub struct LogdataArgs {
     #[arg(long, env = "UCLOG_LOGDATA_TOKEN", hide_env_values = true)]
     pub logdata_token: Option<String>,
     /// Logdata service URL
-    #[arg(long, env = "UCLOG_LOGDATA_URL", default_value = "https://fw.unitcircle.ca")]
+    #[arg(long, env = "UCLOG_LOGDATA_URL", default_value = DEFAULT_LOGDATA_URL)]
     pub logdata_url: String,
 }
 
@@ -80,6 +84,8 @@ impl LogdataArgs {
         }
     }
 }
+
+pub const DEFAULT_LOGDATA_URL: &str = "https://fw.unitcircle.ca";
 
 pub fn default_cache_dir() -> Option<PathBuf> {
     directories::ProjectDirs::from("ca", "unitcircle", "uclog").map(|d| d.cache_dir().join("logdata"))
@@ -105,6 +111,7 @@ fn main() -> std::process::ExitCode {
             Command::List(a) => cmd::list::run(a).await,
             Command::Decode(a) => cmd::decode::run(a).await,
             Command::Term(a) => cmd::term::run(a).await,
+            Command::Tui(a) => tui::run(a).await,
             Command::FwUpdate(a) => cmd::fw::run(a).await,
             Command::Hub(a) => uclog_hub::run(a, cli.verbose).await.map(|_| std::process::ExitCode::SUCCESS),
         }

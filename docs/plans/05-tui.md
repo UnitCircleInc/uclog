@@ -90,3 +90,19 @@ crates (README §6, Phase 3).
 - Very high log rates: render at most every 50 ms and only draw visible rows. The store is a ring.
 - Legacy Windows conhost colour/mouse quirks (crossterm handles most).
 - OSC 52 clipboard support varies by terminal (`arboard` fallback, which needs a display on Linux).
+
+## 8. Implementation notes (Phase 3)
+
+- **Code:** in the `uclog` crate. `src/tui/` holds `app.rs` (pure state: keys and session events
+  become actions), `ui.rs` (drawing), `logs.rs`, `picker.rs`, `lineedit.rs` and `plotcsv.rs`.
+  `src/settings.rs` holds the settings shared with the GUI.
+- **Line input and file picker:** a small built-in line editor and file picker replace
+  `tui-textarea` and `ratatui-explorer`. This avoids pinning their ratatui versions.
+- **Keyring:** `keyring` 3 (macOS Keychain, Windows Credential Manager, Secret Service).
+- **Keys:** digits are typed in the Terminal view, so views are also on **Alt+1–5**, and **Esc**
+  leaves the Terminal view.
+- **Tests:**
+  - `src/tui/tests_ui.rs` renders the real UI into `TestBackend`, fed by the loopback device.
+  - Pseudo-terminal runs of the release binary on macOS, against loopback, the NUCLEO, and the
+    NUCLEO through a hub.
+  - Still to do: the manual Windows/Linux/SSH matrix.

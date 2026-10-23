@@ -7,12 +7,19 @@ authors.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+ansi-to-tui = "8.0.1"
 anyhow = "1.0.104"
+arboard = { version = "3.7.0", default-features = false }
 clap = { version = "4.5.61", features = ["derive", "env"] }
 crossterm = { version = "0.29.0", features = ["event-stream"] }
 directories = "6.0.0"
 futures-lite = "2.6.1"
 hex = "0.4.3"
+keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
+ratatui = "0.30.2"
+regex = "1.13.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
 tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "sync", "time", "io-std", "io-util", "signal"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }

@@ -309,8 +309,13 @@ async fn remote_peer_needs_approval() {
         let args = ["t", "--port", "0", "--bind", "0.0.0.0", "--no-mdns", "--no-registry", "-d", "loopback:rate=20"];
         uclog_hub::start(T::parse_from(args).h, 0).await.unwrap()
     };
-    // From a non-loopback address, with no console and no allow rule: rejected.
-    let mut s = TcpStream::connect(SocketAddr::new(ip, h.port)).await.unwrap();
+    // From a non-loopback address, with no console and no allow rule: rejected. Skip when this
+    // machine cannot reach its own address (VPNs, firewalls).
+    let Ok(Ok(mut s)) = timeout(Duration::from_secs(2), TcpStream::connect(SocketAddr::new(ip, h.port))).await else {
+        eprintln!("skipped: cannot connect to {ip}");
+        h.shutdown().await;
+        return;
+    };
     s.write_all(&[0]).await.unwrap();
     let mut b = [0u8; 64];
     assert_eq!(timeout(Duration::from_secs(2), s.read(&mut b)).await.unwrap().unwrap_or(0), 0);
@@ -331,7 +336,8 @@ async fn remote_peer_needs_approval() {
         &cidr,
     ];
     let h = uclog_hub::start(T::parse_from(args).h, 0).await.unwrap();
-    let mut s = TcpStream::connect(SocketAddr::new(ip, h.port)).await.unwrap();
+    let mut s =
+        timeout(Duration::from_secs(2), TcpStream::connect(SocketAddr::new(ip, h.port))).await.unwrap().unwrap();
     s.write_all(&[0]).await.unwrap();
     let n = timeout(Duration::from_secs(2), s.read(&mut b)).await.unwrap().unwrap();
     assert!(n > 0);

@@ -1,7 +1,7 @@
 # Native workspace (Rust)
 
-Phases 1 and 2 of [docs/plans](../docs/plans/README.md): the shared crates, the `uclog`
-subcommands, and the hub. `gui` and `tui` come in later phases.
+Phases 1–3 of [docs/plans](../docs/plans/README.md): the shared crates, the `uclog`
+subcommands, the hub, and the terminal UI. `gui` comes in a later phase.
 
 | Crate | Contents |
 |---|---|
@@ -11,7 +11,7 @@ subcommands, and the hub. `gui` and `tui` come in later phases.
 | `uclog-link` | Serial, HID, BLE, UDP (Don't Fragment), TCP and WebSocket links; the simulated `loopback:` device; device URIs; USB/HID/BLE/mDNS discovery |
 | `uclog-session` | pulses and wake gap, liveness, dispatch, logdata resolver, semihost bridge, FW update (59 → 3) |
 | `uclog-hub` | the hub ([plan 01](../docs/plans/01-hub-server.md)): backlog ring, device task, raw/WebSocket/TLS on one port, UDP clients, admission, port-63 routing, mDNS, local registry. Library plus the small `uclog-hub` executable |
-| `uclog` | the executable: `list`, `decode`, `term`, `fw-update`, `hub` |
+| `uclog` | the executable: `list`, `decode`, `term`, `tui`, `fw-update`, `hub`; settings shared by the front ends |
 
 ```sh
 cargo test                       # unit tests, spec/vectors, fake-device session tests, hub tests, CLI tests
@@ -30,6 +30,51 @@ uclog fw-update -d auto build/zephyr/zephyr.signed.bin
 ```
 
 `-v` logs info, `-vv` adds a hex trace of every byte sent and received (`uclog::wire`).
+
+## TUI
+
+```sh
+uclog tui                                          # connects when exactly one device matches, else opens Connect
+uclog tui -d tcp://lab-pc:9000 --files-dir ./files
+uclog tui -d serial:/dev/ttyACM0 --plain | grep ERROR   # streaming: ts:level:file:line:text
+uclog tui --json --level WARN > warnings.jsonl          # streaming: one JSON record per line
+uclog tui --plot-csv plots/                        # port-60 plot data to CSV (the TUI does not draw plots)
+```
+
+- **Views:**
+  - **1 Logs**, with the terminal below it.
+  - **2 Terminal** (port 61).
+  - **3 Commands** (port 0).
+  - **4 Device**: device info, logdata and counters.
+  - **5 FW Update**.
+- **Pop-ups:**
+  - **F1** Help.
+  - **F2** Connect: devices, local and mDNS hubs, BLE scan, or a typed address.
+  - **F3** Load logdata.
+  - **Ctrl+S** Settings.
+- **Logs:**
+  - Filters: level (`+`/`-`), source (`f`, or `s` for the selected row's source), line (`n`) and
+    regex search (`/`).
+  - `p` pauses and `d` discards filtered lines.
+  - `c` copies the row (OSC 52 plus the OS clipboard) and Ctrl+E exports CSV.
+  - Error records are always shown and are counted in the status bar.
+- **Terminal:**
+  - Line mode with history (saved in the settings).
+  - Character mode with Ctrl+T.
+  - ANSI colours are shown.
+  - F6–F12 are buttons.
+  - Semihost stdout appears in the terminal, and stdin reads take the next line.
+- **Commands:** buttons from the settings. A string sends a text line; a map sends CBOR, with
+  `$name` placeholders asked for when pressed (as the legacy GUI did). CBOR responses are
+  pretty-printed.
+- **Leaving the Terminal view:** **Esc**, or **Alt+1–5** from any view (digits are typed there).
+  **Ctrl+Q** quits.
+- **Reconnect:** a direct device that goes away is reconnected every second until it is back.
+- **Settings:**
+  - Stored in `settings.json` in the platform config directory (override with `--config`).
+  - The logdata token is kept in the OS keyring.
+  - On first run, `~/ucLogger.json` is imported: buttons, history, max lines and the files
+    directory.
 
 ## Hub
 

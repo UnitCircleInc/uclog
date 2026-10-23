@@ -99,6 +99,7 @@ enum Cmd {
     LoadLogdata(PathBuf, oneshot::Sender<Result<u8, String>>),
     SubscribeFw(oneshot::Sender<mpsc::Receiver<(u8, Vec<u8>)>>),
     AddImage(PathBuf),
+    SetFilesDir(Option<PathBuf>),
     Close,
 }
 
@@ -143,6 +144,11 @@ impl SessionHandle {
     /// Run a FW update.
     pub async fn fw_update(&self, image: &[u8], progress: impl Fn(FwProgress)) -> Result<u8, FwError> {
         fwupdate::run(self, image, progress).await
+    }
+
+    /// Change the semihost sandbox directory (open files are closed).
+    pub async fn set_files_dir(&self, dir: Option<PathBuf>) {
+        let _ = self.cmd.send(Cmd::SetFilesDir(dir)).await;
     }
 
     pub async fn close(&self) {
@@ -364,6 +370,7 @@ impl Session {
                     self.cfg.resolver.images.push(p);
                 }
             }
+            Cmd::SetFilesDir(d) => self.semihost.set_files_dir(d),
             Cmd::Close => {}
         }
     }
