@@ -313,8 +313,24 @@ impl Session {
 
     async fn on_cmd(&mut self, c: Cmd) {
         match c {
+            Cmd::Send(port, data) if data.len() > uclog_proto::MAX_PORT_DATA => {
+                let text = format!(
+                    "send: {} bytes for port {port} exceed the {}-byte limit (protocol.md §2.4); not sent",
+                    data.len(),
+                    uclog_proto::MAX_PORT_DATA
+                );
+                self.error("send_oversize", text, None).await;
+            }
             Cmd::Send(port, data) => {
                 let _ = self.out.send(wire_port(port, &data)).await;
+            }
+            Cmd::SendRaw(p) if p.len() > uclog_proto::MAX_PAYLOAD => {
+                let text = format!(
+                    "send: {}-byte payload exceeds the {}-byte limit (protocol.md §2.4); not sent",
+                    p.len(),
+                    uclog_proto::MAX_PAYLOAD
+                );
+                self.error("send_oversize", text, None).await;
             }
             Cmd::SendRaw(p) => self.send_payload(&p).await,
             Cmd::Stdin(line) => match self.stdin_wanted.take() {

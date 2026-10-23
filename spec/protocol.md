@@ -43,7 +43,7 @@ Every link carries the **same byte stream**. A hub forwards whole frames unchang
 
 ### 2.1 Wire encoding
 
-A frame carries one **payload** (0 to 4094 bytes; §2.2 limits the encoded size). On the wire it is:
+A frame carries one **payload** (0 to **1444** bytes; §2.4). On the wire it is:
 
 ```
 00  COBS(payload)  00
@@ -64,9 +64,9 @@ A frame carries one **payload** (0 to 4094 bytes; §2.2 limits the encoded size)
 - **Empty runs are ignored.** They are normal: they are the gap between frames, and pulses.
 - Bytes received **before the first `00`** after a link opens are dropped. They belong to a frame
   whose start was missed.
-- **Maximum encoded frame size: 4096 bytes.** A longer run is discarded up to the next `00` and
-  reported as a framing error (§7). The size is configurable (`--max-frame`); every
-  implementation MUST support at least 4096.
+- **Maximum encoded frame size: 1450 bytes** between the delimiters (§2.4). A longer run is
+  discarded up to the next `00` and reported as a framing error (§7). Receivers MAY accept longer
+  runs (`--max-frame`), but senders MUST NOT send them.
 - A run that is not valid COBS is discarded and reported as a framing error (§7). Invalid means:
   a code byte runs past the end of the run.
 - An encoded frame `01` decodes to an empty payload, which is a pulse (§2.3). It is not an error.
@@ -92,6 +92,24 @@ A frame carries one **payload** (0 to 4094 bytes; §2.2 limits the encoded size)
 - Pulses received by a hub from its client are **dropped** (not forwarded to the device). The hub
   pulses the device itself. Pulses received from the device MAY be forwarded to the client; at
   minimum, the hub MUST send the client a pulse every 0.5 s while the device is alive.
+
+### 2.4 Size limit
+
+A frame on the wire, **both `00` delimiters included, is at most 1452 bytes**. That is the UDP
+payload of an unfragmented datagram on a 1500-byte Ethernet MTU with IPv6 (1500 − 40 − 8); IPv4
+leaves more room. One frame therefore always fits in one datagram (§4.4), whatever the link.
+
+| Quantity | Maximum | Notes |
+|---|---|---|
+| Frame on the wire | 1452 | `00 ‖ COBS(payload) ‖ 00` |
+| Encoded run (between delimiters) | 1450 | the frame scanner limit (§2.2) |
+| Payload | 1444 | worst-case COBS overhead is one byte per 254 (6 bytes at this size) |
+| Port data (type-3 frame, after `b0`) | 1443 | `log_tx()` limit in the device library |
+
+The legacy device code used a 1500-byte port buffer (about one Ethernet MTU); it now uses 1443.
+Senders MUST NOT exceed these sizes on any link, so that a hub can forward any frame to a UDP
+client. Port protocols size their messages accordingly (semihost READ §5.5.2, FW update
+`block-size` §5.4).
 
 ---
 
@@ -185,7 +203,13 @@ type/port as in §3.1. The peek reads at most `e[0..2]`. Vectors: `peek_mux.json
 ### 4.4 UDP
 
 - Each datagram carries one or more **whole** frames, each `00`-delimited. There is no reassembly
-  across datagrams. Datagrams SHOULD be ≤ 1200 bytes.
+  across datagrams. A datagram is **at most 1452 bytes** (§2.4); senders pack frames up to that
+  size.
+- **No fragmentation.** Senders set Don't Fragment (IPv4 `DF`; for IPv6, `IPV6_DONTFRAG` so the
+  sending host does not fragment either). If a datagram is refused as too large (`EMSGSIZE`,
+  ICMP "Fragmentation Needed" or ICMPv6 "Packet Too Big"), the sender reports an error and does
+  not retry with smaller datagrams. **UDP is not supported on paths with an MTU below 1500 bytes**
+  (VPNs, some tunnels and PPPoE links); use TCP or WebSocket to a hub there.
 - Used for network devices (device side) and for a hub's optional UDP client (D12).
 
 ### 4.5 Hub links (TCP, WebSocket)
@@ -250,6 +274,8 @@ image. Hosts re-resolve logdata when `app_hash` changes. Vectors: `device_info.j
 | `fw-block` | `data` (bytes, ≤ `block-size`) | `{rsp: "fw-block"}` | 5 s |
 | `fw-schedule` | `timestamp` (int) | `{rsp: "fw-schedule"}` or with `error` (text) | 5 s |
 
+- The device chooses `block-size` so that every frame stays within §2.4. A `block-size` of at
+  most 1024 does so on both ports (port 3 adds inner COBS, CRC and delimiters).
 - Messages with an `event` key are progress information and are ignored by the state machine.
 - A reply with an `error` key fails the update; the error text is shown.
 - The image is the signed `.bin` file, sent from offset 0 in `block-size` chunks; the last chunk
@@ -308,9 +334,9 @@ All replies start with `i32 r, i32 errno`. On success, `errno = 0`. File system 
 | 6 | FSTAT | `i32 fid` | `i32 r, i32 errno, u32 mode, u32 ino, i32 dev (=0), u32 nlink, u32 uid, u32 gid, u32 size, u32 atime, u32 mtime, u32 ctime` (48 bytes) |
 | 7 | CLOSE | `i32 fid` | `i32 r, i32 errno` |
 | 8 | OPEN | `i32 flags ‖ path` (UTF-8, no terminator) | `i32 fid, i32 errno` |
-| 9 | WRITE | `u32 fid ‖ data`. **Bit 31 set = no reply wanted**; `fid = value & 0x7FFFFFFF` | `i32 n, i32 errno` (unless bit 31) |
+| 9 | WRITE | `u32 fid ‖ data` (data ≤ 1438 bytes, §2.4). **Bit 31 set = no reply wanted**; `fid = value & 0x7FFFFFFF` | `i32 n, i32 errno` (unless bit 31) |
 | 10 | LSEEK | — | not supported → `ENOSYS` |
-| 11 | READ | `i32 fid, u32 len` | `i32 n, i32 errno ‖ n bytes`. `n` may be less than `len`: hosts return at most **3800** bytes per reply so it fits in one frame (§2.2) |
+| 11 | READ | `i32 fid, u32 len` | `i32 n, i32 errno ‖ n bytes`. `n` may be less than `len`: hosts return at most **1024** bytes per reply so it fits in one frame (§2.4) |
 | 12 | MKDIR | `i32 mode ‖ path` | `i32 r, i32 errno` |
 
 - **fids** are host-side handles in a per-session table. Host file descriptors are never exposed.
@@ -494,7 +520,9 @@ Nothing is silently dropped. Suggested texts:
 | Kind | Text |
 |---|---|
 | `framing_invalid` | `framing: invalid COBS (n bytes) near <hex…>` |
-| `framing_oversize` | `framing: frame exceeded 4096 bytes, discarded n bytes` |
+| `framing_oversize` | `framing: frame exceeded 1450 bytes, discarded n bytes` |
+| `send_oversize` | `send: n bytes for port N exceed the 1443-byte limit (protocol.md §2.4); not sent` (a host refusing to send) |
+| `udp_too_big` | `UDP: datagram refused as too large (EMSGSIZE / fragmentation needed); the path MTU is below 1500, which UDP links do not support` |
 | `no_logdata` | `decode: no logdata for target T (addr 0x…) [<hex>]` |
 | `unknown_format` | `decode: unknown format addr 0x… in <file> [<hex>]` |
 | `missing_arg` | `decode: <file>:<line> "<fmt>" — missing arg k (<kind>)` |
@@ -545,4 +573,6 @@ section covers what a client sees.
   unimplemented ops). The `WRITE` fid mask is 31 bits.
 - The hub carries only the raw stream: no per-port TCP servers and no decoded CBOR stream.
 - Every frame starts with `00`, and senders respect the ≥ 50 ms wake gap after more than 2 s idle.
+- Frames are limited to 1452 bytes on the wire (§2.4; legacy: a 1500-byte port buffer, and hosts
+  accepted anything). UDP datagrams are sent with Don't Fragment.
 - The string argument escaping (§6.3) replaces Python `repr()`.

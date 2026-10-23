@@ -53,7 +53,7 @@ def gen_cobs():
     ('zero in middle', b'123\x00456'),
     ('only zeros', b'\x00' * 10),
     ('leading zero, 254 run, zero, tail', b'\x00' + b'1' * 254 + b'\x00123456'),
-    ('1500 bytes no zero', b'0123456789' * 150),
+    ('1444 bytes no zero (max payload, encodes to 1450)', (b'0123456789' * 145)[:1444]),
     ('253 no zero', r(1, 254)),
     ('253 then zero', r(1, 254) + b'\x00'),
     ('254 no zero (no trailing 01)', r(1, 255)),
@@ -91,6 +91,8 @@ def gen_cobs():
 def gen_scanner():
   f1 = ucref.wire(ucref.mux_enc(61, b'hi'))
   f2 = ucref.wire(ucref.mux_enc(62, ucref.cbor_dumps({'board': 'x'})))
+  fmax = ucref.wire(ucref.mux_enc(61, bytes(range(1, 256)) * 5 + b'x' * (ucref.MAX_PORT_DATA - 1275)))
+  assert len(fmax) == ucref.MAX_WIRE, len(fmax)
   cases = [
     ('one frame', [f1]),
     ('two frames back to back', [f1 + f2]),
@@ -101,14 +103,16 @@ def gen_scanner():
     ('garbage before first delimiter is dropped', [b'\x41\x42' + f1]),
     ('oversize run is discarded, next frame survives',
      [b'\x00' + b'\x01' * 5000 + b'\x00', f1]),
+    ('largest frame: 1450-byte run, 1452 on the wire', [fmax]),
+    ('1451-byte run is oversize', [b'\x00' + b'\x01' * 1451 + b'\x00', f1]),
   ]
   out = []
   for name, chunks in cases:
-    sc = ucref.FrameScanner(max_frame=4096)
+    sc = ucref.FrameScanner(max_frame=ucref.MAX_FRAME)
     ev = []
     for c in chunks:
       ev += sc.feed(c)
-    out.append({'name': name, 'max_frame': 4096, 'chunks': [h(c) for c in chunks],
+    out.append({'name': name, 'max_frame': ucref.MAX_FRAME, 'chunks': [h(c) for c in chunks],
                 'events': [{'frame': h(v)} if k == 'frame' else {'oversize': v} for k, v in ev]})
   return {'description': 'Frame scanner (protocol.md §2.2). Feed chunks in order; the emitted '
                          'events must match. frame = COBS-encoded bytes between delimiters. '

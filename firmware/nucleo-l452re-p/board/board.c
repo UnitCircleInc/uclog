@@ -1,126 +1,127 @@
 // NUCLEO-L452RE-P: 80 MHz from HSI16 + PLL, USART2 (PA2/PA3, ST-LINK virtual COM port) at
-// 1 Mbaud, SysTick at 1 kHz, user LED LD2 on PB13. Implements the ucLog port interface.
+// 1 Mbaud with DMA (RX: DMA1 channel 6, circular; TX: DMA1 channel 7, linear from the log
+// ring buffer), SysTick at 1 kHz, user LED LD2 on PB13. Implements the ucLog port interface.
+//
+// Startup code and SystemInit() (FPU enable) come from STM32CubeL4.
 
 #include "board.h"
 
 #include <errno.h>
 #include <stddef.h>
-#include <string.h>
 
+#include <stm32l4xx.h>
+#include <stm32l4xx_ll_bus.h>
+#include <stm32l4xx_ll_dma.h>
+#include <stm32l4xx_ll_rcc.h>
+#include <stm32l4xx_ll_system.h>
+#include <stm32l4xx_ll_usart.h>
+
+#include "cb.h"
+#include "dma.h"
+#include "gpio.h"
 #include "log.h"
-#include "stm32l452.h"
+#include "uart.h"
 
-#define SYSCLK_HZ 80000000u
 #define BAUD 1000000u
 
 static volatile uint32_t ms;
 
 // ---------------------------------------------------------------------------------------------
-// Startup
+// UART + DMA (the Unit Circle driver configuration style)
 
-extern uint32_t _sidata, _sdata, _edata, _sbss, _ebss, _estack;
-extern int main(void);
-extern void __libc_init_array(void);
+static const gpio_alternate_t uart_tx_pin = GPIO_ALTERNATE(A, 2, UP, PUSHPULL, VERY_HIGH, LL_GPIO_AF_7);
+static const gpio_alternate_t uart_rx_pin = GPIO_ALTERNATE(A, 3, UP, PUSHPULL, VERY_HIGH, LL_GPIO_AF_7);
+static const gpio_output_t led = GPIO_OUTPUT(B, 13, NO, PUSHPULL, LOW, 0);
 
-void Reset_Handler(void) {
-  SCB_CPACR |= 0xFu << 20; // CP10/CP11 full access: FPU on before any FP instruction
-  __asm volatile("dsb\n isb");
-  memcpy(&_sdata, &_sidata, (size_t)((char *)&_edata - (char *)&_sdata));
-  memset(&_sbss, 0, (size_t)((char *)&_ebss - (char *)&_sbss));
-  __libc_init_array();
-  main();
-  while (1) {
-  }
-}
-
-static void Default_Handler(void) {
-  LOG_FATAL("unexpected interrupt");
-}
-
-void HardFault_Handler(void) {
-  LOG_FATAL("hard fault");
-}
-
-void SysTick_Handler(void);
-void USART2_IRQHandler(void);
-
-// 16 core exceptions + 85 STM32L452 interrupts.
-__attribute__((used, section(".isr_vector"))) static void (*const vectors[16 + 85])(void) = {
-    [2 ... 16 + 84] = Default_Handler, // NMI and everything not listed below
-    [0] = (void (*)(void))&_estack,
-    [1] = Reset_Handler,
-    [3] = HardFault_Handler,
-    [4] = HardFault_Handler, // MemManage
-    [5] = HardFault_Handler, // BusFault
-    [6] = HardFault_Handler, // UsageFault
-    [15] = SysTick_Handler,
-    [16 + USART2_IRQn] = USART2_IRQHandler,
+static dma_t uart_tx_dma = {
+    .dma = DMA1,
+    .ch = LL_DMA_CHANNEL_7,
+    .req = LL_DMA_REQUEST_2, // USART2_TX
+    .irq = DMA1_Channel7_IRQn,
+    .addr = (uint32_t)&USART2->TDR,
+    .trans = LL_DMA_DIRECTION_MEMORY_TO_PERIPH | LL_DMA_MODE_NORMAL | LL_DMA_PERIPH_NOINCREMENT |
+             LL_DMA_MEMORY_INCREMENT | LL_DMA_PDATAALIGN_BYTE | LL_DMA_MDATAALIGN_BYTE |
+             LL_DMA_PRIORITY_MEDIUM,
 };
+
+static dma_t uart_rx_dma = {
+    .dma = DMA1,
+    .ch = LL_DMA_CHANNEL_6,
+    .req = LL_DMA_REQUEST_2, // USART2_RX
+    .irq = DMA1_Channel6_IRQn,
+    .addr = (uint32_t)&USART2->RDR,
+    .trans = LL_DMA_DIRECTION_PERIPH_TO_MEMORY | LL_DMA_MODE_CIRCULAR | LL_DMA_PERIPH_NOINCREMENT |
+             LL_DMA_MEMORY_INCREMENT | LL_DMA_PDATAALIGN_BYTE | LL_DMA_MDATAALIGN_BYTE |
+             LL_DMA_PRIORITY_HIGH,
+};
+
+// The RX ring is written by DMA; it must hold more than one maximum frame (1452 bytes) plus
+// whatever arrives while the main loop is busy.
+static uint8_t rx_buf[4096];
+static cb_t rx_cb = CB_INIT(rx_buf);
+
+static uart_t uart = {
+    .uart = USART2,
+    .baud = BAUD,
+    .tx = &uart_tx_pin,
+    .rx = &uart_rx_pin,
+    .tx_dma = &uart_tx_dma,
+    .rx_dma = &uart_rx_dma,
+    .rx_cb = &rx_cb,
+    // .tx_cb is the log ring buffer, set by log_port_init()
+};
+
+void DMA1_Channel6_IRQHandler(void) {
+  dma_ch6_handler(&uart_rx_dma);
+}
+
+void DMA1_Channel7_IRQHandler(void) {
+  dma_ch7_handler(&uart_tx_dma);
+}
+
+void USART2_IRQHandler(void) {
+  uart_handler(&uart);
+}
 
 // ---------------------------------------------------------------------------------------------
 // Board
 
 static void clock_init(void) {
-  RCC_CR |= RCC_CR_HSION;
-  while ((RCC_CR & RCC_CR_HSIRDY) == 0) {
+  // PLL: HSI16 / M=1 * N=20 / R=4 = 80 MHz (range 1, 4 wait states)
+  LL_RCC_HSI_Enable();
+  while (!LL_RCC_HSI_IsReady()) {
   }
-  // PLL: HSI16 / M=1 * N=20 / R=4 = 80 MHz
-  RCC_PLLCFGR = (2u << 0)     // PLLSRC = HSI16
-              | (0u << 4)     // PLLM = 1
-              | (20u << 8)    // PLLN = 20
-              | (1u << 24)    // PLLREN
-              | (1u << 25);   // PLLR = 4
-  RCC_CR |= RCC_CR_PLLON;
-  while ((RCC_CR & RCC_CR_PLLRDY) == 0) {
+  LL_FLASH_SetLatency(LL_FLASH_LATENCY_4);
+  while (LL_FLASH_GetLatency() != LL_FLASH_LATENCY_4) {
   }
-  // 4 wait states at 80 MHz (range 1), prefetch + caches on.
-  FLASH_ACR = 4u | (1u << 8) | (1u << 9) | (1u << 10);
-  while ((FLASH_ACR & 7u) != 4u) {
+  LL_FLASH_EnablePrefetch();
+  LL_FLASH_EnableInstCache();
+  LL_FLASH_EnableDataCache();
+  LL_RCC_PLL_ConfigDomain_SYS(LL_RCC_PLLSOURCE_HSI, LL_RCC_PLLM_DIV_1, 20, LL_RCC_PLLR_DIV_4);
+  LL_RCC_PLL_EnableDomain_SYS();
+  LL_RCC_PLL_Enable();
+  while (!LL_RCC_PLL_IsReady()) {
   }
-  RCC_CFGR = (RCC_CFGR & ~3u) | 3u; // SW = PLL
-  while (((RCC_CFGR >> 2) & 3u) != 3u) {
+  LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_PLL);
+  while (LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_PLL) {
   }
-}
-
-static void gpio_init(void) {
-  RCC_AHB2ENR |= (1u << 0) | (1u << 1); // GPIOA, GPIOB
-  (void)RCC_AHB2ENR;
-  // PB13: LED output.
-  GPIO_MODER(GPIOB_BASE) = (GPIO_MODER(GPIOB_BASE) & ~(3u << 26)) | (1u << 26);
-}
-
-static void uart_init(void) {
-  RCC_APB1ENR1 |= 1u << 17; // USART2 (clock = PCLK1 = SYSCLK)
-  (void)RCC_APB1ENR1;
-  USART2_CR1 = 0;
-  USART2_BRR = SYSCLK_HZ / BAUD;
-  USART2_CR1 = USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE | USART_CR1_UE;
-  // PA2/PA3: AF7 (USART2), pull-ups. Switched over only now that TX idles high, so the host
-  // does not see a glitch byte after every reset.
-  GPIO_PUPDR(GPIOA_BASE) = (GPIO_PUPDR(GPIOA_BASE) & ~(0xFu << 4)) | (0x5u << 4);
-  GPIO_OSPEEDR(GPIOA_BASE) |= 0xFu << 4;
-  GPIO_AFRL(GPIOA_BASE) = (GPIO_AFRL(GPIOA_BASE) & ~(0xFFu << 8)) | (0x77u << 8);
-  GPIO_MODER(GPIOA_BASE) = (GPIO_MODER(GPIOA_BASE) & ~(0xFu << 4)) | (0xAu << 4);
-  NVIC_IPR8(USART2_IRQn) = 0x40;
-  NVIC_ISER(USART2_IRQn / 32) = 1u << (USART2_IRQn % 32);
+  SystemCoreClockUpdate();
 }
 
 void board_init(void) {
   clock_init();
-  gpio_init();
-  SCB_SHPR3 = (SCB_SHPR3 & 0x00FFFFFFu) | (0x80u << 24); // SysTick below the UART
-  SYST_RVR = SYSCLK_HZ / 1000 - 1;
-  SYST_CVR = 0;
-  SYST_CSR = 7; // processor clock, interrupt, enable
-  uart_init();
+  SysTick_Config(SystemCoreClock / 1000);
+  NVIC_SetPriority(SysTick_IRQn, 2); // below the UART and DMA (priority 0)
+  gpio_enable_clk(&led);
+  gpio_output(&led);
 }
 
 void board_led(bool on) {
-  GPIO_BSRR(GPIOB_BASE) = on ? (1u << 13) : (1u << 29);
+  gpio_out(&led, on);
 }
 
 void board_led_toggle(void) {
-  GPIO_ODR(GPIOB_BASE) ^= 1u << 13;
+  gpio_toggle(&led);
 }
 
 const uint8_t *board_uid(void) {
@@ -142,64 +143,107 @@ void SysTick_Handler(void) {
   log_tick(ms);
 }
 
-void USART2_IRQHandler(void) {
-  uint32_t isr = USART2_ISR;
-  bool err = (isr & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE | USART_ISR_PE)) != 0;
-  if (err) USART2_ICR = USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE | USART_ISR_PE;
-  if (isr & USART_ISR_RXNE) {
-    log_uart_rx((uint8_t)USART2_RDR, err);
-  } else if (err) {
-    log_uart_rx(0, true); // overrun with no data: a 00 resynchronises the frame scanner
-  }
-  if ((USART2_CR1 & USART_CR1_TXEIE) && (isr & USART_ISR_TXE)) {
-    int c = log_uart_tx_next();
-    if (c < 0) {
-      USART2_CR1 &= ~USART_CR1_TXEIE;
-    } else {
-      USART2_TDR = (uint8_t)c;
-    }
+void HardFault_Handler(void) {
+  LOG_FATAL("hard fault");
+}
+
+bool disable_irq(void) {
+  bool enabled = __get_PRIMASK() == 0;
+  __disable_irq();
+  return enabled;
+}
+
+void enable_irq(bool enabled) {
+  if (enabled) __enable_irq();
+}
+
+void timer_delay_us(uint32_t us) {
+  uint32_t n = us * (SystemCoreClock / 4000000u); // ~4 cycles per iteration
+  for (volatile uint32_t i = 0; i < n; i++) {
   }
 }
 
 // ---------------------------------------------------------------------------------------------
-// ucLog port interface
+// ucLog port interface (log.h)
 
 uint32_t log_port_lock(void) {
-  uint32_t primask;
-  __asm volatile("mrs %0, primask\n cpsid i" : "=r"(primask)::"memory");
-  return primask;
+  return disable_irq();
 }
 
 void log_port_unlock(uint32_t key) {
-  __asm volatile("msr primask, %0" ::"r"(key) : "memory");
-}
-
-void log_port_tx_start(void) {
-  USART2_CR1 |= USART_CR1_TXEIE; // single read-modify-write; the ISR only clears it
-}
-
-void log_port_tx_poll(uint8_t b) {
-  while ((USART2_ISR & USART_ISR_TXE) == 0) {
-  }
-  USART2_TDR = b;
+  enable_irq(key != 0);
 }
 
 uint32_t log_port_ms(void) {
   return ms;
 }
 
+void log_port_init(cb_t *tx_cb) {
+  // uart_init() resets its TX buffer: give it an empty one, so the logs already in tx_cb (and
+  // its own "uart init" log) are kept.
+  static uint8_t none[1];
+  static cb_t empty = CB_INIT(none);
+  uart.tx_cb = &empty;
+  uart_init(&uart);
+  uart.tx_cb = tx_cb;
+}
+
+void log_port_tx_schedule(const uint8_t *prefix, size_t n) {
+  bool en = disable_irq(); // log calls and SysTick may both schedule
+  if (prefix != NULL) {
+    uart_tx_schedule_prefix(&uart, prefix, n);
+  } else {
+    uart_tx_schedule(&uart);
+  }
+  enable_irq(en);
+}
+
+void log_port_tx_pause(bool pause) {
+  bool en = disable_irq();
+  uart_tx_pause(&uart, pause);
+  enable_irq(en);
+}
+
+bool log_port_tx_idle(void) {
+  return uart.tx_n == 0 && !uart.tx_prefix_busy;
+}
+
+void log_port_panic(void) {
+  uart_tx_panic(&uart);
+}
+
+size_t log_port_rx_avail(void) {
+  return uart_rx_avail(&uart);
+}
+
+const uint8_t *log_port_rx_peek(void) {
+  return uart_rx_peek(&uart);
+}
+
+void log_port_rx_skip(size_t n) {
+  uart_rx_skip(&uart, n);
+}
+
+uint32_t log_port_rx_mark(void) {
+  return dma_get_length(&uart_rx_dma); // changes with every byte received
+}
+
+uint32_t log_port_rx_check(void) {
+  // The driver stops RX on overrun/framing/noise errors; count and restart. A DMA error, or an
+  // overrun (which DMA should make impossible), is fatal in uart_restart_rx().
+  uart_error_t e = uart_error(&uart);
+  if (e == UART_ERROR_NONE) return 0;
+  uart_restart_rx(&uart);
+  return (uint32_t)e;
+}
+
 __attribute__((noreturn)) void log_port_fatal(void) {
-  // Let the last byte leave the shift register.
-  for (volatile uint32_t i = 0; i < 100000; i++) {
-  }
-  if (DHCSR & DHCSR_C_DEBUGEN) __asm volatile("bkpt #0");
-  SCB_AIRCR = 0x05FA0004u; // SYSRESETREQ
-  while (1) {
-  }
+  if (CoreDebug->DHCSR & CoreDebug_DHCSR_C_DEBUGEN_Msk) __BKPT(0);
+  NVIC_SystemReset();
 }
 
 // ---------------------------------------------------------------------------------------------
-// newlib: heap, and the signal stubs abort() needs
+// newlib heap (syscalls.c leaves _sbrk out)
 
 void *_sbrk(ptrdiff_t incr) {
   extern char _end, _heap_limit;
@@ -213,11 +257,9 @@ void *_sbrk(ptrdiff_t incr) {
   return prev;
 }
 
-int _getpid(void) {
-  return 1;
-}
-
 int _kill(int pid, int sig) {
+  (void)pid;
+  (void)sig;
   errno = EINVAL;
   return -1;
 }

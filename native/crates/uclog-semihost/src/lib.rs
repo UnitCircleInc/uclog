@@ -11,9 +11,10 @@ use uclog_proto::semihost::{self as sh, errno, oflag, Request, Stat};
 
 pub use clock::{SystemClock, TimeSource};
 
-/// Largest READ payload returned in one reply, so the reply fits in one frame (protocol.md
-/// §2.2: 4096 encoded bytes, less COBS overhead, header and the 8-byte prefix).
-pub const MAX_READ: usize = 3800;
+/// Largest READ payload returned in one reply, so the reply fits in one frame (protocol.md §2.4:
+/// 1443 bytes of port data, less the 8-byte prefix).
+pub const MAX_READ: usize = 1024;
+const _: () = assert!(MAX_READ + 8 <= uclog_proto::MAX_PORT_DATA);
 
 /// What the handler does with non-time ops.
 #[derive(Debug, Clone, PartialEq, Eq)]

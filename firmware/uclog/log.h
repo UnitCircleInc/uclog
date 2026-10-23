@@ -20,6 +20,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "cb.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -28,16 +30,14 @@ extern "C" {
 // Configuration (override with -D)
 
 #if !defined(LOG_TX_BUF_SIZE)
-#define LOG_TX_BUF_SIZE (8192) // power of two
+#define LOG_TX_BUF_SIZE (8192) // log ring buffer (frames wait here until the host takes them)
 #endif
 
-#if !defined(LOG_RX_BUF_SIZE)
-#define LOG_RX_BUF_SIZE (4096) // power of two
-#endif
-
-#if !defined(LOG_MAX_PACKET_SIZE)
-#define LOG_MAX_PACKET_SIZE (4000) // largest port payload, sent or received
-#endif
+// Largest port data (log_tx/log_rx), so that every frame fits in 1452 bytes on the wire: one
+// unfragmented UDP datagram on a 1500-byte MTU with IPv6 (spec/protocol.md §2.4). The Zephyr
+// version used 1500.
+#define LOG_MAX_PACKET_SIZE (1443)
+#define LOG_MAX_FRAME_SIZE (1452) // 00 COBS(port byte + 1443 bytes) 00
 
 #if !defined(LOG_MAX_LOG_SIZE)
 #define LOG_MAX_LOG_SIZE (100) // largest log frame payload; longer strings are truncated
@@ -79,8 +79,9 @@ extern "C" {
 // ---------------------------------------------------------------------------------------------
 // Link
 
-// Call once at boot, before any log call that should reach the host. `board` and `image_type`
-// go into the port-62 device info.
+// Call first: logs are buffered from here on.
+void log_pre_init(void);
+// Start the link (log_port_init). `board` and `image_type` go into the port-62 device info.
 void log_init(const char *board, const char *image_type);
 
 // Process received frames: dispatches to log_notify() handlers. Call from the main loop.
@@ -89,15 +90,14 @@ void log_poll(void);
 // Call every millisecond (e.g. from SysTick): idle pulses and host liveness.
 void log_tick(uint32_t now_ms);
 
-// Send `data` on `port` (0..63). Returns false if the TX buffer is full (frame dropped).
-bool log_tx(uint8_t port, const uint8_t *data, size_t n);
+// Send `data` (at most LOG_MAX_PACKET_SIZE bytes) on `port` (0..63). The frame is dropped (and
+// counted) when the buffer is full; check log_tx_avail() first if it must not be.
+void log_tx(uint8_t port, const uint8_t *data, size_t n);
 size_t log_tx_avail(void);
 
 // Wait for the next frame on `port`. Copies at most `n` bytes and returns the payload length.
-// Returns LOG_RX_ERROR on timeout, when the host goes away, or when called from a handler.
-#define LOG_RX_ERROR ((size_t)-1)
-#define LOG_RX_FOREVER (0xFFFFFFFFu)
-size_t log_rx(uint8_t port, uint8_t *data, size_t n, uint32_t timeout_ms);
+// Returns 0 if the host goes away while waiting, or when called from a handler.
+size_t log_rx(uint8_t port, uint8_t *data, size_t n);
 
 // Handler for frames received on `port`. Runs in log_poll(); `rx` is valid only during the call.
 typedef void log_cb_t(const uint8_t *rx, size_t rx_n, void *ctx);
@@ -114,27 +114,32 @@ const uint8_t *log_app_hash(size_t *n);
 
 // Counters for diagnostics.
 typedef struct {
-  uint32_t tx_dropped;  // frames dropped because the TX buffer was full
-  uint32_t rx_overrun;  // bytes lost because the RX buffer was full or the UART overran
-  uint32_t rx_frames;   // frames received (excluding pulses)
-  uint32_t rx_errors;   // framing / COBS / oversize errors
+  uint32_t tx_dropped;    // frames dropped because the TX buffer was full
+  uint32_t rx_uart_errors; // UART framing/noise errors (RX restarted)
+  uint32_t rx_frames;     // frames received (excluding pulses)
+  uint32_t rx_errors;     // COBS / oversize errors
   uint32_t rx_no_handler;
 } log_stats_t;
 void log_get_stats(log_stats_t *s);
 
 // ---------------------------------------------------------------------------------------------
-// Port (board) interface: implemented by the board, called by log.c.
+// Port (board) interface: implemented by the board, called by log.c. Mirrors the Zephyr ucuart
+// API: TX drains `tx_cb` (e.g. by DMA), RX is a ring buffer read with avail/peek/skip.
 
-uint32_t log_port_lock(void);          // disable interrupts, return previous state
-void log_port_unlock(uint32_t key);    // restore
-void log_port_tx_start(void);          // enable the TX-empty interrupt
-void log_port_tx_poll(uint8_t b);      // blocking write (panic path, interrupts off)
-uint32_t log_port_ms(void);            // millisecond counter
-__attribute__((noreturn)) void log_port_fatal(void); // breakpoint if debugging, else reset
-
-// Called by the board's UART interrupt.
-int log_uart_tx_next(void);            // next byte to send, or -1 (then disable TX-empty IRQ)
-void log_uart_rx(uint8_t b, bool error);
+uint32_t log_port_lock(void);                          // disable interrupts, return previous state
+void log_port_unlock(uint32_t key);                    // restore
+uint32_t log_port_ms(void);                            // millisecond counter
+void log_port_init(cb_t *tx_cb);                       // start the UART; TX takes data from tx_cb
+void log_port_tx_schedule(const uint8_t *prefix, size_t n); // start TX: prefix (if any), then tx_cb
+void log_port_tx_pause(bool pause);                    // stop starting new TX transfers
+bool log_port_tx_idle(void);                           // no TX transfer in progress
+void log_port_panic(void);                             // switch to polled TX (interrupts off)
+size_t log_port_rx_avail(void);                        // contiguous received bytes
+const uint8_t *log_port_rx_peek(void);
+void log_port_rx_skip(size_t n);
+uint32_t log_port_rx_mark(void);                       // changes whenever a byte is received
+uint32_t log_port_rx_check(void);                      // restart RX after UART errors; nonzero if any
+__attribute__((noreturn)) void log_port_fatal(void);   // breakpoint if debugging, else reset
 
 // Optional override: runs before the reset in LOG_FATAL.
 void log_fatal(void);

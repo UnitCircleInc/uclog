@@ -39,5 +39,12 @@ pub mod timing {
     pub const WAKE_GAP: Duration = Duration::from_millis(50);
 }
 
-/// Maximum encoded frame size every implementation must support (protocol.md §2.2).
-pub const MAX_FRAME: usize = 4096;
+/// Largest frame on the wire, both `00` delimiters included (protocol.md §2.4): one unfragmented
+/// UDP datagram on a 1500-byte MTU with IPv6.
+pub const MAX_WIRE: usize = 1452;
+/// Largest encoded run between delimiters: the frame scanner limit (protocol.md §2.2).
+pub const MAX_FRAME: usize = MAX_WIRE - 2;
+/// Largest payload (worst-case COBS overhead brings 1444 bytes to 1450).
+pub const MAX_PAYLOAD: usize = 1444;
+/// Largest port data in a type-3 frame (the payload less the `b0` header byte).
+pub const MAX_PORT_DATA: usize = MAX_PAYLOAD - 1;

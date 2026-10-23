@@ -75,8 +75,10 @@ advertises `ws=same` or the port number.
 
 - The client is identified by the source `ip:port` of its first datagram. Admission rules are the
   same as for TCP (busy / approval).
-- Hub → client datagrams pack whole frames, up to 1200 bytes per datagram. Client → hub datagrams
-  must contain whole frames.
+- Hub → client datagrams pack whole frames, up to 1452 bytes per datagram (protocol.md §2.4), with
+  Don't Fragment set. Client → hub datagrams must contain whole frames. A datagram refused as too
+  large (EMSGSIZE / ICMP fragmentation needed) is reported, not retried: UDP clients need a path
+  MTU of at least 1500 (§4.4).
 - Client liveness comes from pulses only (`--client-timeout`, default 5 s). After it, the slot is
   free.
 

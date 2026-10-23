@@ -6,6 +6,8 @@
 #   make clean
 #
 # Toolchain: arm-none-eabi-gcc on PATH, or STM32CubeCLT (CUBECLT below).
+# STM32CubeL4 (CMSIS, LL headers, startup, system_stm32l4xx.c): STM32CUBE_L4 below, as installed
+# by STM32CubeMX/STM32CubeIDE, or a checkout of github.com/STMicroelectronics/STM32CubeL4.
 
 CUBECLT ?= /opt/ST/STM32CubeCLT_1.20.0
 ifeq ($(shell command -v arm-none-eabi-gcc 2>/dev/null),)
@@ -22,26 +24,43 @@ PYTHON  ?= python3
 UCLOG   ?= ../../native/target/release/uclog
 DEVICE  ?= auto
 
-UCLOG_DIR := ../uclog
-BUILD     := build
+STM32CUBE_L4 ?= $(HOME)/STM32Cube/Repository/STM32Cube_FW_L4_V1.18.2
+CMSIS_DEV := $(STM32CUBE_L4)/Drivers/CMSIS/Device/ST/STM32L4xx
+
+UCLOG_DIR  := ../uclog
+UCCOMM_DIR := ../uccomm
+BUILD      := build
 
 # Paths as given here become __FILE__, i.e. the file names shown with each log.
 SRCS := src/main.c \
         src/drivers/sensor.c \
-        src/sh/semihost.c \
+        src/sh/syscalls.c \
+        src/sh/semihost_test.c \
         board/board.c \
-        $(UCLOG_DIR)/log.c
+        board/dma.c \
+        board/gpio.c \
+        board/uart.c \
+        $(UCLOG_DIR)/log.c \
+        $(UCCOMM_DIR)/cb.c \
+        $(UCCOMM_DIR)/cobs.c \
+        $(UCCOMM_DIR)/cbor.c \
+        $(UCCOMM_DIR)/crc32c.c
+CUBE_SRCS := $(CMSIS_DEV)/Source/Templates/system_stm32l4xx.c \
+             $(CMSIS_DEV)/Source/Templates/gcc/startup_stm32l452xx.s
 
-CPU    := -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
+CPU    := -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mfp16-format=ieee
 CFLAGS := $(CPU) -std=gnu11 -Os -g3 -Wall -Wextra -Wno-override-init \
           -Wno-unused-parameter -ffunction-sections -fdata-sections \
           -fno-eliminate-unused-debug-types \
-          -Isrc -Iboard -I$(UCLOG_DIR) -MMD -MP
+          -DSTM32L452xx -Isrc -Iboard -I$(UCLOG_DIR) -I$(UCCOMM_DIR) \
+          -I$(STM32CUBE_L4)/Drivers/CMSIS/Include -I$(CMSIS_DEV)/Include \
+          -I$(STM32CUBE_L4)/Drivers/STM32L4xx_HAL_Driver/Inc -MMD -MP
 LDFLAGS := $(CPU) -Tboard/stm32l452re.ld -L$(UCLOG_DIR) -Wl,--gc-sections -Wl,-Map=$(BUILD)/app.map \
            --specs=nano.specs --specs=nosys.specs -u _printf_float -Wl,--no-warn-rwx-segments
 LDLIBS := -lm
 
-OBJS := $(patsubst %.c,$(BUILD)/obj/%.o,$(subst ../,,$(SRCS)))
+OBJS := $(patsubst %.c,$(BUILD)/obj/%.o,$(subst ../,,$(SRCS))) \
+        $(BUILD)/obj/cube/system_stm32l4xx.o $(BUILD)/obj/cube/startup_stm32l452xx.o
 
 all: $(BUILD)/app.bin
 
@@ -52,6 +71,18 @@ $(BUILD)/obj/%.o: %.c
 $(BUILD)/obj/uclog/%.o: $(UCLOG_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/obj/uccomm/%.o: $(UCCOMM_DIR)/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/obj/cube/%.o: $(CMSIS_DEV)/Source/Templates/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/obj/cube/%.o: $(CMSIS_DEV)/Source/Templates/gcc/%.s
+	@mkdir -p $(dir $@)
+	$(CC) $(CPU) -x assembler-with-cpp -c $< -o $@
 
 # 1. link (the .apphash field is zero)
 # 2. app_hash = SHA-512 of that image; write it into .apphash

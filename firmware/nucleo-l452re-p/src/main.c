@@ -4,6 +4,7 @@
 // - Every second: a heartbeat log with the simulated sensor reading.
 // - Port 61 (terminal) and port 0 (text commands): `help` lists the commands.
 // - `sh`: semihost selftest (printf, files and time through the host, port 63).
+// - Port 5 (test only): echoes each frame back, for maximum-size frames from the host.
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -13,10 +14,12 @@
 #include "board.h"
 #include "drivers/sensor.h"
 #include "log.h"
-#include "sh/semihost.h"
+#include "crc32c.h"
+#include "sh/semihost_test.h"
 
 #define TERM_PORT 61
 #define CMD_PORT 0
+#define ECHO_PORT 5 // test firmware only (an unassigned port)
 
 typedef enum {
   APP_BOOT,
@@ -134,6 +137,32 @@ static void burst(int port, unsigned n) {
         (unsigned long)(after.tx_dropped - before.tx_dropped));
 }
 
+// One frame of n bytes: "<n>:" then a repeating pattern, ending in "|\r\n".
+static void big(int port, size_t n) {
+  static uint8_t b[LOG_MAX_PACKET_SIZE];
+  if (n < 16 || n > LOG_MAX_PACKET_SIZE) {
+    reply(port, "big: n must be 16..%d\r\n", LOG_MAX_PACKET_SIZE);
+    return;
+  }
+  int h = snprintf((char *)b, sizeof(b), "%u:", (unsigned)n);
+  for (size_t i = (size_t)h; i < n - 3; i++) b[i] = (uint8_t)('a' + i % 26);
+  memcpy(b + n - 3, "|\r\n", 3);
+  while (log_tx_avail() < n) {
+  }
+  log_tx((uint8_t)port, b, n);
+  LOG_INFO("big: sent %u bytes on port %d, crc32c %08lx", (unsigned)n, port,
+           (unsigned long)crc32c_update(CRC32C_INIT, b, n));
+}
+
+// Port 5: echo, and log the size and CRC so both directions can be checked.
+static void on_echo(const uint8_t *rx, size_t n, void *ctx) {
+  LOG_INFO("echo: received %u bytes, crc32c %08lx", (unsigned)n, (unsigned long)crc32c_update(CRC32C_INIT, rx, n));
+  uint32_t t0 = board_ms();
+  while (log_tx_avail() < n && board_ms() - t0 < 200) {
+  }
+  log_tx(ECHO_PORT, rx, n);
+}
+
 static void run_command(int port, char *c) {
   char *arg = strchr(c, ' ');
   if (arg) *arg++ = 0;
@@ -147,6 +176,7 @@ static void run_command(int port, char *c) {
                 "  sh          semihost selftest (printf, files, time)\r\n"
                 "  input       read a line from the host's stdin (semihost)\r\n"
                 "  burst [n]   n logs as fast as the link allows (default 1000)\r\n"
+                "  big [n]     one port-61 frame of n bytes (default the maximum, 1443)\r\n"
                 "  stats       link counters\r\n"
                 "  led on|off  user LED (stops blinking)\r\n"
                 "  fatal       LOG_FATAL (resets the board)\r\n");
@@ -176,12 +206,14 @@ static void run_command(int port, char *c) {
   } else if (strcmp(c, "burst") == 0) {
     unsigned n = arg ? (unsigned)strtoul(arg, NULL, 0) : 1000;
     burst(port, n);
+  } else if (strcmp(c, "big") == 0) {
+    big(port, arg ? (size_t)strtoul(arg, NULL, 0) : LOG_MAX_PACKET_SIZE);
   } else if (strcmp(c, "stats") == 0) {
     log_stats_t s;
     log_get_stats(&s);
-    reply(port, "tx_dropped %lu rx_frames %lu rx_errors %lu rx_overrun %lu rx_no_handler %lu\r\n",
+    reply(port, "tx_dropped %lu rx_frames %lu rx_errors %lu rx_uart_errors %lu rx_no_handler %lu\r\n",
           (unsigned long)s.tx_dropped, (unsigned long)s.rx_frames, (unsigned long)s.rx_errors,
-          (unsigned long)s.rx_overrun, (unsigned long)s.rx_no_handler);
+          (unsigned long)s.rx_uart_errors, (unsigned long)s.rx_no_handler);
   } else if (strcmp(c, "led") == 0) {
     board_led(arg && strcmp(arg, "on") == 0);
     blink = false;
@@ -195,6 +227,7 @@ static void run_command(int port, char *c) {
 }
 
 int main(void) {
+  log_pre_init();
   board_init();
   log_init(BOARD_NAME, "app");
   static char outbuf[128];
@@ -205,6 +238,7 @@ int main(void) {
            uid[9], uid[8], uid[7], uid[6], uid[5], uid[4], uid[3], uid[2], uid[1], uid[0]);
   log_notify(TERM_PORT, on_term, (void *)TERM_PORT);
   log_notify(CMD_PORT, on_term, (void *)CMD_PORT);
+  log_notify(ECHO_PORT, on_echo, NULL);
   sensor_init(MODE_SLOW);
   log_selftest();
   app_state = APP_RUNNING;

@@ -17,6 +17,7 @@ transition (protocol.md §5.5).
 | F3 | Accept a 31-bit fid in `WRITE` (`value & 0x7FFFFFFF`), bit 31 = no reply | §5.5.2 |
 | F4 | Expect **newlib errno** values in semihost replies | §5.5.4 |
 | F5 | Accept `-1, ENOSYS` for ops the host does not implement (SYSTEM, RENAME, UNLINK, LINK, STAT, LSEEK, unknown). Legacy hosts never replied, so this path was never exercised | §5.5.4 |
+| F6 | **Frame size limit** (requested by the firmware team, 2026-10-23): `LOG_MAX_PACKET_SIZE` 1500 → **1443**, so every frame is at most 1452 bytes on the wire (one unfragmented UDP datagram on a 1500-byte MTU with IPv6). The semihost `WRITE` data is at most 1438 bytes per request and `READ` replies at most 1024; FW update `block-size` ≤ 1024 | §2.4 |
 
 ## Confirmed by the firmware team (2026-10-22)
 

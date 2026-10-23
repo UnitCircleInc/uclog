@@ -115,8 +115,10 @@ client carry exactly the bytes a device sends over serial.
   pulse at least every 0.5 s while connected. After any idle of more than 2 s (for example, a fresh
   connection), a sender must send a pulse and wait ≥ 50 ms before the first real frame (USB-UART
   converters buffer before the edge reaches the target).
-- Maximum encoded frame size: 4096 bytes (`--max-frame`). Longer input is discarded up to the next
-  `00` and counted as a framing error.
+- Maximum frame size: 1452 bytes on the wire, both delimiters included (1450-byte encoded run,
+  1444-byte payload, 1443 bytes of port data; protocol.md §2.4). One frame always fits one
+  unfragmented UDP datagram on a 1500-byte MTU. Longer input is discarded up to the next `00` and
+  counted as a framing error; receivers may accept more (`--max-frame`), senders never send more.
 
 ### 3.2 Frame header and the 2-byte peek
 
@@ -379,7 +381,7 @@ source `<uclog>`. A per-type counter is shown in the status bar. Formats:
 | Case | Text |
 |---|---|
 | COBS invalid | `framing: invalid COBS (n bytes) near <hex…>` |
-| Frame too long | `framing: frame exceeded 4096 bytes, discarded n bytes` |
+| Frame too long | `framing: frame exceeded 1450 bytes, discarded n bytes` |
 | No logdata for target | `decode: no logdata for target T (addr 0x…) [<hex payload>]` |
 | Unknown format address | `decode: unknown format addr 0x… in <logdata file> [<hex>]` |
 | Argument underrun/overrun | `decode: <file>:<line> "<fmt>" — missing arg k (int32)` / `extra n bytes: <hex>` |

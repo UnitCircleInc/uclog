@@ -80,7 +80,11 @@ def cobs_dec(data: bytes) -> bytes:
 # §2.2 Frame scanner
 # ---------------------------------------------------------------------------
 
-MAX_FRAME = 4096
+# §2.4: a frame on the wire (both delimiters) is at most 1452 bytes.
+MAX_WIRE = 1452
+MAX_FRAME = MAX_WIRE - 2     # encoded run between delimiters: the scanner limit
+MAX_PAYLOAD = 1444           # worst-case COBS(1444 bytes) = 1450
+MAX_PORT_DATA = MAX_PAYLOAD - 1
 
 
 class FrameScanner:
