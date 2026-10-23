@@ -1,0 +1,24 @@
+[package]
+name = "uclog-session"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ciborium = "0.2.2"
+hex = "0.4.3"
+reqwest = { version = "0.13.3", default-features = false, features = ["rustls", "http2"] }
+sha2 = "0.10.9"
+thiserror = "2.0.21"
+tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util", "fs"] }
+tracing = "0.1.44"
+uclog-link = { version = "0.1.0", path = "../uclog-link" }
+uclog-logdata = { version = "0.1.0", path = "../uclog-logdata" }
+uclog-proto = { version = "0.1.0", path = "../uclog-proto" }
+uclog-semihost = { version = "0.1.0", path = "../uclog-semihost" }
+
+[dev-dependencies]
+hex = "0.4.3"
+tempfile = "3.27.0"

@@ -310,7 +310,7 @@ All replies start with `i32 r, i32 errno`. On success, `errno = 0`. File system 
 | 8 | OPEN | `i32 flags ‖ path` (UTF-8, no terminator) | `i32 fid, i32 errno` |
 | 9 | WRITE | `u32 fid ‖ data`. **Bit 31 set = no reply wanted**; `fid = value & 0x7FFFFFFF` | `i32 n, i32 errno` (unless bit 31) |
 | 10 | LSEEK | — | not supported → `ENOSYS` |
-| 11 | READ | `i32 fid, u32 len` | `i32 n, i32 errno ‖ n bytes` |
+| 11 | READ | `i32 fid, u32 len` | `i32 n, i32 errno ‖ n bytes`. `n` may be less than `len`: hosts return at most **3800** bytes per reply so it fits in one frame (§2.2) |
 | 12 | MKDIR | `i32 mode ‖ path` | `i32 r, i32 errno` |
 
 - **fids** are host-side handles in a per-session table. Host file descriptors are never exposed.

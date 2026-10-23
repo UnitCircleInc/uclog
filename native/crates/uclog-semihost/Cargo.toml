@@ -1,0 +1,20 @@
+[package]
+name = "uclog-semihost"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror = "2.0.21"
+uclog-proto = { version = "0.1.0", path = "../uclog-proto" }
+
+[target."cfg(unix)".dependencies]
+libc = "0.2.191"
+
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_System_Performance"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
