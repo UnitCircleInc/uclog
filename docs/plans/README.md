@@ -420,7 +420,7 @@ Hub flags are in the hub plan.
 | Phase | Work | Unblocks |
 |---|---|---|
 | 0 | ✅ Questions closed (§7). ✅ `spec/protocol.md`, reference, vectors and CI. ✅ Firmware requirements agreed (F1–F5, C1–C10 in [`spec/firmware-changes.md`](../../spec/firmware-changes.md)). ⏳ Firmware implementation of F1–F5 (outside this repository) | everything |
-| 1 | ✅ Rust crates: proto, logdata, semihost, link, session (+ `uclog list/decode/term/fw-update`) in [`native/`](../../native/README.md). ⏳ Hardware verification (serial/HID/BLE/UDP, FW update) | hub, TUI, GUI |
+| 1 | ✅ Rust crates: proto, logdata, semihost, link, session (+ `uclog list/decode/term/fw-update`) in [`native/`](../../native/README.md). ✅ Serial verified on a NUCLEO-L452RE-P with the [test firmware](../../firmware/README.md) (logs, port 0/61, semihost incl. stdin and files, reconnect, fatal/reset). ⏳ HID, BLE, UDP, FW update | hub, TUI, GUI |
 | 2 | Hub ([01](01-hub-server.md)) + `uclog-hub` release builds | VS Code; remote use; Python library |
 | 2b | Python library ([06](06-python-client.md)), in parallel with Phase 3 | script users; retire the legacy repository |
 | 3 | TUI ([05](05-tui.md)), the smallest complete front end, validates Phase 1 | GUI |

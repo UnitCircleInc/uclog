@@ -6,6 +6,9 @@ __pycache__/
 # Rust
 /native/target/
 
+# Firmware
+/firmware/*/build/
+
 # Node
 node_modules/
 dist/
