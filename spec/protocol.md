@@ -569,9 +569,13 @@ section covers what a client sees.
 - **On accept**, the hub sends, in order:
   1. the port-62 frame in effect at the oldest buffered frame (if any);
   2. the buffered frames (backlog), oldest first;
-  3. live data.
+  3. **one pulse** (`00`), marking the end of the backlog;
+  4. live data.
 
   Port-62 frames inside the backlog mark resets and image changes at the right place (§5.2).
+  Since every frame carries both delimiters, two frames are separated by exactly two `00`s: a run
+  of three or more (two or more at the start of the stream) contains the pulse that ends the
+  backlog. Clients that do not skip the backlog can ignore it like any pulse.
 - The hub asks for the device info when it opens the device (§5.2, F7), so clients need not.
   A client MAY still send the request; it is forwarded to the device.
 - Port-63 time ops are answered by the hub. The client sees only the other syscalls (§5.5.5).

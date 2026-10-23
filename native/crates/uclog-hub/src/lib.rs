@@ -229,6 +229,21 @@ pub async fn start(a: HubArgs, verbose: u8) -> anyhow::Result<Running> {
     if let Some(d) = &files_dir {
         info!("syscalls answered by the hub, files in {}", d.display());
     }
+    // Announce, and keep `busy` up to date. A client may already be connected (the listener is
+    // running), so start from the current value.
+    let mut mdns = if a.no_mdns { None } else { Mdns::start(identity.clone()) };
+    let registry = if a.no_registry { None } else { Registry::create(identity.clone()) };
+    let (stop_tx, mut stop_rx) = oneshot::channel::<()>();
+    let mut busy = shared.busy.subscribe();
+    if *busy.borrow_and_update() {
+        if let Some(m) = &mut mdns {
+            m.publish(true);
+        }
+        if let Some(r) = &registry {
+            r.write(true);
+        }
+    }
+    // Ready only once the registry is written: a script reads this line and connects at once.
     if a.json_ready {
         let j = serde_json::json!({"port": port, "ws_port": ws_port, "udp_port": udp_port,
                                    "name": identity.name, "device": identity.device});
@@ -236,12 +251,6 @@ pub async fn start(a: HubArgs, verbose: u8) -> anyhow::Result<Running> {
         use std::io::Write;
         let _ = std::io::stdout().flush();
     }
-
-    // Announce, and keep `busy` up to date.
-    let mut mdns = if a.no_mdns { None } else { Mdns::start(identity.clone()) };
-    let registry = if a.no_registry { None } else { Registry::create(identity.clone()) };
-    let (stop_tx, mut stop_rx) = oneshot::channel::<()>();
-    let mut busy = shared.busy.subscribe();
     let done = tokio::spawn(async move {
         loop {
             tokio::select! {

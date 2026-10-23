@@ -139,6 +139,38 @@ async fn hub_requests_device_info() {
     h.shutdown().await;
 }
 
+/// A pulse marks the end of the backlog replay (protocol.md §8), even while the device logs
+/// without pause: frames before it are the backlog, frames after it are live.
+#[tokio::test]
+async fn replay_ends_with_a_pulse() {
+    let h = hub(&["-d", "loopback:rate=200"]).await;
+    tokio::time::sleep(Duration::from_millis(500)).await; // ~100 logs while nobody is connected
+    let mut s = TcpStream::connect(("127.0.0.1", h.port)).await.unwrap();
+    s.write_all(&[0]).await.unwrap();
+    let mut bytes = vec![];
+    let mut buf = [0u8; 65536];
+    let end = Instant::now() + Duration::from_millis(300);
+    while Instant::now() < end {
+        if let Ok(Ok(n)) = timeout(Duration::from_millis(50), s.read(&mut buf)).await {
+            bytes.extend_from_slice(&buf[..n]);
+        }
+    }
+    // Frames carry both delimiters, so only a pulse makes a run of three 00s.
+    let marker = bytes.windows(3).position(|w| w == [0, 0, 0]).expect("no pulse after the replay");
+    let mut sc = FrameScanner::default();
+    let mut logs = 0;
+    sc.feed_with(&bytes[..marker + 1], |e| {
+        if let ScanEvent::Frame(f) = e {
+            if matches!(mux_decode(&cobs::decode(&f).unwrap()), Mux::Log { .. }) {
+                logs += 1;
+            }
+        }
+    });
+    assert!(logs >= 50, "backlog before the marker: {logs} logs");
+    assert!(bytes.len() > marker + 3, "live frames follow the marker");
+    h.shutdown().await;
+}
+
 #[tokio::test]
 async fn second_client_is_busy() {
     let h = hub(&[]).await;

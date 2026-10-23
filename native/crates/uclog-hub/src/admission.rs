@@ -177,14 +177,18 @@ impl Prompter {
             let mut lines = tokio::io::BufReader::new(tokio::io::stdin()).lines();
             let mut on_eof = on_eof;
             let mut pending: Option<Question> = None;
+            // Without a console no questions are asked (the sender is dropped), but stdin is
+            // still watched for EOF.
+            let mut asking = true;
             loop {
                 tokio::select! {
-                    q = rx.recv(), if pending.is_none() => match q {
+                    q = rx.recv(), if pending.is_none() && asking => match q {
                         Some(q) => {
                             eprint!("{} [y]es / [n]o / [a]lways this host (60 s) ", q.text);
                             let _ = std::io::stderr().flush();
                             pending = Some(q);
                         }
+                        None if watch_eof => asking = false,
                         None => return,
                     },
                     l = lines.next_line() => match l {

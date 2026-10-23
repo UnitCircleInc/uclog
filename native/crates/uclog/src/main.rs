@@ -104,6 +104,9 @@ fn main() -> std::process::ExitCode {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| level.into()))
         .with_writer(std::io::stderr)
+        // A failed write would be reported with eprintln!, which panics (and aborts) when stderr is
+        // gone, e.g. when the script that started the hub was killed.
+        .log_internal_errors(false)
         .init();
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
     let r = rt.block_on(async {

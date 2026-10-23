@@ -18,8 +18,9 @@ the library pure Python and identical on every OS.
 
 ## 2. Packaging
 
-- PyPI package `uclog`, Python ≥ 3.9. Dependency: `cbor2`. Optional extra `uclog[mdns]` adds
-  `zeroconf` for finding remote hubs.
+- PyPI package `uclog`, Python ≥ 3.9. **No dependencies** (the CBOR codec is the stdlib-only one
+  from `spec/reference/ucref.py`; see §9). Optional extra `uclog[mdns]` adds `zeroconf` for
+  finding remote hubs.
 - **Platform wheels bundle `uclog-hub`** (like `ruff`): `manylinux` x64/arm64/armv7, macOS
   arm64/x64, Windows x64/arm64, built from the same release artefacts as Plan 03. A pure-Python
   `py3-none-any` wheel is also published for other platforms. It uses `uclog-hub` (or `uclog`) from
@@ -139,3 +140,55 @@ Depends on: Plan 01 (registry, `--json-ready`, `list --json`, default-port fallb
   dies, and the hub exits. This works the same on Windows, macOS and Linux.
 - While a script owns its hub, other clients cannot connect to that device (single client).
 - Platform wheel size is about 5 MB each. Accepted.
+
+## 9. Implementation notes (Phase 2b)
+
+Implemented in [`python/`](../../python/README.md). Where it differs from the plan above:
+
+- **API and packaging:**
+  - **No `cbor2`**: the package is standard library only. `uclog.cbor` is the reference codec,
+    checked by the vectors.
+  - **`uclog-hub list [--json]`** was added to the hub. The wheels bundle only `uclog-hub`, and it
+    had no way to list devices. With `uclog` on `PATH` instead, the library runs
+    `uclog list --json --mdns 0`.
+  - **`connect()` wait:** after connecting, it waits for the first byte.
+    - Local hub: up to `device_timeout` (5 s), then `DeviceNotRespondingError`. `None` skips the
+      wait.
+    - Remote hub: up to `approval_timeout`, then `ApprovalTimeoutError`.
+    - The hub closes the connection with no data: `HubBusyError`.
+  - **Added:**
+    - `HubStartError` and `ConnectionClosedError`.
+    - `console()` for semihost stdout/stderr. Writes not yet read are joined, so unbuffered stderr
+      does not arrive a byte at a time.
+    - A `stdin=` callback for the device's stdin reads (EOF without one).
+    - `logs()` and `frames()` take `duration=`: with a chatty device, "until `timeout` s of
+      silence" may never come.
+  - **`aio`** wraps the threaded connection: waits run in the default executor. It does not use
+    asyncio streams. `device_info` is `await dev.device_info()`.
+- **Hub changes:**
+  - **`skip_backlog`**: the hub now sends **one pulse after the backlog replay** (protocol.md §8).
+    "The first live device pulse" did not work, because under load the device and the hub never
+    idle long enough to pulse. The library finds the marker by counting runs of `00` bytes, so it
+    still works when TCP splits a write.
+  - **Hub fixes found by the integration tests:**
+    - Without a console, `--exit-on-stdin-eof` exited at once. Dropping the question channel ended
+      the task that watched stdin.
+    - The hub printed `--json-ready` before writing its registry entry and subscribing to `busy`,
+      so a client connecting at once left the registry showing `busy: false`.
+    - When the script was killed, stderr closed too. tracing-subscriber reported the failed write
+      with `eprintln!`, which panicked; with `panic = "abort"`, the hub died without removing its
+      registry entry. `log_internal_errors(false)` in `uclog` and `uclog-hub` fixes it.
+- **Tests:**
+  - spec/vectors, unit tests (CBOR, printf, ELF, the port-63 sandbox), a scripted fake hub (busy,
+    silent device, `command()`, wake gap and pulses, queue overflow, console), and integration
+    against `uclog-hub` with the `loopback:` device.
+  - 50 tests on Python 3.9, 3.13 and 3.14 (macOS), including a script killed with SIGKILL: its
+    hub exits and leaves no registry entry.
+  - On the NUCLEO-L452RE-P: hub started by serial number, device info, logdata from the cache,
+    terminal, semihost selftest (printf, stderr, files 32/1438/4000 bytes), stdin callback, the
+    1443-byte frame, hub stopped on close.
+- **Not done yet:**
+  - PyPI publishing (trusted publisher, then a publish job). The release workflow builds the
+    wheels as an artifact.
+  - CI on Linux and Windows has not run (no remote yet).
+  - mDNS discovery is untested without a second machine.

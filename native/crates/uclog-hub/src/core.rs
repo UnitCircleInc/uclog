@@ -308,8 +308,13 @@ pub async fn client_session(shared: Arc<Shared>, guard: SlotGuard, mut c: Client
     info!("client {} connected ({})", c.peer, c.kind);
     let (sys_tx, mut sys_rx) = mpsc::channel::<Vec<u8>>(16);
     *shared.client_syscall.lock().unwrap() = Some(sys_tx);
-    let start = shared.backlog.lock().unwrap().start();
+    let (start, replay_end) = {
+        let b = shared.backlog.lock().unwrap();
+        (b.start(), b.next_seq())
+    };
     let mut cursor = start.cursor;
+    // One pulse marks the end of the replay: frames after it are live (protocol.md §8).
+    let mut replayed = false;
     let mut first = vec![];
     if let Some(info) = &start.info {
         push_frame(&mut first, info);
@@ -326,7 +331,13 @@ pub async fn client_session(shared: Arc<Shared>, guard: SlotGuard, mut c: Client
         // Device → client: device info first, then the backlog / live frames.
         let mut out = std::mem::take(&mut first);
         loop {
-            let r = shared.backlog.lock().unwrap().read(cursor, chunk - out.len().min(chunk));
+            let mut r = shared.backlog.lock().unwrap().read(cursor, chunk - out.len().min(chunk));
+            if !replayed && r.cursor > replay_end {
+                // Stop at the end of the replay, so the marker comes before the first live frame.
+                let first = r.cursor - r.frames.len() as u64;
+                r.frames.truncate(replay_end.saturating_sub(first) as usize);
+                r.cursor = first + r.frames.len() as u64;
+            }
             if r.skipped > 0 {
                 if shared.slow_client == SlowClient::Disconnect {
                     break 'session format!("too slow: {} frames behind", r.skipped);
@@ -343,6 +354,10 @@ pub async fn client_session(shared: Arc<Shared>, guard: SlotGuard, mut c: Client
                 push_frame(&mut out, &f);
             }
             shared.counters.client_frames_out.fetch_add(n as u64, Relaxed);
+            if !replayed && cursor >= replay_end {
+                replayed = true;
+                out.push(0);
+            }
             if out.is_empty() {
                 break;
             }

@@ -24,6 +24,7 @@ UCLOG_LOGDATA_CORPUS=~/.cache/uclog cargo test -p uclog-logdata --release -- --i
 
 ```sh
 uclog list [--json] [--ble-scan 5]                 # devices, local hubs (registry) and remote hubs (mDNS)
+uclog-hub list --json                              # local USB devices only (for the Python library)
 uclog term -d serial:/dev/ttyACM0 [--logs] [--raw] [--port 0] [-c "version s" --exit-after 2]
 uclog decode -l build/zephyr/zephyr.elf capture.bin
 uclog fw-update -d auto build/zephyr/zephyr.signed.bin
@@ -102,8 +103,8 @@ uclog hub -d loopback:rate=10 --port 0 --json-ready --exit-on-stdin-eof   # simu
   - On opening the device, the hub asks for its device info (an empty port-62 frame, F7). Direct
     clients do the same on connect.
   - Device frames are kept while no client is connected (`--backlog`, default 1 MiB).
-  - A new client gets the device info that applies to its first frame, then the backlog, then live
-    data.
+  - A new client gets the device info that applies to its first frame, then the backlog, then one
+    pulse that marks the end of the backlog, then live data.
   - A client that falls behind skips frames (counted), or is disconnected with
     `--slow-client disconnect`.
 - **Syscalls:**

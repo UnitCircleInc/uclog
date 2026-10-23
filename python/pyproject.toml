@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "uclog"
+version = "0.1.0"
+description = "ucLog for scripts: talk to devices through the ucLog hub and decode their logs"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Unit Circle Inc." }]
+dependencies = []
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Topic :: Software Development :: Embedded Systems",
+]
+
+[project.optional-dependencies]
+mdns = ["zeroconf>=0.38"]
+test = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+uclog = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

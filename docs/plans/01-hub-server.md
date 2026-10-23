@@ -118,9 +118,11 @@ the session. The hub replies to outstanding syscalls (§6) and frees the slot.
   **except port 63**, in arrival order, including port-62 frames.
 - `info_at_oldest`: the port-62 frame in effect at the oldest backlog entry. It is updated as
   frames are evicted. `latest_info`: the most recent port-62 frame.
-- **On client accept**: send `info_at_oldest` (if any), then the backlog from oldest, then live data.
-  The client therefore sees each device reset or image change (new `app_hash`) exactly where it
-  happened and switches decoders.
+- **On client accept**: send `info_at_oldest` (if any), then the backlog from oldest, **then one
+  pulse**, then live data. The client therefore sees each device reset or image change (new
+  `app_hash`) exactly where it happened and switches decoders. The pulse marks the end of the
+  replay (the backlog as it was at accept), so a client can skip the backlog even while the device
+  logs without pause (Python `skip_backlog`).
 - **The live stream and the client queue are the same ring**: the client writer holds a cursor into
   the ring. The device reader never waits for the client. If a slow client's cursor falls behind
   the oldest entry, the hub skips to the oldest entry and counts the dropped frames per session
@@ -199,10 +201,14 @@ uclog hub [-d URI|auto] [--baud N] [--usb-filter VID:PID]... [--hid-poll]
   the local registry (§7.1) advertise the actual port. An explicit `--port N` that is busy is an
   error.
 - `--port 0` / `--ws-port 0` / `--udp-port 0` bind ephemeral ports. `--json-ready` prints
-  `{"port":N,"ws_port":M,"udp_port":U,"name":"…","device":"…"}` on stdout once listening (used by VS Code, Plan 03).
+  `{"port":N,"ws_port":M,"udp_port":U,"name":"…","device":"…"}` on stdout once listening and
+  registered, so a client that connects at once is reflected in the registry's `busy` (used by the
+  Python library, Plan 06, and VS Code, Plan 03).
 - `--exit-on-stdin-eof`: exit when stdin reaches EOF, which happens when the parent process dies.
   Used by the Python library (Plan 06) and VS Code (Plan 03) so that their private hubs never
-  outlive them.
+  outlive them. It works whether or not stdin is a terminal.
+- `uclog-hub list [--json] [--usb-filter VID:PID]...` lists local USB devices (serial and HID), so
+  that the Python wheels, which bundle only `uclog-hub`, can choose a device.
 - `uclog list [--json] [--ble-scan SECS]` lists serial/HID devices (filtered), BLE devices and mDNS
   hubs (with `busy`).
 

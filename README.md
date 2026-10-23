@@ -12,7 +12,7 @@ Next-generation ucLog clients for Unit Circle devices. Every client shares one w
 | VS Code extension | `web/apps/vscode` | [03](docs/plans/03-vscode.md) | planned |
 | Native GUI (`uclog gui`) | `native/` (Rust) | [04](docs/plans/04-native-gui.md) | planned |
 | Native TUI (`uclog tui`) | [`native/`](native/README.md) | [05](docs/plans/05-tui.md) | **Phase 3**: done; verified on hardware (macOS) |
-| Python library for scripts | `python/` | [06](docs/plans/06-python-client.md) | planned |
+| Python library for scripts | [`python/`](python/README.md) | [06](docs/plans/06-python-client.md) | **Phase 2b**: done; verified with the loopback device and on hardware (macOS); wheels not yet published |
 
 Start with [docs/plans/README.md](docs/plans/README.md): decisions, architecture and phasing.
 

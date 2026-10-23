@@ -2,6 +2,10 @@
 __pycache__/
 *.py[cod]
 .venv/
+.pytest_cache/
+/python/build/
+/python/dist/
+*.egg-info/
 
 # Rust
 /native/target/
