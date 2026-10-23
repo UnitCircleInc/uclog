@@ -43,7 +43,7 @@ static uint32_t cmd_head, cmd_tail;
 
 static void reply(int port, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 static void reply(int port, const char *fmt, ...) {
-  char b[256];
+  static char b[LOG_MAX_PACKET_SIZE + 1]; // one port frame; static: not on the stack
   va_list ap;
   va_start(ap, fmt);
   int n = vsnprintf(b, sizeof(b), fmt, ap);
