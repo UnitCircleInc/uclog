@@ -22,3 +22,6 @@ dist/
 *.swp
 .idea/
 .vscode/
+
+# Scratch files
+/tmp/
