@@ -62,7 +62,7 @@ the hub binaries this phase signs.
 | # | Task | From | Size |
 |---|---|---|---|
 | 19 | HID devices on Windows and Linux, including the Windows interrupt-read check (issue 7). Add `--hid-poll` (`get_input_report` fallback) only if that check fails; the C071 test firmware answers `GET_REPORT` with an empty report, so it needs a real fallback first. ✅ macOS: the NUCLEO-C071RB test firmware's HID, through the hub, directly and in VS Code | 01 §3, §10 | M |
-| 20 | BLE devices (btleplug, maximum chunk size) on macOS, Linux and Windows | 01 §10 | M |
+| 20 | BLE devices (btleplug, maximum chunk size) on macOS, Linux and Windows. ✅ macOS: the STM32WBA55G-DK1 test firmware, through the hub, directly and in VS Code (~72 kB/s: macOS uses a 15 ms interval and limits each connection event's length). Measure throughput with Linux and Windows centrals | 01 §10 | M |
 | 21 | UDP devices | 01 §10 | S |
 | 22 | Serial adapters other than the STLINK VCP: FTDI, and CDC-ACM on Windows and Linux. ✅ macOS: CDC-ACM (`2FE3:0100`, the NUCLEO-C071RB test firmware) | 01 §10 | S |
 | 23 | FW update (ports 59 and 3) on hardware, including cancel and the port-3 fallback | Phase 1 | S |
@@ -70,7 +70,7 @@ the hub binaries this phase signs.
 | 25 | mDNS hub discovery from a second machine (`uclog list`, Connect dialogs, Python) | 06 §9 | S |
 | 26 | Hub soak: 1 h at the maximum log rate with an intermittently stalled client; memory stays bounded by `--backlog` | 01 §10 | S |
 | 27 | GUI and TUI against each device kind and through a hub (the manual matrix of 04 §7 task 12) | 04 §7 | M |
-| 27a | Web: Web Serial, WebHID and Web Bluetooth with real devices (the choosers cannot be automated: Chrome's DevTools `DeviceAccess` covers only Bluetooth, and seeded permissions are ignored); Chrome and Edge on Windows, macOS and Linux. The NUCLEO-C071RB test firmware offers UART, CDC and HID at once | 02 §10 | M |
+| 27a | Web: Web Serial, WebHID and Web Bluetooth with real devices (the Serial and HID choosers cannot be automated: Chrome's DevTools `DeviceAccess` covers only Bluetooth, and seeded permissions are ignored); Chrome and Edge on Windows, macOS and Linux. The NUCLEO-C071RB test firmware offers UART, CDC and HID at once. ✅ Web Bluetooth, Chrome on macOS: `web/e2e/ble.spec.ts` with the STM32WBA55G-DK1 test firmware | 02 §10 | M |
 | 27b | VS Code: the extension on Windows and Linux (private hubs, serial, HID, BLE scan), over Remote-SSH and WSL (`extensionKind` ui: USB stays local), and semihost file calls from a real device. *Load Logdata…* and *Browse…* use native dialogs, so they are checked by hand | 03 §8 | M |
 
 ## 7. Remaining features

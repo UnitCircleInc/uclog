@@ -6,9 +6,10 @@ A bare-metal ucLog device library and a test firmware for exercising the hosts o
 |---|---|
 | [`uclog/`](uclog/) | Device library: `log.h`, `log.c`, `log.ld`, plus `tools/logdata.py` and `tools/apphash.py` |
 | [`uccomm/`](uccomm/) | COBS, CBOR, CRC-32C and the ring buffer (`cb`), copied unchanged from [UnitCircleInc/ucComm](https://github.com/UnitCircleInc/ucComm) `src/` (commit 8bc8e3b) |
-| [`app/`](app/) | The test app both boards build: commands, the selftests, semihost (`syscalls.c`) |
+| [`app/`](app/) | The test app every board builds: commands, the selftests, semihost (`syscalls.c`) |
 | [`nucleo-l452re-p/`](nucleo-l452re-p/) | Test firmware for the NUCLEO-L452RE-P (STM32L452RE, Cortex-M4F, hard-float): UART |
 | [`nucleo-c071rb/`](nucleo-c071rb/) | Test firmware for the NUCLEO-C071RB (STM32C071RB, Cortex-M0+): UART, USB CDC-ACM and USB HID at once |
+| [`stm32wba55g-dk1/`](stm32wba55g-dk1/) | Test firmware for the STM32WBA55G-DK1 (STM32WBA55CG, Cortex-M33): UART and BLE at once |
 
 ## Device library (`uclog/`)
 
@@ -155,7 +156,7 @@ make run        # flash, then: uclog term -l build/app.elf --files-dir build/fil
 `make flash` programs the board's own ST-LINK: `STLINK_SN=…`, or the probe whose board name is
 `NUCLEO-L452RE-P` (several boards may be connected).
 
-The toolchain and build steps are the same for both boards.
+The toolchain and build steps are the same for every board.
 
 **Toolchain**:
 - `arm-none-eabi-gcc` on PATH, otherwise STM32CubeCLT (`CUBECLT=/opt/ST/STM32CubeCLT_1.20.0`).
@@ -273,3 +274,111 @@ Found on the way:
 Chrome's DevTools `DeviceAccess` domain only covers Bluetooth, and seeded permissions are
 ignored), Windows and Linux hosts, and USB suspend/resume (not handled: the device keeps its
 state).
+
+## STM32WBA55G-DK1 test firmware
+
+**Board setup**:
+- 32 MHz from the HSE (the radio's crystal) as SYSCLK, SMPS, voltage range 1; the LSE clocks the
+  radio's sleep timer.
+- USART1 on PB12/PA8 (the STLINK-V3 virtual COM port, `0483:374e`) at **1 Mbaud**, interrupt driven
+  with the 8-byte FIFOs (`board/uart.c`; 2 KiB RX ring, TX from the log ring).
+- **BLE** (`board/ble.c`, protocol.md §4.2): one service and one characteristic, both
+  `8683b8f3-0000-1000-8000-00805f9b34fb`, with write, write without response and notify.
+  - Advertises as **"ucLog test STM32WBA55G-DK1"**: the 128-bit service UUID in the advertisement,
+    the name in the scan response (they do not both fit in 31 bytes); a static random address made from
+    the chip's unique ID; 30-50 ms interval; advertising again after a disconnection.
+  - Device → host: notifications of ATT MTU − 3 bytes, but at most one link layer packet's worth
+    once the data length is extended: data length − 4 (L2CAP) − 3 (ATT) = **244** bytes of 251 (a
+    248-byte notification takes a second packet for its last 4 bytes). Filled from the log ring
+    across its wrap point, queued until the stack reports it is full (then the rest waits for
+    its "TX pool available" event). The stack's packet pool has 512 extra 32-byte blocks (the
+    example's 21 hold about two full notifications), room for ~60 waiting notifications; the
+    controller has 8 ACL buffers of 251 bytes.
+  - Log data is fragmented into full notifications: while the log keeps coming only full ones are
+    sent (each notification costs a link layer packet, whatever its size). A short one goes once
+    the ring has not grown for a millisecond (SysTick), or for the device info.
+  - Host → device: writes of any size, including 512-byte long writes (Web Bluetooth), into a
+    2 KiB RX ring. A value longer than one stack event arrives in several, in order.
+  - On connection the device asks for data length extension (251 bytes, 2120 µs) and the 2M PHY;
+    after 1 s (earlier requests are refused while the first procedures run) for a 15 ms
+    connection interval, latency 0, 2 s supervision timeout (L2CAP connection parameter update). The outcome is logged: `ble: data length tx 251 bytes / 2120 us, rx …`,
+    `ble: PHY tx 2M, rx 2M`, `ble: connection interval 15.00 ms`.
+- ST's BLE stack runs the way its `BLE_p2pServer_Simplest` example uses it (no sequencer, timer
+  server or low power), but in the lowest-priority interrupt (TSC's vector, pended by software)
+  instead of the main loop. So the link keeps moving while the test app busy-waits (`reply()`,
+  `big`). Stack events are queued and handled after `BleStack_Process()`, which must not be
+  re-entered.
+- Interrupt priorities: the radio 0 (5 while only its sleep timer runs), USART1 2, SysTick 3, the
+  BLE stack and the link layer's background work 15. The ucLog lock (`board_lock()`) masks
+  priorities 1-15 through BASEPRI, so it never delays the radio. (`disable_irq`/`enable_irq` are
+  taken: the link layer library defines its own.)
+- LED LD3 on PB15.
+- The image is about 150 KiB of flash and 80 KiB of static RAM (the BLE stack's buffers included).
+
+**Two links, one in use**: as on the C071, the link a host talks on is used, and the other takes
+over when it receives bytes and the one in use has been silent for 2 s. `link` says which is in use.
+
+**STM32CubeWBA**: the CMSIS headers, HAL/LL, the startup file, the BLE stack and link layer
+libraries (`stm32wba_ble_stack_full.a`, `LinkLayer_BLE_Peripheral_Only_V3_0.a`) and the chip-level
+platform files (`STM32_WPAN/Target/*.c` and their configuration headers) of the
+`NUCLEO-WBA55CG/Applications/BLE/BLE_p2pServer_Simplest` example (the same chip) all come from the
+package: the default is `~/STM32Cube/Repository/STM32Cube_FW_WBA_V1.10.0`, override it with
+`STM32CUBE_WBA=…`. Nothing from it is copied here; `board/skel_ble.h` stands in for the example's
+application header.
+
+```sh
+cd firmware/stm32wba55g-dk1
+make            # or make STM32CUBE_WBA=…
+make flash      # this board's ST-LINK (board name STM32WBA55G-DK1, or STLINK_SN=…)
+```
+
+### Results (2026-10-24, macOS)
+
+`uclog list --ble-scan 5` shows `ble:<id>  ucLog test STM32WBA55G-DK1`. Through `uclog-hub` the
+device is `ble:ucLog test STM32WBA55G-DK1` (by name).
+
+| Check | UART | BLE |
+|---|---|---|
+| `test` (Python library, through `uclog-hub`) | 23 records, 0 error records | 24 records, 0 error records |
+| `burst 2000` | 2,000 decoded, 0 errors, 100,000 B/s | 2,000 decoded, 0 errors (the 8 KiB ring absorbs part: ~70,000 B/s) |
+| Sustained (`burst 10000`) | — | ~72,000 B/s (see below) |
+| 1443-byte frame, device → host (`big`) | ✓ | ✓ |
+| Host → device (port 5 echo), 10 to 1443 bytes | ✓ | ✓ |
+| `sh` through the hub and directly (`uclog term -d ble:…`, no hub) | ✓ | ✓ |
+| VS Code (`hw.spec.ts`; BLE: *Scan for Bluetooth devices*, then the name) | 5,056 logs, 0 errors | 5,079 logs, 0 errors |
+| Web Bluetooth in Chrome, no hub (`web/e2e/ble.spec.ts`): device info, `test`, `burst 5000`, a 1411-byte command in 512-byte long writes | — | 5,054 logs, 0 errors |
+| Device info on connect, link handover after 2 s | ✓ | ✓ |
+
+**BLE throughput with a Mac**: macOS connects at 30 ms, negotiates 251-byte packets and the 2M PHY
+when asked, and accepts the 15 ms interval request (asking for 7.5-15 ms also gives 15 ms). Each
+connection event then carries about 4.4 notifications of 244 bytes (~1,080 bytes), with the
+device's queues full (the stack reports "pool full" throughout a burst):
+
+| Device side | Rate |
+|---|---|
+| First version: one notification per log (~19 bytes), pool of ~2, 30 ms | ~19,000 B/s |
+| Full notifications, large pool, DLE + 2M, 30 ms interval | ~26,000 B/s |
+| The same at 15 ms | ~52,000 B/s |
+| The same with the 1M PHY | ~27,000 B/s |
+| 15 ms, notifications of 244 instead of 248 bytes (one link layer packet each) | ~72,000 B/s |
+
+With 248-byte notifications every one took two link layer packets (251 + 4 bytes), so the "3.3
+notifications per event" were really 6-7 packets. The rate halves with the 1M PHY and doubles with
+half the interval: macOS limits each connection event by time, not the device. More needs a
+central that gives longer connection events (or a shorter interval).
+
+Found on the way:
+- Without `HAL_MspInit()` enabling the PWR clock, the supply and voltage-scaling settings are
+  ignored and the radio stays silent (the stack starts and reports advertising, but nothing is on
+  the air).
+- A full-size stack event (258 bytes) overflowed a one-byte length in the event queue; lengths are
+  two bytes now.
+- macOS hides BLE addresses (CoreBluetooth reports `00:00:00:00:00:00`): the native client now
+  shows no serial for such devices, and `ble:00:00:00:00:00:00` no longer matches every device.
+- The stack refuses a connection parameter update request right after connecting (0x0C), so it
+  is sent after 1 s.
+- The first version sent a notification for every log as it arrived (~19 bytes each), and the
+  stack's pool held about two full notifications.
+
+**Not tested**: Linux and Windows hosts, bonding/encryption (none: the characteristic is open),
+low power (the firmware never sleeps beyond WFI).

@@ -1,6 +1,7 @@
 // Hardware through VS Code (a private hub on the device):
 //   UCLOG_TEST_DEVICE=serial:/dev/cu.usbmodem… npx playwright test -c apps/vscode/playwright.config.ts hw
 //   UCLOG_TEST_FIRMWARE=nucleo-c071rb UCLOG_TEST_DEVICE=hid:<serial> …   (the C071's USB links)
+//   UCLOG_TEST_FIRMWARE=stm32wba55g-dk1 UCLOG_TEST_DEVICE="ble:<advertised name>" …   (BLE)
 // The workspace holds the firmware build's <app_hash>.logdata files, found by the extension host;
 // then `test` and `burst` must decode cleanly, and `sh` must create its files in the workspace
 // (semihost through the extension).
@@ -22,7 +23,12 @@ test('real device through a private hub: workspace logdata, test, burst', async 
   await code.launch();
   try {
     await code.command('ucLog: Connect…');
-    await code.pick(DEV!);
+    if (DEV!.startsWith('ble:')) {
+      await code.pick('Scan for Bluetooth devices'); // then listed by name
+      await code.pick(DEV!.slice(4));
+    } else {
+      await code.pick(DEV!);
+    }
     const f = await code.logger();
     await expect(f.locator('uc-log footer')).toContainText('logdata: sibling', { timeout: 30_000 });
     await f.locator('uc-log nav button', { hasText: 'Terminal' }).click();

@@ -36,6 +36,10 @@ UCLOG_VSIX=apps/vscode/uclog-0.1.0.vsix npx playwright test -c apps/vscode/playw
 UCLOG_TEST_DEVICE=serial:/dev/cu.usbmodem… npx playwright test -c apps/vscode/playwright.config.ts hw
 ```
 
+Hardware tests in Chrome: `UCLOG_TEST_DEVICE=… UCLOG_TEST_ELF=… npx playwright test hw` (through
+the hub), and `UCLOG_TEST_BLE="ucLog test STM32WBA55G-DK1" UCLOG_TEST_ELF=../firmware/stm32wba55g-dk1/build/app.elf
+npx playwright test ble` (Web Bluetooth, the chooser answered through DevTools).
+
 To try it by hand, build it and fill `bin/` (the first three lines), then open `apps/vscode` in VS
 Code and press F5 (*Run Extension*), or install the VSIX
 (`code --install-extension apps/vscode/uclog-0.1.0.vsix`).

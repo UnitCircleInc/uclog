@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use btleplug::api::{Central, CharPropFlags, Manager as _, Peripheral as _, ScanFilter, WriteType};
+use btleplug::api::{BDAddr, Central, CharPropFlags, Manager as _, Peripheral as _, ScanFilter, WriteType};
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use futures::StreamExt;
 use uuid::Uuid;
@@ -38,13 +38,15 @@ pub(crate) async fn scan(dur: Duration) -> Result<Vec<(Peripheral, Device)>, Lin
         }
         let name = props.local_name.clone().or(props.advertisement_name.clone()).unwrap_or_else(|| "BLE device".into());
         let id = p.id().to_string();
+        // macOS does not reveal addresses (it reports 00:00:00:00:00:00): no serial then.
+        let serial = if props.address == BDAddr::default() { String::new() } else { props.address.to_string() };
         out.push((
             p,
             Device {
                 kind: Kind::Ble,
                 uri: format!("ble:{id}"),
                 name,
-                serial: props.address.to_string(),
+                serial,
                 description: props.rssi.map(|r| format!("RSSI {r} dBm")).unwrap_or_default(),
                 busy: None,
             },
@@ -57,7 +59,7 @@ pub(crate) async fn open(spec: LinkSpec, id: &str) -> Result<Link, LinkError> {
     let found = scan(Duration::from_secs(4)).await?;
     let (p, dev) = found
         .into_iter()
-        .find(|(_, d)| d.uri == format!("ble:{id}") || d.serial.eq_ignore_ascii_case(id) || d.name == id)
+        .find(|(_, d)| d.uri == format!("ble:{id}") || (!d.serial.is_empty() && d.serial.eq_ignore_ascii_case(id)) || d.name == id)
         .ok_or_else(|| LinkError::NotFound(format!("no BLE device {id} advertising the ucLog service")))?;
     p.connect().await.map_err(e)?;
     p.discover_services().await.map_err(e)?;
@@ -100,5 +102,6 @@ pub(crate) async fn open(spec: LinkSpec, id: &str) -> Result<Link, LinkError> {
             }
         }
     });
-    Ok(Link { spec, description: format!("BLE {} {}", dev.name, dev.serial), tx, rx: evr })
+    let description = if dev.serial.is_empty() { format!("BLE {}", dev.name) } else { format!("BLE {} {}", dev.name, dev.serial) };
+    Ok(Link { spec, description, tx, rx: evr })
 }
