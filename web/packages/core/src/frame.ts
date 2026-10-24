@@ -220,7 +220,7 @@ export function stlinkSplit(data: Uint8Array): Uint8Array[] {
 
 /** §4.1 default serial filters (D1). */
 export const SERIAL_FILTERS: { usbVendorId: number; usbProductId?: number }[] = [
-  ...[0x374b, 0x374e, 0x374f, 0x3753, 0x3754].map((p) => ({ usbVendorId: 0x0483, usbProductId: p })),
+  ...[0x374b, 0x374e, 0x374f, 0x3752, 0x3753, 0x3754].map((p) => ({ usbVendorId: 0x0483, usbProductId: p })),
   ...[0x6001, 0x6010, 0x6011, 0x6014, 0x6015].map((p) => ({ usbVendorId: 0x0403, usbProductId: p })),
   { usbVendorId: 0x2fe3 },
 ];

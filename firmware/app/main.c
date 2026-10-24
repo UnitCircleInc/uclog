@@ -1,4 +1,4 @@
-// ucLog test firmware for the NUCLEO-L452RE-P.
+// ucLog test firmware, shared by the boards (NUCLEO-L452RE-P, NUCLEO-C071RB).
 //
 // - At boot, and on `test`: one log of every argument kind, level and format feature.
 // - Every second: a heartbeat log with the simulated sensor reading.
@@ -41,15 +41,25 @@ static struct {
 } cmds[CMD_QUEUE];
 static uint32_t cmd_head, cmd_tail;
 
+// One port frame, for reply() and big(); static: not on the stack. Neither runs inside the other
+// (handlers reply only from log_poll(), which big() does not call).
+static uint8_t frame_buf[LOG_MAX_PACKET_SIZE + 1];
+
+// The link the host is using (boards with several links say which).
+__attribute__((weak)) const char *board_link(void) {
+  return "uart";
+}
+
 static void reply(int port, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 static void reply(int port, const char *fmt, ...) {
-  static char b[LOG_MAX_PACKET_SIZE + 1]; // one port frame; static: not on the stack
+  char *b = (char *)frame_buf;
+  const size_t cap = sizeof(frame_buf);
   va_list ap;
   va_start(ap, fmt);
-  int n = vsnprintf(b, sizeof(b), fmt, ap);
+  int n = vsnprintf(b, cap, fmt, ap);
   va_end(ap);
   if (n < 0) return;
-  if ((size_t)n >= sizeof(b)) n = sizeof(b) - 1;
+  if ((size_t)n >= cap) n = (int)cap - 1;
   // Replies are not optional like logs: wait (briefly) for the TX interrupt to make room. No
   // log_poll() here: reply() also runs inside port handlers.
   uint32_t t0 = board_ms();
@@ -148,12 +158,12 @@ static void burst(int port, unsigned n) {
 
 // One frame of n bytes: "<n>:" then a repeating pattern, ending in "|\r\n".
 static void big(int port, size_t n) {
-  static uint8_t b[LOG_MAX_PACKET_SIZE];
+  uint8_t *b = frame_buf;
   if (n < 16 || n > LOG_MAX_PACKET_SIZE) {
     reply(port, "big: n must be 16..%d\r\n", LOG_MAX_PACKET_SIZE);
     return;
   }
-  int h = snprintf((char *)b, sizeof(b), "%u:", (unsigned)n);
+  int h = snprintf((char *)b, sizeof(frame_buf), "%u:", (unsigned)n);
   for (size_t i = (size_t)h; i < n - 3; i++) b[i] = (uint8_t)('a' + i % 26);
   memcpy(b + n - 3, "|\r\n", 3);
   while (log_tx_avail() < n) {
@@ -187,6 +197,7 @@ static void run_command(int port, char *c) {
                 "  burst [n]   n logs as fast as the link allows (default 1000)\r\n"
                 "  big [n]     one port-61 frame of n bytes (default the maximum, 1443)\r\n"
                 "  stats       link counters\r\n"
+                "  link        the link in use (uart, cdc, hid)\r\n"
                 "  led on|off  user LED (stops blinking)\r\n"
                 "  fatal       LOG_FATAL (resets the board)\r\n");
   } else if (strcmp(c, "info") == 0) {
@@ -223,6 +234,8 @@ static void run_command(int port, char *c) {
     reply(port, "tx_bytes %lu tx_dropped %lu rx_frames %lu rx_errors %lu rx_uart_errors %lu rx_no_handler %lu\r\n",
           (unsigned long)s.tx_bytes, (unsigned long)s.tx_dropped, (unsigned long)s.rx_frames, (unsigned long)s.rx_errors,
           (unsigned long)s.rx_uart_errors, (unsigned long)s.rx_no_handler);
+  } else if (strcmp(c, "link") == 0) {
+    reply(port, "link: %s\r\n", board_link());
   } else if (strcmp(c, "led") == 0) {
     board_led(arg && strcmp(arg, "on") == 0);
     blink = false;
@@ -259,7 +272,7 @@ int main(void) {
     bool host;
     log_is_host_ready(&host);
     if (host != was_host) {
-      LOG_INFO("host %s", host ? "connected" : "gone");
+      LOG_INFO("host %s (%s)", host ? "connected" : "gone", board_link());
       if (host) reply(TERM_PORT, "\r\nucLog test firmware on %s - type help\r\n> ", BOARD_NAME);
       was_host = host;
     }

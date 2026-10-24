@@ -326,7 +326,7 @@ the native GUI/TUI/hub and the Plan 06 library reach parity.
 ### 5.1 Device discovery and selection
 
 - **Serial default filter** (override with `--usb-filter VID:PID`, repeatable, or config):
-  - STLINK `0483:374B`, `0483:374E`, `0483:374F`, `0483:3753`, `0483:3754`
+  - STLINK `0483:374B`, `0483:374E`, `0483:374F`, `0483:3752`, `0483:3753`, `0483:3754`
   - FTDI `0403:6001`, `0403:6010`, `0403:6011`, `0403:6014`, `0403:6015`
   - Zephyr CDC-ACM `2FE3:*`
 - **HID**: VID `0x2FE3`, interface 1. **BLE**: scan filtered on the service UUID.

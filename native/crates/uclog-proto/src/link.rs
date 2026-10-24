@@ -34,6 +34,7 @@ pub const SERIAL_FILTER: &[(u16, Option<u16>, &str)] = &[
     (0x0483, Some(0x374B), "STLINK"),
     (0x0483, Some(0x374E), "STLINK"),
     (0x0483, Some(0x374F), "STLINK"),
+    (0x0483, Some(0x3752), "STLINK"), // ST-LINK/V2-1 without mass storage (NUCLEO-C071RB)
     (0x0483, Some(0x3753), "STLINK"),
     (0x0483, Some(0x3754), "STLINK"),
     (0x0403, Some(0x6001), "FTDI"),

@@ -219,11 +219,17 @@ export function support() {
   return { serial: 'serial' in n, hid: 'hid' in n, ble: 'bluetooth' in n, ws: typeof WebSocket !== 'undefined' };
 }
 
+/** The ucLog HID interface (protocol.md §4.3): input report A1. A composite device may have other
+ * HID interfaces with the same vendor ID, which the browser lists separately. */
+export function isUclogHid(d: HIDDevice): boolean {
+  return d.vendorId === HID_VENDOR && d.collections.some((c) => c.inputReports?.some((r) => r.reportId === HID_IN));
+}
+
 /** Ports the user granted earlier (no chooser needed). */
 export async function grantedDevices(): Promise<{ serial: SerialPort[]; hid: HIDDevice[] }> {
   const s = support();
   const serial = s.serial ? await navigator.serial.getPorts() : [];
-  const hid = s.hid ? (await navigator.hid.getDevices()).filter((d) => d.vendorId === HID_VENDOR) : [];
+  const hid = s.hid ? (await navigator.hid.getDevices()).filter(isUclogHid) : [];
   return { serial, hid };
 }
 
@@ -234,7 +240,8 @@ export async function requestSerial(filters = SERIAL_FILTERS): Promise<SerialPor
 
 export async function requestHid(): Promise<HIDDevice | undefined> {
   const d = await navigator.hid.requestDevice({ filters: [{ vendorId: HID_VENDOR }] });
-  return d[0];
+  if (d.length && !d.some(isUclogHid)) throw new Error('that HID interface is not the ucLog one (no input report A1); choose the other entry');
+  return d.find(isUclogHid);
 }
 
 export async function requestBle(): Promise<BluetoothDevice> {

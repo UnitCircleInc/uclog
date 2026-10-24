@@ -29,13 +29,15 @@ CMSIS_DEV := $(STM32CUBE_L4)/Drivers/CMSIS/Device/ST/STM32L4xx
 
 UCLOG_DIR  := ../uclog
 UCCOMM_DIR := ../uccomm
+APP_DIR    := ../app
 BUILD      := build
 
-# Paths as given here become __FILE__, i.e. the file names shown with each log.
-SRCS := src/main.c \
-        src/drivers/sensor.c \
-        src/sh/syscalls.c \
-        src/sh/semihost_test.c \
+# Paths as given here become __FILE__, i.e. the file names shown with each log; the shared test
+# app (../app) is shown as src/ (-ffile-prefix-map below).
+SRCS := $(APP_DIR)/main.c \
+        $(APP_DIR)/drivers/sensor.c \
+        $(APP_DIR)/sh/syscalls.c \
+        $(APP_DIR)/sh/semihost_test.c \
         board/board.c \
         board/dma.c \
         board/gpio.c \
@@ -52,7 +54,8 @@ CPU    := -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mfp16-form
 CFLAGS := $(CPU) -std=gnu11 -Os -g3 -Wall -Wextra -Wno-override-init \
           -Wno-unused-parameter -ffunction-sections -fdata-sections \
           -fno-eliminate-unused-debug-types \
-          -DSTM32L452xx -Isrc -Iboard -I$(UCLOG_DIR) -I$(UCCOMM_DIR) \
+          -ffile-prefix-map=$(APP_DIR)/=src/ \
+          -DSTM32L452xx -I$(APP_DIR) -Iboard -I$(UCLOG_DIR) -I$(UCCOMM_DIR) \
           -I$(STM32CUBE_L4)/Drivers/CMSIS/Include -I$(CMSIS_DEV)/Include \
           -I$(STM32CUBE_L4)/Drivers/STM32L4xx_HAL_Driver/Inc -MMD -MP
 LDFLAGS := $(CPU) -Tboard/stm32l452re.ld -L$(UCLOG_DIR) -Wl,--gc-sections -Wl,-Map=$(BUILD)/app.map \
@@ -65,6 +68,10 @@ OBJS := $(patsubst %.c,$(BUILD)/obj/%.o,$(subst ../,,$(SRCS))) \
 all: $(BUILD)/app.bin
 
 $(BUILD)/obj/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/obj/app/%.o: $(APP_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -101,8 +108,15 @@ $(BUILD)/app.elf: $(OBJS) board/stm32l452re.ld $(UCLOG_DIR)/log.ld $(UCLOG_DIR)/
 $(BUILD)/app.bin: $(BUILD)/app.elf
 	$(OBJCOPY) -O binary $< $@
 
+# The ST-LINK of this board (several boards may be connected): STLINK_SN, else the probe whose
+# board name is BOARD_PROBE.
+BOARD_PROBE ?= NUCLEO-L452RE-P
+STLINK_SN ?= $(shell $(PROG) -l st-link 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | \
+               awk '/ST-LINK SN/ {sn=$$NF} /Board Name/ && $$NF=="$(BOARD_PROBE)" {print sn; exit}')
+
 flash: $(BUILD)/app.bin
-	$(PROG) -c port=SWD mode=UR -w $(BUILD)/app.bin 0x08000000 -v -rst
+	@test -n "$(STLINK_SN)" || { echo "no $(BOARD_PROBE) ST-LINK found (set STLINK_SN)"; exit 1; }
+	$(PROG) -c port=SWD mode=UR sn=$(STLINK_SN) -w $(BUILD)/app.bin 0x08000000 -v -rst
 
 run: flash
 	@mkdir -p $(BUILD)/files

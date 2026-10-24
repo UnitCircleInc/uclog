@@ -174,7 +174,7 @@ type/port as in §3.1. The peek reads at most `e[0..2]`. Vectors: `peek_mux.json
 
   | Family | VID:PID |
   |---|---|
-  | STLINK | `0483:374B` `0483:374E` `0483:374F` `0483:3753` `0483:3754` |
+  | STLINK | `0483:374B` `0483:374E` `0483:374F` `0483:3752` `0483:3753` `0483:3754` |
   | FTDI | `0403:6001` `0403:6010` `0403:6011` `0403:6014` `0403:6015` |
   | Zephyr CDC-ACM | `2FE3:*` |
 - **STLINK workaround**: when a single write has `len % 8 == 0`, write `len-1` bytes, wait at

@@ -35,8 +35,8 @@ enum sh_op {
   SH_TICKFREQ = 0x31,
 };
 
-static uint8_t req[LOG_MAX_PACKET_SIZE];
-static uint8_t rsp[LOG_MAX_PACKET_SIZE];
+static uint8_t req[SH_BUF_SIZE];
+static uint8_t rsp[SH_BUF_SIZE];
 
 static bool host(void) {
   bool ready;
@@ -88,12 +88,12 @@ static void expect_err(const char *what, int32_t r, int32_t err, int32_t want) {
   }
 }
 
-// Write `n` pattern bytes with write() (syscalls.c sends at most 1438 bytes per WRITE, the
-// largest that fits a frame, and returns a short count) and read them back with read() (READ requests of
-// 1435 bytes, answered with at most 1024). No stdio: newlib-nano's unbuffered fread() reads one
-// byte per _read().
+// Write `n` pattern bytes with write() (syscalls.c sends at most SH_BUF_SIZE - 5 bytes per WRITE:
+// 1438 with the full frame size, the largest that fits; it returns a short count) and read them
+// back with read() (READ requests of SH_BUF_SIZE - 8 bytes, answered with at most 1024). No stdio:
+// newlib-nano's unbuffered fread() reads one byte per _read().
 static void big_file(size_t n) {
-  static uint8_t out[4000], in[4000];
+  static uint8_t out[SH_BIG_FILE], in[SH_BIG_FILE];
   for (size_t i = 0; i < n; i++) out[i] = (uint8_t)(i * 7 + 1);
   uint32_t crc = crc32c_update(CRC32C_INIT, out, n);
   int fd = open("uclog-big.bin", O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -179,8 +179,8 @@ void sh_selftest(void) {
       LOG_ERROR("fopen(r) failed: errno %d", errno);
     }
   }
-  big_file(1438);     // one maximum WRITE
-  big_file(4000);     // several WRITEs and READs
+  big_file(SH_BUF_SIZE - 5); // one maximum WRITE
+  big_file(SH_BIG_FILE);     // several WRITEs and READs
   r = mkdir("uclog-dir", 0755);
   LOG_INFO("mkdir: %d errno %d", r, r < 0 ? errno : 0);
 

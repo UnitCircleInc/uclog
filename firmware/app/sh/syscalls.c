@@ -28,6 +28,7 @@
 #include <stdbool.h>
 
 #include "log.h"
+#include "semihost_test.h" // SH_BUF_SIZE
 
 // Newlib syscalls over the ucLog semihost port (63), from the Unit Circle Zephyr firmware.
 // Changes for this bare-metal test firmware are marked "uclog-clientv2".
@@ -69,7 +70,7 @@ _off_t	_lseek		(int, _off_t, int);
 int	_read		(int, void *, size_t);
 int	mkdir		(const char *, mode_t mode);
 
-static uint8_t txrx[LOG_MAX_PACKET_SIZE];
+static uint8_t txrx[SH_BUF_SIZE];
 
 // uclog-clientv2: a request that needs a reply fails at once when no host is connected (otherwise
 // it would wait in the TX buffer and reach a later host as a stale request).
