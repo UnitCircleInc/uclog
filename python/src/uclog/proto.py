@@ -139,7 +139,9 @@ def peek(encoded: bytes):
   Returns ('pulse',) | ('log', type) | ('port', port)."""
   if len(encoded) == 0 or encoded == b'\x01':
     return ('pulse',)
-  b0 = 0 if encoded[0] == 0x01 else encoded[1]
+  # A one-byte run other than 01 has no e[1]: b0 is taken as 00 (§3.2). The run is not valid
+  # COBS, so decoding it fails later (§2.2).
+  b0 = 0 if encoded[0] == 0x01 or len(encoded) == 1 else encoded[1]
   t = b0 & 3
   if t == TYPE_PORT:
     return ('port', b0 >> 2)

@@ -15,7 +15,7 @@ from typing import Iterator, Optional
 from . import cbor, proto
 from .errors import (ApprovalTimeoutError, ConnectionClosedError, DeviceNotRespondingError,
                      HubBusyError, MultipleHubsError, NoHubError)
-from .hub import DEFAULT_PORT, list_devices, list_hubs, start_hub
+from .hub import DEFAULT_PORT, list_devices, list_hubs, spawn_lock, start_hub
 from .logdata import DecodeError, LogData, LogRecord
 from .resolver import Resolver
 from .semihost import Handler
@@ -86,13 +86,21 @@ class Connection:
     self._decoders = {}
     for ld in (self._resolver.manual() if manual is None else manual):
       self._decoders[ld.target] = ld
-    self._pending = None
+    # Decoding contexts whose logdata is still being resolved, oldest first (protocol.md §5.2:
+    # every port-62 frame starts one). Each holds the logs that arrived after its device info,
+    # decoded with its own logdata once it resolves.
+    self._contexts = collections.deque()
     self._live = not skip_backlog
     self._first_rx = None
     self._last_rx = None
+    self._replayed = False   # the hub's end-of-backlog pulse has been seen (protocol.md §8)
+    self._device_rx = None   # when the first byte after that pulse arrived: the device is open
+    self._device_deadline = None  # set by connect(): device_info waits until then
     self._closed = False
     self._out = collections.deque()
     self._out_cv = threading.Condition()
+    self._sending = False     # the writer holds a batch it has not finished sending
+    self._write_done = False  # the writer thread has ended
     self._scanner = proto.FrameScanner()
     self._zeros = 0          # length of the current run of 00 bytes
     self._stream_start = True
@@ -124,8 +132,15 @@ class Connection:
 
   @property
   def device_info(self) -> Optional[dict]:
-    """The port-62 device info (board, app_hash, ...). Waits up to 2 s for it."""
-    return self.wait_device_info(2.0)
+    """The port-62 device info (board, app_hash, ...). Waits up to 2 s for it, or longer while
+    the hub may still be opening the device (until connect()'s `device_timeout` ends)."""
+    return self.wait_device_info(self._info_timeout())
+
+  def _info_timeout(self):
+    t = 2.0
+    if self._device_deadline is not None:
+      t = max(t, self._device_deadline - time.monotonic())
+    return t
 
   def wait_device_info(self, timeout: Optional[float] = 2.0) -> Optional[dict]:
     with self._cv:
@@ -237,8 +252,13 @@ class Connection:
       del q[found[0]]
       return found[1]
 
-  def close(self) -> None:
-    """Close the connection. A hub started for it by the library is stopped."""
+  def close(self, flush_timeout: float = 2.0) -> None:
+    """Close the connection, after sending what `send()` queued (waiting up to `flush_timeout`
+    seconds). A hub started for it by the library is stopped."""
+    if threading.current_thread() is not self._writer:
+      with self._out_cv:
+        self._out_cv.wait_for(lambda: (not self._out and not self._sending) or self._write_done,
+                              flush_timeout)
     with self._cv:
       self._closed = True
       self._cv.notify_all()
@@ -286,6 +306,7 @@ class Connection:
   def _write_loop(self):
     last_tx = None
     try:
+      # The first byte is 00: a hub closes raw TCP clients that start with anything else (§4.5).
       self._sock.sendall(proto.PULSE)  # wake (protocol.md §2.3)
       last_tx = time.monotonic()
       ready = last_tx + WAKE_GAP
@@ -295,6 +316,7 @@ class Connection:
             self._out_cv.wait(max(0.0, last_tx + PULSE_INTERVAL - time.monotonic()))
           batch = list(self._out)
           self._out.clear()
+          self._sending = bool(batch)
         now = time.monotonic()
         if batch:
           if now - last_tx > LIVENESS_TIMEOUT:
@@ -304,11 +326,18 @@ class Connection:
             time.sleep(ready - time.monotonic())
           self._sock.sendall(b''.join(batch))
           last_tx = time.monotonic()
+          with self._out_cv:
+            self._sending = False
+            self._out_cv.notify_all()
         elif now - last_tx >= PULSE_INTERVAL:
           self._sock.sendall(proto.PULSE)
           last_tx = now
     except OSError:
       pass  # the reader sees the connection end and marks it closed once all data is read
+    finally:
+      with self._out_cv:
+        self._write_done = True
+        self._out_cv.notify_all()
 
   def _mark_closed(self):
     with self._cv:
@@ -337,11 +366,13 @@ class Connection:
       if self._first_rx is None:
         self._first_rx = now
       self._last_rx = now
-      pos = None if self._live else self._find_pulse(d)
+      pos = None if self._replayed else self._find_pulse(d)
       if pos is None:
         self._feed(d)
       else:
         self._feed(d[:pos])  # backlog
+        self._replayed = True
+        self._device_rx = now
         self._live = True
         self._feed(d[pos:])
       self._cv.notify_all()
@@ -364,7 +395,9 @@ class Connection:
   def _find_pulse(self, d):
     # The hub sends a pulse after the backlog replay (protocol.md §8). Frames carry both
     # delimiters, so two frames are separated by exactly two 00s: a longer run of 00s holds a
-    # pulse, and so does a run of two at the start of the stream.
+    # pulse, and so does a run of two at the start of the stream. The 00 that completes the run
+    # is the first byte after that pulse. The hub sends it only for the device (a frame, or a
+    # pulse while the device is alive), so it also shows that the device is open and talking.
     for i, b in enumerate(d):
       if b == 0:
         self._zeros += 1
@@ -400,14 +433,18 @@ class Connection:
       self._push(self._ports[m[1]], (self._seq, m[2]), m[1])
     elif m[1] == proto.TYPE_RES:
       self._error('reserved_type', f'decode: reserved frame type 2 [{_hex(p)}]', m[2])
-    elif self._pending is not None:
-      self._pending.append(m)
+    elif self._contexts:
+      pending = self._contexts[-1].pending  # its logdata is still being resolved
+      if len(pending) >= self._max:
+        del pending[0]
+        self.dropped['logs'] += 1
+      pending.append(m)
     else:
-      self._decode(m)
+      self._decode(m, self._decoders)
 
-  def _decode(self, m):
+  def _decode(self, m, decoders):
     _, _, target, addr, args = m
-    ld = self._decoders.get(target)
+    ld = decoders.get(target)
     if ld is None:
       self._error('no_logdata',
                   f'decode: no logdata for target {target} (addr 0x{addr:08x}) [{_hex(args)}]', target)
@@ -419,6 +456,10 @@ class Connection:
       text = (f'decode: unknown format addr 0x{addr & ~3:08x} in {ld.source} [{_hex(args)}]'
               if e.kind == 'unknown_format' else f'decode: {e}')
       rec = self._record(target, 'ERROR', '<uclog>', '', text, e.kind)
+    except Exception as e:  # a decoder bug must not stop the reader thread
+      log.exception('uclog decode')
+      rec = self._record(target, 'ERROR', '<uclog>', '', f'decode: {type(e).__name__}: {e}',
+                         'format')
     self._push(self._logs, rec, 'logs')
 
   def _on_device_info(self, data):
@@ -431,29 +472,43 @@ class Connection:
       return
     self._info = info
     h = info.get('app_hash')
-    if not isinstance(h, bytes) or (h == self._app_hash and self._decoders):
-      return
+    if not isinstance(h, bytes) or h == self._app_hash:
+      return  # the same image: the decoding context carries on (§5.2)
     self._app_hash = h
-    if self._pending is None:
-      self._pending = []
-    threading.Thread(target=self._resolve, args=(h,), daemon=True).start()
+    ctx = _Context(h)
+    self._contexts.append(ctx)
+    threading.Thread(target=self._resolve, args=(ctx,), daemon=True).start()
 
-  def _resolve(self, h):
-    lds, source, notes = self._resolver.resolve(h)
+  def _resolve(self, ctx):
+    """Resolve the logdata of one context (its own thread: it may download), then decode the
+    logs of every context that is ready, oldest first."""
+    lds, source, notes = [], None, []
+    try:
+      lds, source, notes = self._resolver.resolve(ctx.app_hash)
+    except Exception as e:  # e.g. a malformed logdata file: no logdata, but keep going
+      log.exception('uclog resolver')
+      notes = [f'logdata for app_hash {ctx.app_hash.hex()[:16]}…: {type(e).__name__}: {e}']
     for n in notes:
       log.warning('%s', n)
     with self._cv:
-      self.notes.extend(notes)
-      if h != self._app_hash:
-        return  # superseded by a newer device info
-      if lds:
-        self._decoders = {ld.target: ld for ld in lds}
-        log.info('logdata: %s', source)
-        self.notes.append(f'logdata: {source}')
-      pending, self._pending = self._pending or [], None
-      for m in pending:
-        self._decode(m)
-      self._cv.notify_all()
+      try:
+        self.notes.extend(notes)
+        # A new image with no logdata gets no_logdata records, not the old image's decoders.
+        ctx.decoders = {ld.target: ld for ld in lds}
+        if lds:
+          log.info('logdata: %s', source)
+          self.notes.append(f'logdata: {source}')
+        else:
+          self.notes.append(f'logdata: none for app_hash {ctx.app_hash.hex()[:16]}…')
+      finally:
+        ctx.done = True
+        while self._contexts and self._contexts[0].done:
+          c = self._contexts.popleft()
+          self._decoders = c.decoders if c.decoders is not None else {}
+          for m in c.pending:
+            self._decode(m, self._decoders)
+          c.pending = []
+        self._cv.notify_all()
 
   def _on_semihost(self, data):
     r, console = self._semihost.handle(data)
@@ -484,6 +539,16 @@ class Connection:
     self._enqueue(proto.wire_port(proto.PORT_SEMIHOST, self._semihost.stdin_reply(line or b'', n)))
 
 
+class _Context:
+  """Logs after one device info (with a new app_hash), waiting for that image's logdata."""
+
+  def __init__(self, app_hash):
+    self.app_hash = app_hash
+    self.pending = []
+    self.decoders = None
+    self.done = False
+
+
 # ---------------------------------------------------------------------------
 # connect()
 # ---------------------------------------------------------------------------
@@ -502,7 +567,7 @@ def _hub_matches(h, device):
 def connect(host: Optional[str] = None, device: Optional[str] = None, *, logdata=None,
             files_dir=None, stdin=None, cache_dir=None, logdata_domain=None, logdata_url=None,
             logdata_token=None, discover_remote: bool = False, approval_timeout: float = 60.0,
-            device_timeout: Optional[float] = 5.0, max_queue: int = 10000,
+            device_timeout: Optional[float] = 10.0, max_queue: int = 10000,
             skip_backlog: bool = False, hub_args=()) -> Connection:
   """Connect to a hub, starting one if none is running.
 
@@ -512,10 +577,11 @@ def connect(host: Optional[str] = None, device: Optional[str] = None, *, logdata
   - `logdata`: a file or a list of files (`.logdata` or ELF). See `Resolver` for the order.
   - `files_dir`: answer the device's file syscalls inside this directory (else ENOSYS).
   - `stdin`: callable(max_bytes) → bytes/str for the device's stdin reads (else EOF).
-  - `device_timeout`: for hubs on this machine, how long to wait for the first bytes from the
-    device before raising DeviceNotRespondingError (None: don't wait).
+  - `device_timeout`: how long to wait for data from the device itself (a frame, or a pulse the
+    hub sends only while the device is alive), after the hub's backlog replay, before raising
+    DeviceNotRespondingError. A hub opens a BLE device in about 5 s. None: don't wait.
   - `approval_timeout`: for remote hubs, how long the hub may hold the connection while its
-    operator approves it.
+    operator approves it (before `device_timeout` starts).
   - `skip_backlog`: drop the frames the hub buffered before this connection.
   """
   if isinstance(logdata, (str, os.PathLike)):
@@ -549,8 +615,15 @@ def connect(host: Optional[str] = None, device: Optional[str] = None, *, logdata
             'several devices found; choose one with device=:\n' +
             '\n'.join(f'  {d}' for d in devs), devs)
         uri = devs[0].uri
-      hub = start_hub(uri, hub_args)
-      host = f'127.0.0.1:{hub.port}'
+      # Another script may be starting a hub for this device right now: take turns, then look
+      # again before starting one.
+      with spawn_lock(uri):
+        again = [h for h in list_hubs() if _hub_matches(h, uri)]
+        if again:
+          host = again[0].address
+        else:
+          hub = start_hub(uri, hub_args)
+          host = f'127.0.0.1:{hub.port}'
   addr, port = parse_host(host)
   try:
     sock = socket.create_connection((addr, port), timeout=10)
@@ -563,19 +636,33 @@ def connect(host: Optional[str] = None, device: Optional[str] = None, *, logdata
   local = _is_loopback(sock.getpeername()[0])
   c = Connection(sock, resolver=resolver, files_dir=files_dir, stdin=stdin, max_queue=max_queue,
                  skip_backlog=skip_backlog, hub=hub, address=f'{addr}:{port}', manual=manual)
-  wait = device_timeout if local else approval_timeout
-  if wait is None:
+  busy = (f'{addr}:{port}: the hub closed the connection: another client is connected (one '
+          'client at a time), or the hub refused this one')
+  if not local and approval_timeout is not None:
+    # A hub sends its replay (at least the end-of-backlog pulse) as soon as it accepts us.
+    with c._cv:
+      c._cv.wait_for(lambda: c._first_rx is not None or c._closed, approval_timeout)
+      got, closed = c._first_rx is not None, c._closed
+    if not got:
+      c.close(0)
+      if closed:
+        raise HubBusyError(busy)
+      raise ApprovalTimeoutError(f'{addr}:{port}: no data within {approval_timeout} s; the hub '
+                                 'may be waiting for its operator to approve this connection')
+  if device_timeout is None:
     return c
+  # The end-of-backlog pulse arrives at once; wait for the device itself (protocol.md §8). A
+  # hub that has just started may still be opening it.
+  c._device_deadline = time.monotonic() + device_timeout
   with c._cv:
-    c._cv.wait_for(lambda: c._first_rx is not None or c._closed, wait)
-    got, closed = c._first_rx is not None, c._closed
-  if got:
-    return c
-  c.close()
+    c._cv.wait_for(lambda: c._device_rx is not None or c._closed, device_timeout)
+    got, closed, any_rx = c._device_rx is not None, c._closed, c._first_rx is not None
+  if got or (closed and any_rx):
+    return c  # (a closed connection still returns what it received)
+  c.close(0)
   if closed:
-    raise HubBusyError(f'{addr}:{port}: the hub closed the connection: another client is '
-                       'connected (one client at a time), or the hub refused this one')
-  if local:
-    raise DeviceNotRespondingError(f'{addr}:{port}: no data from the device within {wait} s')
-  raise ApprovalTimeoutError(f'{addr}:{port}: no data within {wait} s; the hub may be waiting '
-                             'for its operator to approve this connection')
+    raise HubBusyError(busy)
+  raise DeviceNotRespondingError(
+    f'{addr}:{port}: no data from the device within {device_timeout} s' +
+    (' (the hub is connected, but has not opened the device or the device is silent)'
+     if any_rx else ''))

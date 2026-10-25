@@ -48,10 +48,17 @@ def dumps(v) -> bytes:
   raise TypeError(f'cannot encode {type(v).__name__} as CBOR')
 
 
+MAX_DEPTH = 64  # nesting limit for arrays, maps and tags
+
+
 def loads(data: bytes):
-  """Decode one item. Array map keys become tuples; tags are ignored."""
-  d = memoryview(bytes(data))
-  v, i = _item(d, 0)
+  """Decode one item. Array map keys become tuples; tags are ignored. Any malformed input
+  raises CborError (and nothing else)."""
+  try:
+    d = memoryview(bytes(data))
+  except TypeError as e:
+    raise CborError(f'not bytes: {e}') from None
+  v, i = _item(d, 0, 0)
   if i != len(d):
     raise CborError(f'{len(d) - i} trailing bytes')
   return v
@@ -63,13 +70,24 @@ def _freeze(k):
   return k
 
 
+def _key(k):
+  k = _freeze(k)
+  try:
+    hash(k)
+  except TypeError:
+    raise CborError(f'unsupported map key type {type(k).__name__}') from None
+  return k
+
+
 def _byte(d, i):
   if i >= len(d):
     raise CborError('truncated')
   return d[i]
 
 
-def _item(d, i):
+def _item(d, i, depth):
+  if depth > MAX_DEPTH:
+    raise CborError(f'nested more than {MAX_DEPTH} deep')
   ib = _byte(d, i)
   major, ai = ib >> 5, ib & 31
   i += 1
@@ -104,9 +122,12 @@ def _item(d, i):
     return -1 - n, i
   if major in (2, 3):
     if n is None:
+      # Chunks are definite-length strings of the same major type (RFC 8949 §3.2.3).
       parts = []
       while _byte(d, i) != 0xFF:
-        p, i = _item(d, i)
+        if d[i] >> 5 != major or d[i] & 31 == 31:
+          raise CborError('bad chunk in an indefinite-length string')
+        p, i = _item(d, i, depth + 1)
         parts.append(p)
       i += 1
       return (b''.join(parts) if major == 2 else ''.join(parts)), i
@@ -120,7 +141,7 @@ def _item(d, i):
   if major == 4:
     out = []
     while (n is None and _byte(d, i) != 0xFF) or (n is not None and len(out) < n):
-      x, i = _item(d, i)
+      x, i = _item(d, i, depth + 1)
       out.append(x)
     if n is None:
       i += 1
@@ -129,11 +150,11 @@ def _item(d, i):
     out = {}
     count = 0
     while (n is None and _byte(d, i) != 0xFF) or (n is not None and count < n):
-      k, i = _item(d, i)
-      x, i = _item(d, i)
-      out[_freeze(k)] = x
+      k, i = _item(d, i, depth + 1)
+      x, i = _item(d, i, depth + 1)
+      out[_key(k)] = x
       count += 1
     if n is None:
       i += 1
     return out, i
-  return _item(d, i)  # major 6: tag, ignored
+  return _item(d, i, depth + 1)  # major 6: tag, ignored

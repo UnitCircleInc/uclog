@@ -143,10 +143,12 @@ The hub routes frames without decoding them. Given an encoded frame `e` (no deli
 |---|---|
 | `len(e) == 0`, or `e == [01]` | pulse |
 | `e[0] == 01` | `b0 = 00`: type-0 log, not a port frame. The first payload byte is zero, so the first COBS block is empty |
+| `len(e) == 1` (and `e != [01]`) | `b0 = 00`. There is no `e[1]`; such a run is not valid COBS (§2.2) and fails when the frame is decoded |
 | otherwise | `b0 = e[1]` |
 
-`e[1]` is the first payload byte in every case except the one above. With `b0`, compute
-type/port as in §3.1. The peek reads at most `e[0..2]`. Vectors: `peek_mux.json`.
+`e[1]` is the first payload byte in every case except the two above. With `b0`, compute
+type/port as in §3.1. The peek reads at most `e[0..2]`. Vectors: `peek_mux.json` (`peek_only`
+for the one-byte runs).
 
 ### 3.3 Log frames
 
@@ -159,8 +161,8 @@ type/port as in §3.1. The peek reads at most `e[0..2]`. Vectors: `peek_mux.json
   | int32 / uint32 / pointer / sym / enum | 4 | |
   | int64 / uint64 / double | 8 | |
   | string | UTF-8 + `00` terminator | |
-  | bytes | the rest of the frame | type 1 only |
-- Type 1: `ptr` (u32) then raw bytes (§6.2).
+  | bytes | the rest of the frame | the last kind of the list |
+- Type 1: `ptr` (u32) then raw bytes (§6.2). Its `kinds` list is not used.
 
 ---
 
@@ -217,7 +219,8 @@ type/port as in §3.1. The peek reads at most `e[0..2]`. Vectors: `peek_mux.json
 These carry exactly the §2 byte stream. Admission and session rules are in §8.
 
 - **TCP**: a raw byte stream. A raw client's first byte MUST be `00`, which lets the hub tell it
-  apart from TLS (`0x16`) and WebSocket (`G`) on the same port.
+  apart from TLS (`0x16`) and WebSocket (`G`) on the same port. The hub closes a connection whose
+  first byte is anything else, so that a web page's HTTP `POST` cannot reach the device.
 - **WebSocket**: binary messages. Each message carries one or more **whole** frames. Text messages
   are a protocol error.
 
@@ -429,7 +432,8 @@ connected. They are never forwarded. Vectors: `semihost.json` → `time_replies`
 
 **Sandbox.** Every path resolves against the host's files directory:
 - absolute paths, `..` that escapes, and symlinks that resolve outside → `EACCES`;
-- no files directory configured → `EACCES` for OPEN and MKDIR.
+- no files directory configured → `ENOSYS` for OPEN and MKDIR (file access is not provided, as
+  in the table above).
 
 ### 5.6 Port 60 — plots
 
@@ -476,7 +480,9 @@ Each `fmts` entry is one of:
   - `file` and `line` are text;
   - `fmt` is the format string (§6.2);
   - `kinds` lists the argument kinds: `"int32"`, `"uint32"`, `"int64"`, `"uint64"`, `"double"`,
-    `"pointer"`, `"string"`, `"sym"`, `"bytes"`, or `["enum", name]`.
+    `"pointer"`, `"string"`, `"sym"`, `"bytes"` (the rest of the frame, so only as the last
+    kind), or `["enum", name]`. Any other kind, or an `enum` entry that is not a two-element
+    array, makes the entry undecodable: the log becomes an error record (§7).
 - `[level, file, line]`: no format string. Such an entry cannot be decoded and is reported as an
   error.
 
@@ -512,6 +518,7 @@ Formatting rules:
 |---|---|
 | `string` | UTF-8 (invalid sequences become U+FFFD). Escape `\` as `\\`, LF/CR/TAB as `\n` `\r` `\t`, and other C0 controls and DEL as `\xHH`. Quotes and non-ASCII are kept |
 | `["enum", name]` | look up `enums[name]`, then `tdenums[name]`. A missing value → `<name:value>`; a missing enum → `<!name:value>` |
+| `bytes` | lowercase hex pairs separated by spaces, as in a type-1 dump (§6.2) |
 | `sym` | clear bit 0 (Thumb). The function whose `[low, low+size)` contains the value → `name+0xOFF`. Otherwise, the closest variable at or below the value within 0x3000 → `file:name+0xOFF`. Otherwise `0x%08x` |
 
 ### 6.4 Selecting logdata (`app_hash`)
@@ -572,10 +579,17 @@ section covers what a client sees.
   3. **one pulse** (`00`), marking the end of the backlog;
   4. live data.
 
-  Port-62 frames inside the backlog mark resets and image changes at the right place (§5.2).
+  Port-62 frames inside the backlog mark resets and image changes at the right place (§5.2): a
+  client decodes the logs that follow each one with that image's logdata, even when a later
+  port-62 frame arrives before that logdata has been resolved.
   Since every frame carries both delimiters, two frames are separated by exactly two `00`s: a run
   of three or more (two or more at the start of the stream) contains the pulse that ends the
   backlog. Clients that do not skip the backlog can ignore it like any pulse.
+- After that pulse, everything the hub sends comes from the device: its frames, and pulses,
+  which the hub sends only while the device is alive (§2.3). A hub that is still opening the
+  device (a BLE connection takes several seconds) sends nothing more. The first byte after the
+  end-of-backlog pulse therefore shows that the device is open and talking; clients that wait
+  for the device wait for that byte, not for the replay.
 - The hub asks for the device info when it opens the device (§5.2, F7), so clients need not.
   A client MAY still send the request; it is forwarded to the device.
 - Port-63 time ops are answered by the hub. The client sees only the other syscalls (§5.5.5).

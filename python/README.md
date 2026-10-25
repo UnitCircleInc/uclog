@@ -60,14 +60,21 @@ The examples in [examples/](examples/) replace the legacy scripts:
 
 A hub the library started is **stopped when the connection closes**, at the end of the `with`
 block, or when the script exits. If the script is killed, the hub sees its stdin close and exits.
-Hubs that were already running are left alone.
+Hubs that were already running are left alone. A started hub listens on `127.0.0.1` only and is
+not advertised over mDNS (`hub_args=["--bind", "0.0.0.0"]` changes that); local clients still
+find it in the registry. Scripts starting a hub for the same device at the same time take turns,
+so only one hub is started.
+
+`connect()` returns once **the device** has sent something (not just the hub's backlog replay),
+waiting up to `device_timeout` (10 s; a hub opens a BLE device in about 5 s). Otherwise it raises
+`DeviceNotRespondingError`.
 
 ```python
 uclog.list_hubs()                   # [HubInfo(name, host, port, device, serial_number, busy, pid, ...)]
 uclog.list_hubs(discover_remote=True)
 uclog.list_devices()                # [DeviceInfo(kind, uri, name, serial, description)]
 hub = uclog.start_hub("serial:/dev/ttyACM0")   # keep a hub across several connections
-uclog.stop_hub(hub.pid)             # or uclog.stop_hub("localhost:9001")
+uclog.stop_hub(hub.pid)             # or uclog.stop_hub("localhost:9001"); only a registered hub
 ```
 
 A hub serves **one client at a time**. While the GUI, the TUI or VS Code is connected,
@@ -86,18 +93,21 @@ its operator approves it. `connect()` waits up to `approval_timeout` (60 s), the
 | `logs(timeout=None, duration=None)` | iterator of `LogRecord`s, ending after `timeout` seconds without one or `duration` seconds in all |
 | `frames(timeout=None, duration=None)` | every payload, raw |
 | `console(timeout=None)` | semihost stdout/stderr: `(fid, bytes)` |
-| `device_info` | the port-62 map; waits up to 2 s for it |
+| `device_info` | the port-62 map; waits up to 2 s for it, or until `connect()`'s `device_timeout` ends if that is later |
 | `alive` | bytes arrived within the last 2 s |
 | `dropped` | entries dropped from full queues, by port, `"logs"`, `"frames"` or `"console"` |
 | `notes` | logdata choices and problems (also logged to the `uclog` logger) |
 | `load_logdata(path)` | use another logdata file from now on |
-| `close()` | also stops a hub the library started |
+| `close()` | sends what is still queued (up to 2 s), then closes; also stops a hub the library started |
 
 `LogRecord(ts, level, target, file, line, text, error)`:
 - `ts` is seconds since the connection opened.
 - `error` is set for error records: `no_logdata`, `unknown_format`, `missing_arg`, `extra_bytes`,
   `framing_invalid`, and so on, with the same texts as the native tools.
 - `str(rec)` gives the legacy `ts:level:file:line:text` line.
+- Logs from the backlog are decoded with the logdata of the device info that preceded them, so
+  logs from before a reflash use the old image's logdata. An image with no logdata gives
+  `no_logdata` records.
 
 **Queues** are bounded by `max_queue` (10 000). When one is full, the oldest entry is dropped and
 counted in `dropped`.

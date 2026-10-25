@@ -140,8 +140,8 @@ def peek(encoded: bytes):
   Returns ('pulse',) | ('log', type) | ('port', port)."""
   if len(encoded) == 0 or encoded == b'\x01':
     return ('pulse',)
-  if encoded[0] == 0x01:
-    b0 = 0x00
+  if encoded[0] == 0x01 or len(encoded) == 1:
+    b0 = 0x00  # a one-byte run other than 01 has no e[1]; it is invalid COBS anyway (§3.2)
   else:
     b0 = encoded[1]
   t = b0 & 3
@@ -246,27 +246,49 @@ def _freeze(k):
   return k
 
 
+CBOR_MAX_DEPTH = 64  # nesting limit for arrays, maps and tags
+
+
 def cbor_loads(data: bytes):
-  v, i = _cbor_item(memoryview(bytes(data)), 0)
-  if i != len(data):
-    raise CborError(f'{len(data) - i} trailing bytes')
+  """Decode one item. Malformed input raises CborError, and nothing else."""
+  d = memoryview(bytes(data))
+  v, i = _cbor_item(d, 0, 0)
+  if i != len(d):
+    raise CborError(f'{len(d) - i} trailing bytes')
   return v
 
 
-def _cbor_item(d, i):
+def _cbor_key(k):
+  k = _freeze(k)
+  try:
+    hash(k)
+  except TypeError:
+    raise CborError(f'unsupported map key type {type(k).__name__}') from None
+  return k
+
+
+def _cbor_byte(d, i):
   if i >= len(d):
     raise CborError('truncated')
-  ib = d[i]
+  return d[i]
+
+
+def _cbor_item(d, i, depth):
+  if depth > CBOR_MAX_DEPTH:
+    raise CborError(f'nested more than {CBOR_MAX_DEPTH} deep')
+  ib = _cbor_byte(d, i)
   major, ai = ib >> 5, ib & 31
   i += 1
   if major == 7:
     if ai == 20: return False, i
     if ai == 21: return True, i
     if ai in (22, 23): return None, i
-    if ai == 25: return struct.unpack('>e', d[i:i + 2])[0], i + 2
-    if ai == 26: return struct.unpack('>f', d[i:i + 4])[0], i + 4
-    if ai == 27: return struct.unpack('>d', d[i:i + 8])[0], i + 8
-    raise CborError(f'unsupported simple value {ai}')
+    size = {25: 2, 26: 4, 27: 8}.get(ai)
+    if size is None:
+      raise CborError(f'unsupported simple value {ai}')
+    if i + size > len(d):
+      raise CborError('truncated')
+    return struct.unpack({2: '>e', 4: '>f', 8: '>d'}[size], d[i:i + size])[0], i + size
   if ai < 24:
     n = ai
   elif ai in (24, 25, 26, 27):
@@ -285,20 +307,28 @@ def _cbor_item(d, i):
     return -1 - n, i
   if major in (2, 3):
     if n is None:
+      # Chunks are definite-length strings of the same major type (RFC 8949 §3.2.3).
       parts = []
-      while d[i] != 0xFF:
-        p, i = _cbor_item(d, i)
+      while _cbor_byte(d, i) != 0xFF:
+        if d[i] >> 5 != major or d[i] & 31 == 31:
+          raise CborError('bad chunk in an indefinite-length string')
+        p, i = _cbor_item(d, i, depth + 1)
         parts.append(p)
       i += 1
       return (b''.join(parts) if major == 2 else ''.join(parts)), i
     if i + n > len(d):
       raise CborError('truncated')
     raw = bytes(d[i:i + n])
-    return (raw if major == 2 else raw.decode('utf-8')), i + n
+    if major == 2:
+      return raw, i + n
+    try:
+      return raw.decode('utf-8'), i + n
+    except UnicodeDecodeError as e:
+      raise CborError(f'invalid UTF-8 in text: {e}') from None
   if major == 4:
     out = []
-    while (n is None and d[i] != 0xFF) or (n is not None and len(out) < n):
-      x, i = _cbor_item(d, i)
+    while (n is None and _cbor_byte(d, i) != 0xFF) or (n is not None and len(out) < n):
+      x, i = _cbor_item(d, i, depth + 1)
       out.append(x)
     if n is None:
       i += 1
@@ -306,17 +336,15 @@ def _cbor_item(d, i):
   if major == 5:
     out = {}
     count = 0
-    while (n is None and d[i] != 0xFF) or (n is not None and count < n):
-      k, i = _cbor_item(d, i)
-      x, i = _cbor_item(d, i)
-      out[_freeze(k)] = x
+    while (n is None and _cbor_byte(d, i) != 0xFF) or (n is not None and count < n):
+      k, i = _cbor_item(d, i, depth + 1)
+      x, i = _cbor_item(d, i, depth + 1)
+      out[_cbor_key(k)] = x
       count += 1
     if n is None:
       i += 1
     return out, i
-  if major == 6:
-    return _cbor_item(d, i)  # tags are ignored
-  raise CborError('unreachable')
+  return _cbor_item(d, i, depth + 1)  # major 6: tags are ignored
 
 
 # ---------------------------------------------------------------------------
@@ -373,8 +401,18 @@ _SPEC = re.compile(r'%(?P<flags>[#+\- 0]*)(?P<width>[0-9]*)(?:\.(?P<prec>[0-9]*)
                    r'(?P<len>hh|h|ll|l|z|j|t|L)?(?P<conv>[diouxXcfFeEgGaAs%])')
 
 
+class CInt(int):
+  """An integer argument and its size in bytes, so that %u/%o/%x/%X of a negative value print
+  its two's complement at the kind's width (C semantics, §6.2)."""
+
+  def __new__(cls, v, size):
+    o = super().__new__(cls, v)
+    o.size = size
+    return o
+
+
 def _take(args, kind):
-  size = ARG_SIZES.get(kind)
+  size = ARG_SIZES.get(kind) if isinstance(kind, str) else None
   if kind == 'string':
     try:
       i = args.index(0)
@@ -382,14 +420,15 @@ def _take(args, kind):
       raise DecodeError('missing string')
     return args[:i].decode('utf-8', 'replace'), args[i + 1:]
   if kind == 'bytes':
-    return args, b''
+    return ' '.join(f'{b:02x}' for b in args), b''  # §6.3: lowercase hex pairs
   if size is None:
     raise DecodeError(f'unknown argument kind {kind!r}')
   if len(args) < size:
     raise DecodeError(f'missing {kind}')
   fmt = {'int32': '<i', 'uint32': '<I', 'int64': '<q', 'uint64': '<Q', 'double': '<d',
          'pointer': '<I', 'sym': '<I'}[kind]
-  return struct.unpack(fmt, args[:size])[0], args[size:]
+  v = struct.unpack(fmt, args[:size])[0]
+  return (v if kind == 'double' else CInt(v, size)), args[size:]
 
 
 class DecodeError(ValueError):
@@ -413,14 +452,36 @@ def format_c(fmt: str, values) -> str:
       raise DecodeError('format has more conversions than values')
     v = values[vi]
     vi += 1
+    conv = m.group('conv')
     spec = '%' + m.group('flags') + m.group('width')
     if m.group('prec') is not None:
       spec += '.' + m.group('prec')
-    out.append((spec + m.group('conv')) % (v,))
+    if conv in 'ouxX' and isinstance(v, int) and v < 0:
+      v &= (1 << (8 * getattr(v, 'size', 8))) - 1  # two's complement at the kind's width
+    if conv == 'u':
+      conv = 'd'  # Python's %u is %d; the value is non-negative now
+    if conv in 'aA':
+      t = _hex_float(float(v))
+      t = t.upper() if conv == 'A' else t
+      w = int(m.group('width') or 0)
+      out.append(t.ljust(w) if '-' in m.group('flags') else t.rjust(w))
+      continue
+    out.append((spec + conv) % (v,))
   out.append(fmt[pos:])
   if vi != len(values):
     raise DecodeError('format has fewer conversions than values')
   return ''.join(out)
+
+
+def _hex_float(f: float) -> str:
+  """C %a: 0x1.<hex digits>p<exp>, trailing zero digits removed (0x1p+0, 0x0p+0)."""
+  if f != f or f in (float('inf'), float('-inf')):
+    return str(f)
+  t = f.hex()  # Python: always 13 hex digits, e.g. 0x1.8000000000000p+0
+  mant, exp = t.split('p')
+  if '.' in mant:
+    mant = mant.rstrip('0').rstrip('.')
+  return f'{mant}p{exp}'
 
 
 _ESC = {'\\': '\\\\', '\n': '\\n', '\r': '\\r', '\t': '\\t'}

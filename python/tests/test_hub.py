@@ -149,3 +149,71 @@ def test_killed_script_stops_its_hub(hub_exe):
     time.sleep(0.05)
   assert not uclog.hub._pid_alive(pid)
   assert not os.path.exists(os.path.join(uclog.hub.registry_dir(), f'{pid}.json'))
+
+
+def test_started_hub_is_private(hub_exe):
+  hub = uclog.start_hub('loopback:rate=20')
+  try:
+    args = hub.proc.args
+    assert args[args.index('--bind') + 1] == '127.0.0.1' and '--no-mdns' in args
+    assert [h for h in uclog.list_hubs() if h.pid == hub.pid]  # still in the registry
+  finally:
+    uclog.stop_hub(hub.pid)
+
+
+def test_stop_hub_ignores_a_stale_registry_entry(tmp_path, monkeypatch):
+  # A registry entry left behind whose pid now belongs to another process.
+  other = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+  try:
+    monkeypatch.setattr(uclog.hub, 'registry_dir', lambda: str(tmp_path))
+    (tmp_path / f'{other.pid}.json').write_text(
+      '{"pid": %d, "port": 1, "name": "stale", "device": "serial:/dev/x"}' % other.pid)
+    assert [h.pid for h in uclog.list_hubs()] == [other.pid]
+    assert uclog.stop_hub(other.pid) is False
+    assert uclog.stop_hub('localhost:1') is False
+    assert uclog.stop_hub(os.getpid()) is False  # not in the registry at all
+    assert other.poll() is None
+  finally:
+    other.kill()
+    other.wait()
+
+
+@pytest.mark.skipif(not hasattr(os, 'fork'), reason='fork')
+def test_forked_child_does_not_hold_the_hub_stdin(hub_exe):
+  hub = uclog.start_hub('loopback:rate=20')
+  try:
+    pid = os.fork()
+    if pid == 0:  # child: only report and leave
+      ok = hub.proc.stdin.closed and not uclog.hub._spawned
+      os._exit(0 if ok else 1)
+    _, status = os.waitpid(pid, 0)
+    assert os.WEXITSTATUS(status) == 0
+    assert hub.proc.poll() is None and not hub.proc.stdin.closed  # the parent's hub is untouched
+  finally:
+    uclog.stop_hub(hub.pid)
+
+
+def test_two_scripts_start_one_hub(hub_exe):
+  import threading
+  results = []
+
+  def run():
+    try:
+      results.append(uclog.connect(device='loopback:rate=20'))
+    except uclog.UclogError as e:
+      results.append(e)
+
+  ts = [threading.Thread(target=run) for _ in range(2)]
+  for t in ts:
+    t.start()
+  for t in ts:
+    t.join(30)
+  conns = [r for r in results if isinstance(r, uclog.Connection)]
+  try:
+    # One hub, one client at a time: the second script finds the first one's hub, busy.
+    assert len(conns) == 1, results
+    assert [type(r) for r in results if r not in conns] == [uclog.HubBusyError]
+    assert len([h for h in uclog.list_hubs() if h.device == 'loopback:rate=20']) == 1
+  finally:
+    for c in conns:
+      c.close()

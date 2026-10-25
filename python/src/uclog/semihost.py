@@ -63,7 +63,7 @@ def map_error(e: OSError) -> str:
 def time_reply(op: int):
   """Answer a time op (normally the hub does, D31)."""
   wall = time.time()
-  ns = time.monotonic_ns()
+  ns = time.perf_counter_ns()  # §5.5.3: the Python counter
   if op == SYS_CLOCK:
     return struct.pack('<I', (ns // 10_000_000) & 0xFFFFFFFF)
   if op == SYS_TIME:
@@ -106,6 +106,8 @@ class Handler:
       return self._handle(op, a)
     except (struct.error, UnicodeDecodeError, ValueError):
       return error_reply(op, 'EINVAL'), None
+    except OSError as e:  # a host file error the op did not map itself
+      return error_reply(op, map_error(e)), None
 
   def _handle(self, op, a):
     t = time_reply(op) if op in (TIMEOFDAY, SYS_CLOCK, SYS_TIME, SYS_ELAPSED, SYS_TICKFREQ) else None
@@ -182,7 +184,10 @@ class Handler:
       f = self.files.pop(fid, None)
       if f is None:
         return error_reply(op, 'EBADF')
-      f.close()
+      try:
+        f.close()
+      except OSError as e:  # e.g. a deferred write error; the fid is gone either way
+        return error_reply(op, map_error(e))
       return reply(0)
     # FSTAT
     if fid in (0, 1, 2):

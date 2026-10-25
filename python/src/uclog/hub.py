@@ -292,10 +292,20 @@ def _forward_stderr(stream, lines):
 
 def start_hub(device: str, extra_args=(), timeout: float = 15.0) -> SpawnedHub:
   """Start a hub for `device` (a URI such as `serial:/dev/ttyACM0`) and wait until it listens.
-  It is stopped when the script exits."""
+  It is stopped when the script exits.
+
+  The hub is private to this machine: it listens on 127.0.0.1 and is not advertised over mDNS
+  (pass `--bind`/other options in `extra_args` to change that). It still writes its registry
+  file, so other local clients and `connect()` find it."""
   exe = _require_executable()
+  extra_args = list(extra_args)
   args = [exe] + (['hub'] if _is_uclog(exe) else [])
-  args += ['-d', device, '--json-ready', '--exit-on-stdin-eof'] + list(extra_args)
+  args += ['-d', device, '--json-ready', '--exit-on-stdin-eof']
+  if not any(a == '--bind' or a.startswith('--bind=') for a in extra_args):
+    args += ['--bind', '127.0.0.1']
+  if '--no-mdns' not in extra_args:
+    args += ['--no-mdns']
+  args += extra_args
   log.info('starting %s', ' '.join(args))
   kw = {}
   if sys.platform == 'win32':
@@ -336,15 +346,117 @@ def _forget(hub):
       _spawned.remove(hub)
 
 
+def _after_fork_in_child():
+  # A forked child must not hold a spawned hub's stdin open (the hub would outlive a killed
+  # parent), nor stop the parent's hubs when it exits.
+  global _spawned_lock
+  _spawned_lock = threading.Lock()
+  for h in _spawned:
+    try:
+      h.proc.stdin.close()
+    except (OSError, ValueError):
+      pass
+  _spawned.clear()
+
+
+if hasattr(os, 'register_at_fork'):
+  os.register_at_fork(after_in_child=_after_fork_in_child)
+
+
+class spawn_lock:
+  """An inter-process lock per device, held while a script looks for a hub and starts one, so
+  two scripts do not both start a hub for the same device. Released when the process dies."""
+
+  def __init__(self, device: str, timeout: float = 30.0):
+    import hashlib
+    d = os.path.dirname(registry_dir())
+    self.path = os.path.join(d, 'py-spawn-' + hashlib.sha1(device.encode()).hexdigest()[:16] + '.lock')
+    self.timeout = timeout
+    self.f = None
+
+  def __enter__(self):
+    import time
+    try:
+      os.makedirs(os.path.dirname(self.path), exist_ok=True)
+      self.f = open(self.path, 'a+b')
+    except OSError as e:
+      log.info('spawn lock %s: %s', self.path, e)  # no lock: carry on without it
+      return self
+    end = time.monotonic() + self.timeout
+    while True:
+      try:
+        if sys.platform == 'win32':
+          import msvcrt
+          self.f.seek(0)
+          msvcrt.locking(self.f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+          import fcntl
+          fcntl.flock(self.f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return self
+      except OSError:
+        if time.monotonic() >= end:
+          log.info('spawn lock %s: still held after %s s; carrying on', self.path, self.timeout)
+          return self
+        time.sleep(0.05)
+
+  def __exit__(self, *exc):
+    if self.f is not None:
+      try:
+        if sys.platform == 'win32':
+          import msvcrt
+          self.f.seek(0)
+          msvcrt.locking(self.f.fileno(), msvcrt.LK_UNLCK, 1)
+      except OSError:
+        pass
+      self.f.close()  # also releases a flock
+      self.f = None
+    return False
+
+
+def _port_listening(port, timeout=0.5):
+  import socket
+  try:
+    with socket.create_connection(('127.0.0.1', port), timeout=timeout):
+      return True  # closed before sending anything: a hub drops it (protocol.md §4.5)
+  except OSError:
+    return False
+
+
+def _looks_like_hub(pid):
+  """The process name, where it can be read, is uclog-hub or uclog."""
+  name = None
+  try:
+    if sys.platform.startswith('linux'):
+      with open(f'/proc/{pid}/comm', encoding='utf-8', errors='replace') as f:
+        name = f.read().strip()
+    elif sys.platform != 'win32':
+      r = subprocess.run(['ps', '-p', str(pid), '-o', 'comm='], stdout=subprocess.PIPE,
+                         stderr=subprocess.DEVNULL, timeout=5)
+      name = r.stdout.decode(errors='replace').strip()
+      if r.returncode != 0 and not name:
+        return False  # no such process
+  except (OSError, subprocess.SubprocessError):
+    return True  # cannot tell: rely on the registry and port checks
+  if name is None:
+    return True
+  return os.path.basename(name).lower().startswith('uclog')
+
+
 def stop_hub(host_or_pid) -> bool:
   """Stop a hub on this machine: by pid (an int), or by port ("9001", "localhost:9001").
-  Returns True if one was found."""
+  Returns True if one was found.
+
+  A hub this process did not start is signalled only if its registry entry names the pid, its
+  port is listening and the process looks like a hub, so a stale entry whose pid has been reused
+  does not kill an unrelated process."""
+  hubs = None
   if isinstance(host_or_pid, int):
     pid = host_or_pid
   else:
     tail = str(host_or_pid).rsplit(':', 1)[-1]
     port = int(tail) if tail.isdigit() else DEFAULT_PORT
-    pid = next((h.pid for h in _local_hubs() if h.port == port), None)
+    hubs = _local_hubs()
+    pid = next((h.pid for h in hubs if h.port == port), None)
     if pid is None:
       return False
   with _spawned_lock:
@@ -353,7 +465,11 @@ def stop_hub(host_or_pid) -> bool:
     mine[0].stop()
     _forget(mine[0])
     return True
-  if not _pid_alive(pid):
+  entry = next((h for h in (_local_hubs() if hubs is None else hubs) if h.pid == pid), None)
+  if entry is None or not _pid_alive(pid):
+    return False
+  if not _looks_like_hub(pid) or not _port_listening(entry.port):
+    log.warning('not stopping pid %s: it does not look like the hub in its registry entry', pid)
     return False
   os.kill(pid, signal.SIGTERM)
   return True

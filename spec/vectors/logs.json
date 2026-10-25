@@ -178,6 +178,28 @@
     "line": "21",
     "text": "path \"x\ufffdy\""
    }
+  },
+  {
+   "name": "%x/%X/%u of a negative int32 use its 32-bit two's complement; %a",
+   "wire": "0001180310f0fffffffffefffffffdffffff6e861bf0f921094000",
+   "target": 1,
+   "expect": {
+    "level": "INFO",
+    "file": "src/main.c",
+    "line": "22",
+    "text": "neg ffffffff FFFFFFFE 4294967293; 0x1.921f9f01b866ep+1"
+   }
+  },
+  {
+   "name": "bytes kind: the rest of the frame as hex pairs",
+   "wire": "0006400310f00701010301ab0100",
+   "target": 1,
+   "expect": {
+    "level": "INFO",
+    "file": "src/main.c",
+    "line": "23",
+    "text": "id=7 data=01 ab 00"
+   }
   }
  ],
  "errors": [

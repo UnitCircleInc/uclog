@@ -158,9 +158,19 @@ def _convert(m, v):
     return _pad(flags, width, '', t)
   f = _as_float(v)
   if conv in 'aA':
-    s = f.hex()
+    s = _hex_float(f)
     return _pad(flags, width, '', s.upper() if conv == 'A' else s)
   return ((spec.replace('%', '%#', 1) if '#' in flags else spec) + conv) % f
+
+
+def _hex_float(f):
+  """C %a: 0x1.<hex digits>p<exp> with trailing zero digits removed (0x1p+0, 0x0p+0)."""
+  if f != f or f in (float('inf'), float('-inf')):
+    return str(f)
+  mant, exp = f.hex().split('p')  # Python always gives 13 hex digits
+  if '.' in mant:
+    mant = mant.rstrip('0').rstrip('.')
+  return f'{mant}p{exp}'
 
 
 def _pad(flags, width, prefix, body, numeric=False):
@@ -287,10 +297,20 @@ class LogData:
     return f'<!{name}:{v}>'
 
   def decode(self, addr: int, args: bytes):
-    """Decode one type-0/1 log frame. Returns (level, file, line, text); raises DecodeError."""
+    """Decode one type-0/1 log frame. Returns (level, file, line, text); raises DecodeError
+    (and nothing else, even for a malformed logdata entry)."""
+    try:
+      return self._decode(addr, args)
+    except DecodeError:
+      raise
+    except (IndexError, KeyError, TypeError, AttributeError, ValueError, struct.error) as e:
+      raise DecodeError('format', f'malformed logdata entry for addr 0x{addr & ~3:08x} '
+                        f'in {self.source}: {type(e).__name__}: {e}') from None
+
+  def _decode(self, addr, args):
     key = addr & ~3
     entry = self.fmts.get(key)
-    if entry is None or len(entry) != 5:
+    if not isinstance(entry, (list, tuple)) or len(entry) != 5:
       raise DecodeError('unknown_format', f'unknown format addr 0x{key:08x}')
     level, fname, line, fmt, kinds = entry
     level = LEVELS[int(level)] if str(level).isdigit() and int(level) < len(LEVELS) else f'<bad level {level}>'
@@ -310,8 +330,12 @@ class LogData:
 
     values = []
     rest = bytes(args)
+    if not isinstance(kinds, (list, tuple)) or not isinstance(fmt, str):
+      raise DecodeError('format', f'{where} — malformed logdata entry')
     for i, k in enumerate(kinds):
       if isinstance(k, (list, tuple)):
+        if len(k) != 2 or k[0] != 'enum' or not isinstance(k[1], str):
+          raise DecodeError('format', f'{where} — unknown argument kind {k!r}')
         if len(rest) < 4:
           raise missing(i, 'enum')
         v, = struct.unpack_from('<i', rest)

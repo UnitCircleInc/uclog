@@ -83,8 +83,9 @@ The sync API is a thin wrapper around a background I/O thread.
    stopped.
    `uclog.stop_hub(host_or_pid)` is available too.
 
-Spawned hubs bind to the default port (with the 9001…9019 fallback, hub plan §8), so other clients
-can find them. Loopback connections need no approval. Remote hubs may hold the connection for
+Spawned hubs bind to the default port (with the 9001…9019 fallback, hub plan §8) on `127.0.0.1`,
+without mDNS (`--bind 127.0.0.1 --no-mdns` unless `hub_args` says otherwise): a script's hub is
+private, but local tools still find it through the registry. Loopback connections need no approval. Remote hubs may hold the connection for
 operator approval; `connect()` waits up to `approval_timeout` (60 s) and then raises
 `ApprovalTimeoutError`.
 

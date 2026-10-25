@@ -52,6 +52,14 @@ def test_scanner_byte_by_byte():
     assert got == c['events'], c['name']
 
 
+def test_peek_only():
+  # One-byte runs other than 01: no e[1], b0 = 00 (protocol.md §3.2).
+  cases = load_vectors('peek_mux.json')['peek_only']
+  assert cases
+  for c in cases:
+    assert proto.peek(B(c['encoded'])) == (c['peek']['kind'], c['peek']['type']), c['name']
+
+
 def test_peek_mux():
   for c in load_vectors('peek_mux.json')['cases']:
     enc = B(c['encoded'])

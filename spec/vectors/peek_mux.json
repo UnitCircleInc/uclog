@@ -1,5 +1,5 @@
 {
- "description": "Two-byte peek on the encoded frame and full mux decode of the payload (protocol.md \u00a73). peek must only read encoded[0..2].",
+ "description": "Two-byte peek on the encoded frame and full mux decode of the payload (protocol.md \u00a73). peek must only read encoded[0..2]. peek_only: invalid runs, for the peek alone.",
  "cases": [
   {
    "name": "pulse (empty payload)",
@@ -226,6 +226,24 @@
    },
    "mux": {
     "kind": "error"
+   }
+  }
+ ],
+ "peek_only": [
+  {
+   "name": "one-byte run other than 01 (no e[1]): b0 = 00",
+   "encoded": "05",
+   "peek": {
+    "kind": "log",
+    "type": 0
+   }
+  },
+  {
+   "name": "one-byte run ff",
+   "encoded": "ff",
+   "peek": {
+    "kind": "log",
+    "type": 0
    }
   }
  ]

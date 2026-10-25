@@ -57,8 +57,10 @@ class Connection:
   def notes(self):
     return self.sync.notes
 
-  async def device_info(self, timeout: Optional[float] = 2.0) -> Optional[dict]:
-    return await _run(self.sync.wait_device_info, timeout)
+  async def device_info(self, timeout: Optional[float] = None) -> Optional[dict]:
+    """The port-62 map. Without `timeout`, waits as long as the sync `device_info` property."""
+    return await _run(self.sync.wait_device_info,
+                      self.sync._info_timeout() if timeout is None else timeout)
 
   async def send(self, port: int, data) -> None:
     self.sync.send(port, data)

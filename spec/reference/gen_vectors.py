@@ -170,9 +170,17 @@ def gen_peek_mux():
     else:
       rec['mux'] = {'kind': 'error'}
     out.append(rec)
+  # Runs that are not valid COBS, so they have no payload: only the peek is defined (§3.2).
+  peek_only = []
+  for name, enc in [('one-byte run other than 01 (no e[1]): b0 = 00', b'\x05'),
+                    ('one-byte run ff', b'\xff')]:
+    pk = ucref.peek(enc)
+    assert pk == ('log', 0), name
+    peek_only.append({'name': name, 'encoded': h(enc), 'peek': {'kind': 'log', 'type': 0}})
   return {'description': 'Two-byte peek on the encoded frame and full mux decode of the payload '
-                         '(protocol.md §3). peek must only read encoded[0..2].',
-          'cases': out}
+                         '(protocol.md §3). peek must only read encoded[0..2]. peek_only: '
+                         'invalid runs, for the peek alone.',
+          'cases': out, 'peek_only': peek_only}
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +205,8 @@ def sample_logdata():
     SADDR + 0x240: ['4', fn, '19', '|%5d|%-5d|%05d|%+d|', ['int32', 'int32', 'int32', 'int32']],
     SADDR + 0x280: ['1', fn, '20', 'no args', []],
     SADDR + 0x2C0: ['1', fn, '21', 'path "%s"', ['string']],
+    SADDR + 0x300: ['1', fn, '22', 'neg %x %X %u; %a', ['int32', 'int32', 'int32', 'double']],
+    SADDR + 0x340: ['1', fn, '23', 'id=%u data=%s', ['uint32', 'bytes']],
   }
   data = {
     'enums': {'k_fatal_error_reason': {0: 'K_ERR_CPU_EXCEPTION', 4: 'K_ERR_KERNEL_PANIC'}},
@@ -231,6 +241,9 @@ def gen_logs():
     ('string escaping: quote kept, backslash/newline/control escaped, UTF-8 kept',
      SADDR + 0x2C0, 'a"b\\\nc\x01 \u00e9'.encode() + b'\x00'),
     ('invalid UTF-8 becomes U+FFFD', SADDR + 0x2C0, b'x\xffy\x00'),
+    ('%x/%X/%u of a negative int32 use its 32-bit two\'s complement; %a', SADDR + 0x300,
+     P('<iiid', -1, -2, -3, 3.14159)),
+    ('bytes kind: the rest of the frame as hex pairs', SADDR + 0x340, P('<I', 7) + b'\x01\xab\x00'),
   ]
   errors = [
     ('missing arg', SADDR + 0x40, P('<i', 1), 'missing_arg'),

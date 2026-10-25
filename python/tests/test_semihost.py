@@ -105,3 +105,23 @@ def test_symlink_escape(tmp_path):
   h = Handler(root)
   r, _ = h.handle(req(sh.OPEN, i32(sh.O_RDONLY), b'link'))
   assert rv(r) == (-1, ERRNO['EACCES'])
+
+
+def test_close_error_is_a_reply(tmp_path):
+  class Failing:
+    def close(self):
+      raise OSError(5, 'deferred write error')
+
+  h = Handler(tmp_path)
+  h.files[7] = Failing()
+  r, _ = h.handle(req(sh.CLOSE, i32(7)))
+  assert rv(r) == (-1, ERRNO['EIO'])
+  assert 7 not in h.files
+
+
+def test_time_ops_use_perf_counter(monkeypatch):
+  # protocol.md §5.5.3: Python hosts use time.perf_counter_ns().
+  monkeypatch.setattr(sh.time, 'perf_counter_ns', lambda: 1_234_000_000_000)
+  monkeypatch.setattr(sh.time, 'monotonic_ns', lambda: 1)
+  assert sh.time_reply(sh.SYS_ELAPSED) == struct.pack('<Q', 1_234_000_000_000)
+  assert sh.time_reply(sh.SYS_CLOCK) == struct.pack('<I', 123_400)

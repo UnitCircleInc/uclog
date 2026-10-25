@@ -89,6 +89,9 @@ def run_peek_mux():
       check((m[1], m[2], m[3], m[4].hex()) ==
             (c['mux']['type'], c['mux']['target'], c['mux']['addr'], c['mux']['args']),
             f"mux log {c['name']}")
+  for c in load('peek_mux.json').get('peek_only', []):
+    pk = ucref.peek(B(c['encoded']))
+    check(pk == (c['peek']['kind'], c['peek']['type']), f"peek only {c['name']}")
 
 
 def run_logs():
