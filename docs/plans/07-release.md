@@ -23,7 +23,7 @@ the hub binaries this phase signs.
 |---|---|---|---|
 | 1 | Create the GitHub repository and push. Check that `native.yml`, `python.yml`, `spec.yml` and `web.yml` pass (the native and Python ones on Linux, Windows and macOS; `web.yml` includes the VS Code tests under xvfb); they have never run (no remote yet) | 06 §9, 03 §8 | S |
 | 2 | Repository secrets for signing (§3): Apple Developer ID certificate + notarisation API key, Windows code-signing certificate | 01 §9.10 | S |
-| 3 | A dry run of `release.yml` (`workflow_dispatch`): every target builds, checksums, draft GitHub release, wheels artifact, VSIX artifact | 01 §9.10, 03 §8 | S |
+| 3 | A dry run of `release.yml` (`workflow_dispatch`): every target builds, checksums, draft GitHub release, wheels artifact, VSIX artifact. Check that the `macos-13` (Intel), `ubuntu-22.04-arm` and `windows-11-arm` runners are available to this repository (the ARM ones may not be for a private repository); otherwise build macOS x64 on `macos-14` (cross) and Linux arm64 with `cross`. Until there is a remote: `.github/act-release.sh` runs the Linux and macOS rows locally with act (no Windows, no release job) | 01 §9.10, 03 §8 | S |
 
 ## 3. Packaging and signing
 
@@ -80,6 +80,18 @@ the hub binaries this phase signs.
 | 28 | `uclog hub --config FILE` (in the plan's CLI, not implemented) | 01 §8 | S |
 | 29 | GUI terminal character mode (each key sent at once), like the TUI's | 04 §9 | S |
 | 30 | GUI fonts: bundle a fallback font for the symbols and emoji egui's default fonts lack, which now show as boxes. Watch the size target (≤ 15 MB) | 04 §9 | S |
+
+## 7a. Left over from the code review (2026-10-25)
+
+The review's other findings are fixed. These were left:
+
+| # | Task | From | Size |
+|---|---|---|---|
+| 31 | Web folder FS (File System Access API, `transports-web/src/fs.ts`): writes go to the browser's swap file and are lost if the page closes before the device closes the file; an `O_RDWR` handle's reads don't see its own writes. Needs a different storage design (for example write-through on each write, or reads from the pending writable) | review | M |
+| 32 | NUCLEO-C071RB USB (`board/usb.c`): CLEAR_FEATURE(HALT) and SET_INTERFACE don't reset the endpoint's data toggle, and SET_FEATURE(HALT) doesn't stall. Not seen on macOS; check with a host that clears a halt (Linux libusb, Windows) and fix | review | S |
+| 33 | Web: remove duplicated code: `FsError`/`OpenFlags`/errno names (core and vscode), `LinkState`, the approval/busy state machine (`WebSocketLink` and `HubConnection`), `bytes()`/`toBytes()`, `DEFAULT_LOGDATA_URL` | review | S |
+| 34 | Windows: build and test the semihost sandbox (native `uclog-semihost`: `O_NOFOLLOW` is `cfg(unix)`; check that a symlink or junction in the root cannot lead out of it on Windows) | review | S |
+| 35 | Rerun the hardware e2e the review didn't run after its fixes: the VS Code extension with the three test boards, `web/e2e/hw.spec.ts` and `web/e2e/ble.spec.ts`; BLE scanning (stops as soon as the device is found) on Linux and Windows | review, 27a, 27b | S |
 
 ## 8. Not in this phase
 

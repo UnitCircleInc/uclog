@@ -67,7 +67,8 @@ On TCP accept, the hub waits up to 500 ms for the first byte:
 |---|---|---|
 | `0x16` | TLS ClientHello | TLS handshake (requires `--tls-cert/--tls-key`, else close), then sniff again on the decrypted stream |
 | `G` | HTTP `GET` | WebSocket upgrade on path `/` (or `/uclog`). Binary messages; each carries one or more whole frames |
-| anything else (normally `00`, a client pulse) or timeout | raw protocol | buffered bytes go to the client FrameScanner |
+| `00` (a client pulse) or timeout | raw protocol | buffered bytes go to the client FrameScanner |
+| anything else | — | close. An HTTP `POST` from a web page would otherwise reach the device without an Origin check |
 
 This works because raw clients always start with `00` (README §3.1). `--ws-port N` optionally
 **also** serves WebSocket on a separate port, in case a proxy or environment needs it. mDNS TXT
@@ -100,6 +101,8 @@ advertises `ws=same` or the port number.
      *Always* writes the host to `hub.allow` in the config dir. The connection is rejected on timeout,
      or when stdin is not a TTY (headless) and no allow rule matches; a log line explains how to allow
      it.
+   - The Origin check applies to loopback peers only. An allowed remote host is trusted as a whole,
+     including any web page running in a browser on it (decided 2026-10-25).
    - While a connection is pending it occupies the slot. A second attempt gets "busy".
 3. On accept, client session start (§5).
 

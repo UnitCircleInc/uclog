@@ -4,6 +4,9 @@
 # build the Python wheels (with uclog-hub bundled) as an artifact.
 # Not yet done (needs certificates as repository secrets): macOS codesign + notarize, Windows
 # signing, and linux armv7 (needs cross). See docs/plans/07-release.md.
+#
+# Until there is a GitHub remote, .github/act-release.sh runs this workflow locally with act
+# (Linux jobs in Docker, macOS rows on this Mac, no Windows rows, no release job).
 name: release
 
 on:
@@ -67,7 +70,9 @@ jobs:
             native/dist/*.zip*
 
   # Python wheels (plan 06 §2): one per platform with uclog-hub bundled, plus py3-none-any and
-  # the sdist. Not published yet: add a PyPI trusted publisher, then a publish job.
+  # the sdist. They are attached to the draft release.
+  # TODO: publish to PyPI: add a PyPI trusted publisher, then a publish job (needs: wheels,
+  # permissions: id-token: write, pypa/gh-action-pypi-publish). Not decided yet.
   wheels:
     needs: build
     runs-on: ubuntu-latest
@@ -87,6 +92,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          shopt -s nullglob  # an unmatched pattern expands to nothing (each OS has one archive type)
           python -m pip install build
           python -m build --sdist --wheel --outdir dist
           for pair in linux-x64:manylinux_2_35_x86_64 linux-arm64:manylinux_2_35_aarch64 \
@@ -94,12 +100,21 @@ jobs:
                       windows-x64:win_amd64 windows-arm64:win_arm64; do
             name=${pair%%:*}; plat=${pair#*:}
             dir="unpacked/$name"; mkdir -p "$dir"
-            archive=$(ls ../artifacts/uclog-*-"$name".tar.gz ../artifacts/uclog-*-"$name".zip 2>/dev/null | head -1)
+            archives=(../artifacts/uclog-*-"$name".tar.gz ../artifacts/uclog-*-"$name".zip)
+            if (( ${#archives[@]} == 0 )) && [[ -n "${ACT:-}" ]]; then
+              echo "::warning::act: no archive for $name, skipped"; continue
+            fi
+            if (( ${#archives[@]} != 1 )); then
+              echo "::error::expected one archive for $name, found ${#archives[@]}: ${archives[*]}"
+              exit 1
+            fi
+            archive=${archives[0]}
             case "$archive" in
               *.zip) unzip -q "$archive" -d "$dir" ;;
               *) tar xzf "$archive" -C "$dir" ;;
             esac
-            hub=$(find "$dir" -name 'uclog-hub' -o -name 'uclog-hub.exe' | head -1)
+            hub=$(find "$dir" -type f \( -name 'uclog-hub' -o -name 'uclog-hub.exe' \) -print -quit)
+            [[ -n "$hub" ]] || { echo "::error::no uclog-hub in $archive"; exit 1; }
             rm -rf build
             UCLOG_HUB_BINARY="$PWD/$hub" UCLOG_WHEEL_PLAT="$plat" python -m build --wheel --outdir dist
           done
@@ -138,7 +153,7 @@ jobs:
           path: web/apps/vscode/*.vsix
 
   release:
-    needs: [build, vsix]
+    needs: [build, wheels, vsix]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     defaults:
