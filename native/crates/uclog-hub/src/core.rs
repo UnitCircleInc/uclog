@@ -13,7 +13,7 @@ use tracing::{debug, info, warn};
 use uclog_link::{CloseReason, Link, LinkError, LinkEvent};
 use uclog_proto::frame::{peek, wire_port, Peek};
 use uclog_proto::scanner::{FrameScanner, ScanEvent};
-use uclog_proto::timing::{LIVENESS_TIMEOUT, PULSE_INTERVAL, WAKE_GAP};
+use uclog_proto::timing::{LIVENESS_TIMEOUT, PULSE_DUE, PULSE_TICK, WAKE_GAP};
 use uclog_proto::{cobs, ports, MAX_WIRE};
 
 use crate::backlog::Backlog;
@@ -138,11 +138,15 @@ impl Drop for SlotGuard {
     fn drop(&mut self) {
         let was_active = matches!(*self.shared.slot.lock().unwrap(), Slot::Active(_));
         *self.shared.slot.lock().unwrap() = Slot::Free;
+        // Under the router lock, like `on_device_frame`: a request is either routed before this
+        // (and answered with EIO here) or after it (and answered by the hub default).
+        let mut router = self.shared.router.lock().unwrap();
         *self.shared.client_syscall.lock().unwrap() = None;
-        if let Some(r) = self.shared.router.lock().unwrap().client_gone() {
+        if let Some(r) = router.client_gone() {
             info!("client left with a syscall outstanding: replying EIO to the device");
             let _ = self.shared.to_device.try_send(wire_port(ports::SEMIHOST, &r));
         }
+        drop(router);
         if was_active {
             self.shared.busy.send_replace(false);
             info!("client {} disconnected", self.peer);
@@ -199,7 +203,7 @@ async fn run_link(shared: &Arc<Shared>, link: &mut Link, to_device: &mut mpsc::R
     }
     let mut last_tx = Instant::now();
     let mut last_rx: Option<Instant> = None;
-    let mut tick = interval(Duration::from_millis(100));
+    let mut tick = interval(PULSE_TICK);
     loop {
         tokio::select! {
             ev = link.rx.recv() => match ev {
@@ -232,7 +236,7 @@ async fn run_link(shared: &Arc<Shared>, link: &mut Link, to_device: &mut mpsc::R
                 last_tx = Instant::now();
             }
             _ = tick.tick() => {
-                if last_tx.elapsed() >= PULSE_INTERVAL {
+                if last_tx.elapsed() >= PULSE_DUE {
                     if link.tx.send(vec![0]).await.is_err() { return CloseReason::Eof; }
                     last_tx = Instant::now();
                 }
@@ -258,8 +262,14 @@ fn on_device_frame(shared: &Arc<Shared>, f: &[u8]) -> Option<Vec<u8>> {
                 return None;
             };
             let req = &payload[1..];
-            let client = shared.client_syscall.lock().unwrap().clone();
-            let route = shared.router.lock().unwrap().from_device(req, client.is_some());
+            // The client check and the routing are one step under the router lock (see
+            // `SlotGuard::drop`), so a client leaving in between cannot lose the request.
+            let (client, route) = {
+                let mut router = shared.router.lock().unwrap();
+                let client = shared.client_syscall.lock().unwrap().clone();
+                let route = router.from_device(req, client.is_some());
+                (client, route)
+            };
             match route {
                 Route::Reply(r) => Some(wire_port(ports::SEMIHOST, &r)),
                 Route::None => None,
@@ -323,7 +333,7 @@ pub async fn client_session(shared: Arc<Shared>, guard: SlotGuard, mut c: Client
     let mut scanner = FrameScanner::new(shared.max_frame);
     let mut last_rx = Instant::now();
     let mut last_tx = Instant::now();
-    let mut tick = interval(Duration::from_millis(100));
+    let mut tick = interval(PULSE_TICK);
     let mut dropped = 0u64;
     // A forwarded request goes out after the backlog frames that preceded it (device order).
     let mut sys_pending: Vec<Vec<u8>> = vec![];
@@ -331,7 +341,9 @@ pub async fn client_session(shared: Arc<Shared>, guard: SlotGuard, mut c: Client
         // Device → client: device info first, then the backlog / live frames.
         let mut out = std::mem::take(&mut first);
         loop {
-            let mut r = shared.backlog.lock().unwrap().read(cursor, chunk - out.len().min(chunk));
+            // Room for the replay marker too, so a datagram never exceeds `chunk`.
+            let room = chunk.saturating_sub(out.len() + usize::from(!replayed));
+            let mut r = shared.backlog.lock().unwrap().read(cursor, room);
             if !replayed && r.cursor > replay_end {
                 // Stop at the end of the replay, so the marker comes before the first live frame.
                 let first = r.cursor - r.frames.len() as u64;
@@ -345,14 +357,18 @@ pub async fn client_session(shared: Arc<Shared>, guard: SlotGuard, mut c: Client
                 dropped += r.skipped;
                 shared.counters.client_dropped.fetch_add(r.skipped, Relaxed);
             }
-            cursor = r.cursor;
-            let n = r.frames.len();
-            for f in r.frames {
+            cursor = r.cursor - r.frames.len() as u64;
+            let mut n = 0;
+            for f in &r.frames {
+                // Only the first frame of a read can overflow (read() returns at least one): it
+                // waits for the next message, after the device info.
                 if out.len() + f.len() + 2 > chunk && !out.is_empty() {
-                    break; // cannot happen with read()'s limit, but keep datagrams whole
+                    break;
                 }
-                push_frame(&mut out, &f);
+                push_frame(&mut out, f);
+                n += 1;
             }
+            cursor += n as u64;
             shared.counters.client_frames_out.fetch_add(n as u64, Relaxed);
             if !replayed && cursor >= replay_end {
                 replayed = true;
@@ -365,7 +381,7 @@ pub async fn client_session(shared: Arc<Shared>, guard: SlotGuard, mut c: Client
                 break 'session "connection closed".into();
             }
             last_tx = Instant::now();
-            if n == 0 {
+            if r.frames.is_empty() {
                 break;
             }
         }
@@ -413,7 +429,7 @@ pub async fn client_session(shared: Arc<Shared>, guard: SlotGuard, mut c: Client
                 }
                 // Pulse the client while the device is alive (protocol.md §2.3); silence tells the
                 // client the device is not responding.
-                if last_tx.elapsed() >= PULSE_INTERVAL && *shared.state.borrow() == DeviceState::Alive {
+                if last_tx.elapsed() >= PULSE_DUE && *shared.state.borrow() == DeviceState::Alive {
                     if c.tx.send(vec![0]).await.is_err() { break 'session "connection closed".into(); }
                     last_tx = Instant::now();
                 }

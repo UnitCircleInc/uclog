@@ -214,6 +214,26 @@ async fn terminal_round_trip_and_pulses() {
     h.shutdown().await;
 }
 
+/// While the device is alive, the client gets something at least every 0.5 s (protocol.md §2.3).
+#[tokio::test]
+async fn client_gaps_within_half_a_second() {
+    let h = hub(&["-d", "loopback:rate=0"]).await;
+    let mut c = Raw::connect(h.port).await;
+    assert!(c.pump(Duration::from_secs(2), |r| r.frames.iter().any(|p| is_info(p))).await);
+    let end = Instant::now() + Duration::from_secs(3);
+    let (mut prev, mut max) = (Instant::now(), Duration::ZERO);
+    let mut buf = [0u8; 4096];
+    while Instant::now() < end {
+        c.s.write_all(&[0]).await.unwrap();
+        let n = timeout(Duration::from_secs(1), c.s.read(&mut buf)).await.unwrap().unwrap();
+        assert!(n > 0);
+        max = max.max(prev.elapsed());
+        prev = Instant::now();
+    }
+    assert!(max <= Duration::from_millis(500), "max gap {max:?}");
+    h.shutdown().await;
+}
+
 #[tokio::test]
 async fn silent_device_means_silent_hub() {
     let h = hub(&["-d", "loopback:rate=0"]).await;
@@ -301,7 +321,74 @@ async fn slow_client_drops_and_counts() {
     let got = c.rx.count_port(61);
     let dropped = h.shared.counters.client_dropped.load(std::sync::atomic::Ordering::Relaxed);
     assert!(got < 40, "some frames were dropped (got {got})");
-    assert_eq!(got as u64 + dropped, 40, "received + dropped = sent (got {got}, dropped {dropped})");
+    // Every frame the device sent (the loopback's start log too, not only the 40 replies).
+    let sent = h.shared.backlog.lock().unwrap().next_seq();
+    let all = c.rx.frames.len() as u64;
+    assert_eq!(all + dropped, sent, "received + dropped = sent (got {all}, dropped {dropped})");
+    h.shutdown().await;
+}
+
+/// A backlog of `n` small logs, made by a first client that then leaves (no live frames after).
+async fn backlog_of(h: &Running, n: u32) -> u64 {
+    let mut c = Raw::connect(h.port).await;
+    c.send(61, format!("burst {n}\r").as_bytes()).await;
+    assert!(c.pump(Duration::from_secs(5), |r| r.port_text(61).contains("burst of")).await);
+    drop(c);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    h.shared.backlog.lock().unwrap().next_seq()
+}
+
+#[tokio::test]
+async fn backlog_replay_loses_no_frames() {
+    // Small frames, many per message: the replay must not skip any (each frame's two 00s count).
+    let h = hub(&["-d", "loopback:rate=0", "--backlog", "1000000"]).await;
+    let sent = backlog_of(&h, 3000).await;
+    let mut c = Raw::connect(h.port).await;
+    c.pump(Duration::from_secs(3), |r| r.frames.len() as u64 >= sent).await;
+    assert_eq!(c.rx.frames.len() as u64, sent, "replayed every frame");
+    assert_eq!(h.shared.counters.client_dropped.load(std::sync::atomic::Ordering::Relaxed), 0);
+    h.shutdown().await;
+}
+
+#[tokio::test]
+async fn backlog_replay_over_udp_fits_datagrams() {
+    let h = hub(&["-d", "loopback:rate=0", "--backlog", "1000000", "--udp"]).await;
+    let sent = backlog_of(&h, 3000).await;
+    let s = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+    s.connect(("127.0.0.1", h.udp_port.unwrap())).await.unwrap();
+    s.send(&[0]).await.unwrap();
+    let mut rx = Rx::default();
+    let mut buf = vec![0u8; 65536];
+    let end = Instant::now() + Duration::from_secs(3);
+    let mut biggest = 0;
+    while Instant::now() < end && (rx.frames.len() as u64) < sent {
+        if let Ok(Ok(n)) = timeout(Duration::from_millis(300), s.recv(&mut buf)).await {
+            biggest = biggest.max(n);
+            rx.feed(&buf[..n]);
+        }
+        let _ = s.send(&[0]).await;
+    }
+    assert!(biggest <= uclog_proto::MAX_WIRE, "datagram of {biggest} bytes");
+    assert_eq!(rx.frames.len() as u64, sent, "replayed every frame");
+    h.shutdown().await;
+}
+
+#[tokio::test]
+async fn http_post_is_refused() {
+    let h = hub(&["-d", "loopback:rate=0"]).await;
+    let mut s = TcpStream::connect(("127.0.0.1", h.port)).await.unwrap();
+    let body = wire_port(61, b"echo from a web page\r");
+    let req = format!("POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\n\r\n", body.len());
+    s.write_all(req.as_bytes()).await.unwrap();
+    let _ = s.write_all(&body).await;
+    let mut buf = vec![0u8; 4096];
+    let r = timeout(Duration::from_secs(2), s.read(&mut buf)).await.unwrap();
+    assert!(matches!(r, Ok(0) | Err(_)), "closed without data: {r:?}");
+    // The slot is free and the device saw nothing.
+    let mut c = Raw::connect(h.port).await;
+    c.send(61, b"echo ok\r").await;
+    assert!(c.pump(Duration::from_secs(2), |r| r.port_text(61).contains("ok")).await);
+    assert!(!c.rx.port_text(61).contains("web page"));
     h.shutdown().await;
 }
 

@@ -99,7 +99,8 @@ impl Backlog {
         }
     }
 
-    /// Frames from `cursor`, up to about `max_bytes` (at least one frame if any is available).
+    /// Frames from `cursor`, up to `max_bytes` on the wire: each frame plus its two `00`
+    /// delimiters (at least one frame if any is available).
     pub fn read(&self, cursor: u64, max_bytes: usize) -> Read {
         let oldest = self.oldest_seq();
         let (skipped, cursor) = if cursor < oldest { (oldest - cursor, oldest) } else { (0, cursor) };
@@ -107,10 +108,10 @@ impl Backlog {
         let start = (cursor - oldest) as usize;
         let mut n = 0;
         for e in self.entries.iter().skip(start) {
-            if !r.frames.is_empty() && n + e.frame.len() > max_bytes {
+            if !r.frames.is_empty() && n + e.frame.len() + 2 > max_bytes {
                 break;
             }
-            n += e.frame.len();
+            n += e.frame.len() + 2;
             r.frames.push(e.frame.clone());
             r.cursor = e.seq + 1;
         }

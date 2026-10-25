@@ -246,3 +246,91 @@ async fn hub_busy_is_reported() {
     assert!(matches!(e, Event::Closed(uclog_link::CloseReason::HubBusy)));
     let _ = TcpStream::connect(addr).await;
 }
+
+/// TX gaps never exceed 0.5 s (protocol.md §2.3).
+#[tokio::test]
+async fn pulse_gaps_within_half_a_second() {
+    let (mut dev, h, _ev) = setup(Config::default()).await;
+    let (mut prev, _) = tokio::time::timeout(Duration::from_secs(1), dev.rx.recv()).await.unwrap().unwrap();
+    let end = prev + Duration::from_secs(3);
+    let mut max = Duration::ZERO;
+    while prev < end {
+        let (t, _) = tokio::time::timeout(Duration::from_secs(1), dev.rx.recv()).await.unwrap().unwrap();
+        max = max.max(t.duration_since(prev));
+        prev = t;
+    }
+    assert!(max <= Duration::from_millis(500), "max TX gap {max:?}");
+    h.close().await;
+}
+
+/// A new image whose logdata is not found must not decode with the previous image's logdata
+/// (protocol.md §6.4): its logs are `no_logdata` errors.
+#[tokio::test]
+async fn unresolved_image_clears_logdata() {
+    let cache = tempfile::tempdir().unwrap();
+    std::fs::copy(sample(), cache.path().join(format!("{}.logdata", hex::encode(HASH)))).unwrap();
+    let cfg = Config {
+        resolver: ResolverConfig { cache_dir: Some(cache.path().into()), ..Default::default() },
+        ..Default::default()
+    };
+    let (mut dev, h, mut ev) = setup(cfg).await;
+    let mut log = SADDR.to_le_bytes().to_vec();
+    log.extend_from_slice(b"there\0");
+    dev.send_port(62, &device_info()).await;
+    let e = next_event(&mut ev, |e| matches!(e, Event::Logdata { .. })).await;
+    assert!(matches!(e, Event::Logdata { source: Some(_), .. }));
+    dev.send(&log).await;
+    let Event::Log(r) = next_event(&mut ev, |e| matches!(e, Event::Log(_))).await else { unreachable!() };
+    assert_eq!(r.error, None);
+
+    let other = cbor::to_vec(&cbor::map([("app_hash", Value::Bytes(vec![0x11; 64]))]));
+    dev.send_port(62, &other).await;
+    let e = next_event(&mut ev, |e| matches!(e, Event::Logdata { .. })).await;
+    assert!(matches!(e, Event::Logdata { source: None, .. }));
+    dev.send(&log).await;
+    let Event::Log(r) = next_event(&mut ev, |e| matches!(e, Event::Log(_))).await else { unreachable!() };
+    assert_eq!(r.error, Some("no_logdata"), "{}", r.text);
+    h.close().await;
+}
+
+/// A stdin READ pending when the device resets (device info) or sends another request is not
+/// answered later: the stale reply would be taken for the reply to a different request.
+#[tokio::test]
+async fn stale_stdin_read_is_dropped() {
+    let (mut dev, h, mut ev) = setup(Config::default()).await;
+    use uclog_proto::semihost::{op, reply};
+    let mut read = vec![op::READ]; // fid 0, 16 bytes
+    read.extend_from_slice(&0i32.to_le_bytes());
+    read.extend_from_slice(&16u32.to_le_bytes());
+    for reset in [true, false] {
+        dev.send_port(63, &read).await;
+        next_event(&mut ev, |e| matches!(e, Event::StdinWanted)).await;
+        if reset {
+            dev.send_port(62, &device_info()).await;
+            next_event(&mut ev, |e| matches!(e, Event::DeviceInfo(_))).await;
+        } else {
+            // ISATTY(1) is answered; that is the only port-63 frame the device gets.
+            dev.send_port(63, &[op::ISATTY, 1, 0, 0, 0]).await;
+            let (_, p) = dev.frame().await;
+            assert_eq!(p, uclog_proto::frame::mux_encode(63, &reply(1, 0)));
+        }
+        h.stdin(b"late\r".to_vec()).await.unwrap();
+        next_event(&mut ev, |e| matches!(e, Event::Note(n) if n.contains("no semihost stdin read"))).await;
+    }
+    h.send(61, b"x".to_vec()).await.unwrap();
+    let (_, p) = dev.frame().await;
+    assert_eq!(p, uclog_proto::frame::mux_encode(61, b"x"), "no stdin reply reached the device");
+    h.close().await;
+}
+
+/// A block-size whose fw-block frame cannot fit in one frame is refused up front, with a clear
+/// error, instead of timing out on a block the device never receives.
+#[tokio::test]
+async fn fw_update_block_size_too_large() {
+    let (dev, h, _ev) = setup(Config::default()).await;
+    let image = vec![0xA5u8; 4000];
+    let _d = tokio::spawn(fw_device(dev, true, 1500));
+    let e = h.fw_update(&image, |_| {}).await.unwrap_err();
+    assert!(matches!(e, uclog_session::FwError::BlockTooLarge { block: 1500, port: 59, .. }), "{e}");
+    h.close().await;
+}

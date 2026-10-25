@@ -25,10 +25,34 @@ async fn adapter() -> Result<Adapter, LinkError> {
 
 /// Scan for devices advertising the ucLog service.
 pub(crate) async fn scan(dur: Duration) -> Result<Vec<(Peripheral, Device)>, LinkError> {
+    scan_until(dur, None).await
+}
+
+/// Scan for up to `dur`; with `stop`, end early once a device matches it (checked every 200 ms).
+async fn scan_until(
+    dur: Duration,
+    stop: Option<&(dyn Fn(&Device) -> bool + Sync)>,
+) -> Result<Vec<(Peripheral, Device)>, LinkError> {
     let a = adapter().await?;
     a.start_scan(ScanFilter { services: vec![uuid()] }).await.map_err(e)?;
-    tokio::time::sleep(dur).await;
+    let deadline = tokio::time::Instant::now() + dur;
+    let out = loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        let Some(stop) = stop.filter(|_| !left.is_zero()) else {
+            tokio::time::sleep(left).await;
+            break collect(&a).await;
+        };
+        tokio::time::sleep(left.min(Duration::from_millis(200))).await;
+        match collect(&a).await {
+            Ok(found) if !found.iter().any(|(_, d)| stop(d)) => {}
+            r => break r,
+        }
+    };
     let _ = a.stop_scan().await;
+    out
+}
+
+async fn collect(a: &Adapter) -> Result<Vec<(Peripheral, Device)>, LinkError> {
     let mut out = vec![];
     for p in a.peripherals().await.map_err(e)? {
         let props = p.properties().await.ok().flatten();
@@ -56,10 +80,13 @@ pub(crate) async fn scan(dur: Duration) -> Result<Vec<(Peripheral, Device)>, Lin
 }
 
 pub(crate) async fn open(spec: LinkSpec, id: &str) -> Result<Link, LinkError> {
-    let found = scan(Duration::from_secs(4)).await?;
+    let matches = |d: &Device| {
+        d.uri == format!("ble:{id}") || (!d.serial.is_empty() && d.serial.eq_ignore_ascii_case(id)) || d.name == id
+    };
+    let found = scan_until(Duration::from_secs(4), Some(&matches)).await?;
     let (p, dev) = found
         .into_iter()
-        .find(|(_, d)| d.uri == format!("ble:{id}") || (!d.serial.is_empty() && d.serial.eq_ignore_ascii_case(id)) || d.name == id)
+        .find(|(_, d)| matches(d))
         .ok_or_else(|| LinkError::NotFound(format!("no BLE device {id} advertising the ucLog service")))?;
     p.connect().await.map_err(e)?;
     p.discover_services().await.map_err(e)?;
@@ -102,6 +129,7 @@ pub(crate) async fn open(spec: LinkSpec, id: &str) -> Result<Link, LinkError> {
             }
         }
     });
-    let description = if dev.serial.is_empty() { format!("BLE {}", dev.name) } else { format!("BLE {} {}", dev.name, dev.serial) };
+    let description =
+        if dev.serial.is_empty() { format!("BLE {}", dev.name) } else { format!("BLE {} {}", dev.name, dev.serial) };
     Ok(Link { spec, description, tx, rx: evr })
 }

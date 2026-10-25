@@ -13,7 +13,7 @@ use std::str::FromStr;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use tokio::io::AsyncBufReadExt;
+use tokio::io::{AsyncBufReadExt, AsyncRead};
 use tokio::sync::{mpsc, oneshot};
 
 /// Default `--allow-origin` patterns.
@@ -169,12 +169,21 @@ pub struct Prompter {
 impl Prompter {
     /// `interactive`: stdin is a terminal. `on_eof` is signalled when stdin closes.
     pub fn start(interactive: bool, watch_eof: bool, on_eof: Option<oneshot::Sender<()>>) -> Self {
+        Self::with_input(tokio::io::stdin(), interactive, watch_eof, on_eof)
+    }
+
+    fn with_input<R: AsyncRead + Unpin + Send + 'static>(
+        input: R,
+        interactive: bool,
+        watch_eof: bool,
+        on_eof: Option<oneshot::Sender<()>>,
+    ) -> Self {
         if !interactive && !watch_eof {
             return Prompter { tx: None };
         }
         let (tx, mut rx) = mpsc::channel::<Question>(1);
         tokio::spawn(async move {
-            let mut lines = tokio::io::BufReader::new(tokio::io::stdin()).lines();
+            let mut lines = tokio::io::BufReader::new(input).lines();
             let mut on_eof = on_eof;
             let mut pending: Option<Question> = None;
             // Without a console no questions are asked (the sender is dropped), but stdin is
@@ -182,6 +191,13 @@ impl Prompter {
             let mut asking = true;
             loop {
                 tokio::select! {
+                    // The asker timed out: drop the question, so the next line answers the next one.
+                    _ = async {
+                        match pending.as_mut() {
+                            Some(q) => q.reply.closed().await,
+                            None => std::future::pending().await,
+                        }
+                    }, if pending.is_some() => pending = None,
                     q = rx.recv(), if pending.is_none() && asking => match q {
                         Some(q) => {
                             eprint!("{} [y]es / [n]o / [a]lways this host (60 s) ", q.text);
@@ -276,6 +292,21 @@ mod tests {
         assert!(matches!(r.decide(ip("10.2.0.1"), None), Decision::Ask(_)));
         let all = Rules::new(true, vec![], vec![], None);
         assert_eq!(all.decide(ip("8.8.8.8"), None), Decision::Accept);
+    }
+
+    /// A timed-out question must not swallow the answer to the next one.
+    #[tokio::test]
+    async fn prompter_after_timeout() {
+        let (mut w, r) = tokio::io::duplex(64);
+        let p = Prompter::with_input(r, true, false, None);
+        assert_eq!(p.ask("first".into(), Duration::from_millis(50)).await, Answer::No);
+        let second = tokio::spawn({
+            let p = p.clone();
+            async move { p.ask("second".into(), Duration::from_secs(5)).await }
+        });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::io::AsyncWriteExt::write_all(&mut w, b"y\n").await.unwrap();
+        assert_eq!(second.await.unwrap(), Answer::Yes);
     }
 
     #[test]

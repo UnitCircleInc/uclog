@@ -85,6 +85,26 @@ pub(crate) async fn open(spec: LinkSpec, id: &str) -> Result<Link, LinkError> {
             }
         });
         let mut buf = [0u8; HID_PAYLOAD + 1];
+        // One read, waiting up to `ms`. Ok(false): nothing arrived; Err: the link is gone.
+        let mut read = |ms: i32| -> Result<bool, ()> {
+            match dev.read_timeout(&mut buf, ms) {
+                Ok(0) => {
+                    if ev.is_closed() {
+                        return Err(());
+                    }
+                    Ok(false)
+                }
+                Ok(n) => {
+                    // Some platforms strip the report ID for single-report devices; accept both.
+                    let data = if buf[0] == HID_REPORT_IN { &buf[1..n] } else { &buf[..n] };
+                    ev.blocking_send(LinkEvent::Data(data.to_vec())).map(|_| true).map_err(|_| ())
+                }
+                Err(e) => {
+                    let _ = ev.blocking_send(LinkEvent::Closed(CloseReason::Detached(e.to_string())));
+                    Err(())
+                }
+            }
+        };
         loop {
             loop {
                 match wrx.try_recv() {
@@ -94,29 +114,24 @@ pub(crate) async fn open(spec: LinkSpec, id: &str) -> Result<Link, LinkError> {
                                 let _ = ev.blocking_send(LinkEvent::Closed(CloseReason::Detached(e.to_string())));
                                 return;
                             }
+                            // Take what arrived meanwhile: a write waits while the device's RX is
+                            // full, and hidapi drops the oldest input reports beyond 30 queued
+                            // (macOS), which lost frames during long host → device bursts.
+                            loop {
+                                match read(0) {
+                                    Ok(true) => {}
+                                    Ok(false) => break,
+                                    Err(()) => return,
+                                }
+                            }
                         }
                     }
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => return,
                 }
             }
-            match dev.read_timeout(&mut buf, 5) {
-                Ok(0) => {
-                    if ev.is_closed() {
-                        return;
-                    }
-                }
-                Ok(n) => {
-                    // Some platforms strip the report ID for single-report devices; accept both.
-                    let data = if buf[0] == HID_REPORT_IN { &buf[1..n] } else { &buf[..n] };
-                    if ev.blocking_send(LinkEvent::Data(data.to_vec())).is_err() {
-                        return;
-                    }
-                }
-                Err(e) => {
-                    let _ = ev.blocking_send(LinkEvent::Closed(CloseReason::Detached(e.to_string())));
-                    return;
-                }
+            if read(5).is_err() {
+                return;
             }
         }
     })?;

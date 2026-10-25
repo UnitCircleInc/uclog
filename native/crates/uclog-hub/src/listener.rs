@@ -26,6 +26,9 @@ use crate::core::{client_session, ClientConn, Shared, SlotGuard};
 
 const SNIFF_TIMEOUT: Duration = Duration::from_millis(500);
 const APPROVAL_TIMEOUT: Duration = Duration::from_secs(60);
+/// TLS and WebSocket handshakes (before admission) must finish within this, so peers that
+/// connect and stall do not hold sockets open.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 /// TCP/WebSocket writes carry up to this many bytes of whole frames.
 const STREAM_CHUNK: usize = 16 * 1024;
 
@@ -148,17 +151,27 @@ async fn handle_tcp(ctx: Arc<Ctx>, s: TcpStream, peer: SocketAddr, ws_only: bool
                 info!("TLS connection from {peer} refused: the hub has no --tls-cert");
                 return Ok(());
             };
-            let mut t = tokio::time::timeout(Duration::from_secs(10), acc.accept(s))
+            let mut t = tokio::time::timeout(HANDSHAKE_TIMEOUT, acc.accept(s))
                 .await
                 .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "TLS handshake"))??;
             match first_byte(&mut t).await? {
                 Some(b'G') => ws(ctx, Prefixed { prefix: vec![b'G'], pos: 0, inner: t }, peer, "wss").await,
+                Some(b) if b != 0 => refuse_raw(peer, "tls", b),
                 b => raw(ctx, Prefixed { prefix: b.into_iter().collect(), pos: 0, inner: t }, peer, "tls").await,
             }
         }
         Some(b'G') => ws(ctx, s, peer, "ws").await,
+        Some(b) if b != 0 => refuse_raw(peer, "tcp", b),
         _ => raw(ctx, s, peer, "tcp").await,
     }
+}
+
+/// A raw client's first byte MUST be `00` (protocol.md §4.5). Anything else is refused: an
+/// HTTP POST from a web page would otherwise reach the device with no Origin check (its body
+/// frames survive the scanner, which drops the header bytes before the first `00`).
+fn refuse_raw(peer: SocketAddr, kind: &str, b: u8) -> io::Result<()> {
+    info!("{kind} connection from {peer} refused: first byte {b:#04x}, not 00 (raw clients start with a pulse)");
+    Ok(())
 }
 
 /// Raw byte stream (TCP or TLS).
@@ -230,7 +243,10 @@ where
         }
         Ok(resp)
     };
-    let mut wsock = tokio_tungstenite::accept_hdr_async(s, cb).await.map_err(io::Error::other)?;
+    let mut wsock = tokio::time::timeout(HANDSHAKE_TIMEOUT, tokio_tungstenite::accept_hdr_async(s, cb))
+        .await
+        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "WebSocket handshake"))?
+        .map_err(io::Error::other)?;
     let Some(guard) = ctx.shared.claim(peer) else {
         info!("{kind} connection from {peer}: busy");
         let _ = wsock.close(Some(CloseFrame { code: CloseCode::from(WS_BUSY), reason: "busy".into() })).await;

@@ -33,6 +33,11 @@ pub mod timing {
 
     /// Send something at least this often while connected.
     pub const PULSE_INTERVAL: Duration = Duration::from_millis(500);
+    /// Senders check for TX idle this often...
+    pub const PULSE_TICK: Duration = Duration::from_millis(100);
+    /// ...and pulse once TX has been idle this long. A gap is at most `PULSE_DUE + PULSE_TICK`
+    /// (450 ms), which leaves room for scheduling jitter within [`PULSE_INTERVAL`].
+    pub const PULSE_DUE: Duration = Duration::from_millis(350);
     /// No bytes for longer than this: the peer is not responding.
     pub const LIVENESS_TIMEOUT: Duration = Duration::from_secs(2);
     /// Pause after a wake pulse when TX was idle for longer than [`LIVENESS_TIMEOUT`].

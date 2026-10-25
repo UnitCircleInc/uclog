@@ -25,15 +25,30 @@ pub(crate) fn open(spec: LinkSpec, path: &str, baud: u32) -> Result<Link, LinkEr
     let ev2 = ev.clone();
     std::thread::Builder::new().name(format!("serial-rx {path}")).spawn(move || {
         let mut buf = [0u8; 4096];
+        // A read that returns 0 after the port polled readable is end of file (the device went
+        // away). Allow a few in case a driver does it spuriously, but never spin on it.
+        let mut eofs = 0;
         loop {
             match port.read(&mut buf) {
-                Ok(0) => {}
+                Ok(0) => {
+                    eofs += 1;
+                    if eofs >= 3 {
+                        let _ = ev.blocking_send(LinkEvent::Closed(CloseReason::Detached("end of file".into())));
+                        return;
+                    }
+                    if ev.is_closed() {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
                 Ok(n) => {
+                    eofs = 0;
                     if ev.blocking_send(LinkEvent::Data(buf[..n].to_vec())).is_err() {
                         return;
                     }
                 }
                 Err(e) if e.kind() == ErrorKind::TimedOut || e.kind() == ErrorKind::Interrupted => {
+                    eofs = 0;
                     if ev.is_closed() {
                         return;
                     }

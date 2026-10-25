@@ -24,6 +24,10 @@ pub enum FormatError {
     TooManyArgs,
 }
 
+/// Width and precision are capped at this, so a malformed logdata format cannot overflow the
+/// parse or ask for gigabytes of padding.
+const MAX_WIDTH: usize = 4096;
+
 #[derive(Default, Clone, Copy)]
 struct Spec {
     left: bool,
@@ -82,14 +86,14 @@ fn parse(b: &[u8], mut i: usize) -> Option<(Spec, u8, usize)> {
         i += 1;
     }
     while i < b.len() && b[i].is_ascii_digit() {
-        s.width = s.width * 10 + (b[i] - b'0') as usize;
+        s.width = (s.width * 10 + (b[i] - b'0') as usize).min(MAX_WIDTH);
         i += 1;
     }
     if i < b.len() && b[i] == b'.' {
         i += 1;
         let mut p = 0;
         while i < b.len() && b[i].is_ascii_digit() {
-            p = p * 10 + (b[i] - b'0') as usize;
+            p = (p * 10 + (b[i] - b'0') as usize).min(MAX_WIDTH);
             i += 1;
         }
         s.prec = Some(p);
@@ -372,5 +376,17 @@ mod tests {
         assert_eq!(format("%d", &[i(1), i(2)]), Err(FormatError::TooManyArgs));
         assert_eq!(format("at 50%", &[]).unwrap(), "at 50%");
         assert_eq!(format("% o", &[i(8)]).unwrap(), "10");
+    }
+
+    /// Malformed logdata: huge widths and precisions neither overflow nor allocate gigabytes.
+    #[test]
+    fn huge_width_and_precision_are_capped() {
+        let big = "99999999999999999999999999";
+        for f in [format!("%{big}d"), format!("%.{big}d"), format!("%{big}.{big}f"), format!("%.{big}g")] {
+            let a = if f.ends_with('d') { i(1) } else { Arg::Float(1.0) };
+            let s = format(&f, &[a]).unwrap();
+            assert!(s.len() <= 2 * MAX_WIDTH + 16, "{f}: {} bytes", s.len());
+        }
+        assert_eq!(format(&format!("%{big}s"), &[Arg::Str("x".into())]).unwrap().len(), MAX_WIDTH);
     }
 }

@@ -83,7 +83,6 @@ pub struct Handler {
     clock: Box<dyn TimeSource>,
     files: HashMap<i32, Handle>,
     next_fid: i32,
-    root: Option<PathBuf>,
 }
 
 impl Handler {
@@ -92,8 +91,7 @@ impl Handler {
     }
 
     pub fn with_clock(cfg: Config, clock: Box<dyn TimeSource>) -> Self {
-        let root = cfg.files_dir.as_ref().and_then(|d| d.canonicalize().ok());
-        Handler { cfg, clock, files: HashMap::new(), next_fid: 3, root }
+        Handler { cfg, clock, files: HashMap::new(), next_fid: 3 }
     }
 
     pub fn config(&self) -> &Config {
@@ -103,7 +101,6 @@ impl Handler {
     /// Change the sandbox root (closes open files).
     pub fn set_files_dir(&mut self, dir: Option<PathBuf>) {
         self.files.clear();
-        self.root = dir.as_ref().and_then(|d| d.canonicalize().ok());
         self.cfg.files_dir = dir;
     }
 
@@ -156,7 +153,7 @@ impl Handler {
                 Ok(fid) => Outcome::reply(sh::reply(fid, 0)),
                 Err(e) => err(e),
             },
-            Request::Mkdir { mode, path } => match self.resolve(&path, false) {
+            Request::Mkdir { mode, path } => match self.resolve(&path) {
                 Ok(p) => match mkdir(&p, mode) {
                     Ok(()) => Outcome::reply(sh::reply(0, 0)),
                     Err(e) => err(map_err(&e)),
@@ -200,10 +197,14 @@ impl Handler {
                     },
                 }
             }
-            Request::TimeOfDay | Request::Clock | Request::Time | Request::Elapsed | Request::TickFreq => {
-                unreachable!("time ops are answered above")
-            }
-            Request::Unsupported { .. } | Request::Unknown { .. } => err(errno::ENOSYS),
+            // Time ops are answered above.
+            Request::TimeOfDay
+            | Request::Clock
+            | Request::Time
+            | Request::Elapsed
+            | Request::TickFreq
+            | Request::Unsupported { .. }
+            | Request::Unknown { .. } => err(errno::ENOSYS),
         }
     }
 
@@ -225,8 +226,11 @@ impl Handler {
     }
 
     fn open(&mut self, flags: i32, path: &str) -> Result<i32, i32> {
+        if self.files.len() >= 64 {
+            return Err(errno::EMFILE);
+        }
         let create = flags & oflag::CREAT != 0;
-        let p = self.resolve(path, create)?;
+        let p = self.resolve(path)?;
         let mut o = OpenOptions::new();
         match flags & oflag::ACCMODE {
             oflag::RDONLY => o.read(true),
@@ -244,20 +248,24 @@ impl Handler {
         } else if create {
             o.create(true);
         }
-        let file = o.open(&p).map_err(|e| map_err(&e))?;
-        if self.files.len() >= 64 {
-            return Err(errno::EMFILE);
+        // `p` has no symlinks left; refuse one that appeared since (protocol.md §5.5.5).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            o.custom_flags(libc::O_NOFOLLOW);
         }
+        let file = o.open(&p).map_err(|e| map_err(&e))?;
         let fid = self.next_fid;
         self.next_fid = if self.next_fid >= 0x7FFF_FFF0 { 3 } else { self.next_fid + 1 };
         self.files.insert(fid, Handle { file, path: p });
         Ok(fid)
     }
 
-    /// Resolve `path` inside the sandbox. Absolute paths, `..` escapes and symlinks pointing
-    /// outside fail with EACCES (protocol.md §5.5.5).
-    fn resolve(&self, path: &str, may_not_exist: bool) -> Result<PathBuf, i32> {
-        let root = self.root.as_ref().ok_or(errno::EACCES)?;
+    /// Resolve `path` inside the sandbox to a path without symlinks. Absolute paths, `..`
+    /// escapes and symlinks pointing outside (or nowhere) fail with EACCES (protocol.md §5.5.5).
+    fn resolve(&self, path: &str) -> Result<PathBuf, i32> {
+        // Canonicalized on each call, so a directory created after the session started works.
+        let root = self.cfg.files_dir.as_ref().ok_or(errno::EACCES)?.canonicalize().map_err(|_| errno::EACCES)?;
         let rel = Path::new(path);
         if path.is_empty() {
             return Err(errno::ENOENT);
@@ -275,20 +283,16 @@ impl Handler {
                 Component::RootDir | Component::Prefix(_) => return Err(errno::EACCES),
             }
         }
-        let full = root.join(&lexical);
-        // Canonicalize the existing part to catch symlinks that leave the sandbox.
-        let check = match full.canonicalize() {
-            Ok(c) => c,
-            Err(_) if may_not_exist || !full.exists() => {
-                let parent = full.parent().unwrap_or(root);
-                match parent.canonicalize() {
-                    Ok(c) => c.join(full.file_name().unwrap_or_default()),
-                    Err(e) => return Err(map_err(&e)),
-                }
-            }
-            Err(e) => return Err(map_err(&e)),
-        };
-        if !check.starts_with(root) {
+        let Some(name) = lexical.file_name().map(PathBuf::from) else { return Ok(root) };
+        // The directories must exist; canonicalizing them catches symlinks that leave the sandbox.
+        let parent = root.join(lexical.parent().unwrap_or(Path::new(""))).canonicalize().map_err(|e| map_err(&e))?;
+        let mut full = parent.join(name);
+        // The last component may not exist yet (O_CREAT, MKDIR). If it is a symlink, it must
+        // resolve inside the sandbox: a dangling one is refused, or O_CREAT would follow it.
+        if full.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
+            full = full.canonicalize().map_err(|_| errno::EACCES)?;
+        }
+        if !full.starts_with(&root) {
             return Err(errno::EACCES);
         }
         Ok(full)
@@ -435,6 +439,57 @@ mod tests {
         m.extend_from_slice(b"sub");
         assert_eq!(r_errno(&reply(h.handle(&req(op::MKDIR, &m)))), (0, 0));
         assert!(d.path().join("sub").is_dir());
+    }
+
+    /// A dangling symlink must not be followed by O_CREAT (it would create a file outside the
+    /// sandbox); a symlink that stays inside works.
+    #[cfg(unix)]
+    #[test]
+    fn sandbox_symlinks() {
+        let d = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let target = outside.path().join("pwned");
+        std::os::unix::fs::symlink(&target, d.path().join("dangling")).unwrap();
+        std::os::unix::fs::symlink("/etc/hosts", d.path().join("hosts")).unwrap();
+        std::fs::write(d.path().join("real.txt"), b"in").unwrap();
+        std::os::unix::fs::symlink("real.txt", d.path().join("inside")).unwrap();
+        let mut h = handler(d.path());
+        let creat = oflag::WRONLY | oflag::CREAT | oflag::TRUNC;
+        assert_eq!(r_errno(&reply(h.handle(&open_req(creat, "dangling")))), (-1, errno::EACCES));
+        assert_eq!(r_errno(&reply(h.handle(&open_req(creat, "sub/../dangling")))), (-1, errno::EACCES));
+        assert!(!target.exists());
+        assert_eq!(r_errno(&reply(h.handle(&open_req(oflag::RDONLY, "hosts")))), (-1, errno::EACCES));
+        let (fid, e) = r_errno(&reply(h.handle(&open_req(oflag::RDONLY, "inside"))));
+        assert_eq!((e, fid >= 3), (0, true));
+    }
+
+    /// The sandbox root may be created after the handler.
+    #[test]
+    fn root_created_later() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().join("later");
+        let mut h = handler(&root);
+        let creat = oflag::WRONLY | oflag::CREAT;
+        assert_eq!(r_errno(&reply(h.handle(&open_req(creat, "x")))), (-1, errno::EACCES));
+        std::fs::create_dir(&root).unwrap();
+        let (fid, e) = r_errno(&reply(h.handle(&open_req(creat, "x"))));
+        assert_eq!((e, fid >= 3), (0, true));
+    }
+
+    /// EMFILE is reported before the file is opened, so O_CREAT|O_TRUNC has no effect.
+    #[test]
+    fn emfile_before_open() {
+        let d = tempfile::tempdir().unwrap();
+        let mut h = handler(d.path());
+        for _ in 0..64 {
+            assert_eq!(r_errno(&reply(h.handle(&open_req(oflag::WRONLY | oflag::CREAT, "a")))).1, 0);
+        }
+        std::fs::write(d.path().join("keep"), b"data").unwrap();
+        let r = r_errno(&reply(h.handle(&open_req(oflag::WRONLY | oflag::CREAT | oflag::TRUNC, "keep"))));
+        assert_eq!(r, (-1, errno::EMFILE));
+        assert_eq!(std::fs::read(d.path().join("keep")).unwrap(), b"data");
+        assert_eq!(r_errno(&reply(h.handle(&open_req(oflag::WRONLY | oflag::CREAT, "new")))), (-1, errno::EMFILE));
+        assert!(!d.path().join("new").exists());
     }
 
     #[test]

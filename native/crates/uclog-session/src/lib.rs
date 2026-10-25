@@ -15,8 +15,7 @@ use tokio::sync::{mpsc, oneshot};
 use uclog_link::{CloseReason, Link, LinkEvent};
 use uclog_logdata::{Decoders, LogData};
 use uclog_proto::frame::{wire, wire_port, PULSE, TYPE_RES};
-use uclog_proto::semihost::is_time_op;
-use uclog_proto::timing::{LIVENESS_TIMEOUT, PULSE_INTERVAL, WAKE_GAP};
+use uclog_proto::timing::{LIVENESS_TIMEOUT, PULSE_DUE, PULSE_TICK, WAKE_GAP};
 use uclog_proto::{cbor, cobs, mux_decode, ports, FrameScanner, Mux, ScanEvent};
 use uclog_semihost::{ConsoleOut, Handler, Outcome};
 
@@ -172,13 +171,14 @@ pub fn start(link: Link, cfg: Config) -> (SessionHandle, mpsc::Receiver<Event>) 
     (SessionHandle { cmd: cmd_tx }, ev_rx)
 }
 
-/// Writes frames to the link: a pulse every 0.5 s of TX idle, and after more than 2 s of TX
-/// idle a wake pulse followed by at least 50 ms before the next frame (protocol.md §2.3).
+/// Writes frames to the link: a pulse after 0.35 s of TX idle (so no gap exceeds 0.5 s), and after
+/// more than 2 s of TX idle a wake pulse followed by at least 50 ms before the next frame
+/// (protocol.md §2.3).
 async fn writer(link: mpsc::Sender<Vec<u8>>, mut out: mpsc::Receiver<Vec<u8>>) {
     let mut last_tx: Option<Instant> = None;
     // Frames may not be sent before this instant (end of the wake gap).
     let mut ready = Instant::now();
-    let mut tick = tokio::time::interval(PULSE_INTERVAL / 2);
+    let mut tick = tokio::time::interval(PULSE_TICK);
     let idle = |t: Option<Instant>| t.is_none_or(|t| t.elapsed() > LIVENESS_TIMEOUT);
     loop {
         tokio::select! {
@@ -194,7 +194,7 @@ async fn writer(link: mpsc::Sender<Vec<u8>>, mut out: mpsc::Receiver<Vec<u8>>) {
                 last_tx = Some(Instant::now());
             }
             _ = tick.tick() => {
-                if last_tx.is_none_or(|t| t.elapsed() >= PULSE_INTERVAL) {
+                if last_tx.is_none_or(|t| t.elapsed() >= PULSE_DUE) {
                     if idle(last_tx) {
                         ready = Instant::now() + WAKE_GAP;
                     }
@@ -489,7 +489,11 @@ impl Session {
     async fn on_port(&mut self, port: u8, data: Vec<u8>) {
         match port {
             ports::SEMIHOST => self.on_semihost(&data).await,
-            ports::DEVICE_INFO => self.on_device_info(&data).await,
+            ports::DEVICE_INFO => {
+                // A device that just booted announces itself: a stdin READ from before is stale.
+                self.stdin_wanted = None;
+                self.on_device_info(&data).await
+            }
             ports::FW | ports::FW_LEGACY if self.fw.is_some() => {
                 if self.fw.as_ref().unwrap().send((port, data)).await.is_err() {
                     self.fw = None;
@@ -510,14 +514,10 @@ impl Session {
     }
 
     async fn on_semihost(&mut self, req: &[u8]) {
-        let op = req.first().copied();
-        let outcome = match op {
-            Some(o) if is_time_op(o) && req.len() == 1 => {
-                Outcome::Done { reply: self.semihost.time_reply(o), console: None }
-            }
-            _ => self.semihost.handle(req),
-        };
-        match outcome {
+        // The device sends one request at a time: a new one means the stdin READ is over (the
+        // device was reset).
+        self.stdin_wanted = None;
+        match self.semihost.handle(req) {
             Outcome::Done { reply, console } => {
                 if let Some(c) = console {
                     self.emit(Event::Console(c)).await;
@@ -576,7 +576,12 @@ impl Session {
                 }
                 (Some(r.source), t)
             }
-            None => (None, vec![]),
+            None => {
+                // The old image's logdata does not describe this one: its logs are `no_logdata`
+                // errors (protocol.md §6.4).
+                self.decoders.clear();
+                (None, vec![])
+            }
         };
         self.emit(Event::Logdata { app_hash: hash, source, targets }).await;
         if let Some(p) = self.pending.take() {
