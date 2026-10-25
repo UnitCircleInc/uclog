@@ -196,13 +196,32 @@ impl Settings {
     }
 }
 
+/// Linux reaches the keyring (Secret Service) over the D-Bus session bus. Without one (WSL, SSH
+/// logins, containers) libdbus tries to start a bus through X11, which takes over a minute to fail
+/// (68 s on WSL2): treat the keyring as missing instead.
+fn keyring_available() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some_and(|v| !v.is_empty())
+            || std::env::var_os("XDG_RUNTIME_DIR").is_some_and(|d| Path::new(&d).join("bus").exists())
+    }
+    #[cfg(not(target_os = "linux"))]
+    true
+}
+
 /// The logdata token from the OS keyring.
 pub fn keyring_token() -> Option<String> {
+    if !keyring_available() {
+        return None;
+    }
     keyring::Entry::new(KEYRING_SERVICE, KEYRING_TOKEN).ok()?.get_password().ok()
 }
 
 /// Store (or with `None`, delete) the logdata token in the OS keyring.
 pub fn set_keyring_token(token: Option<&str>) -> Result<(), String> {
+    if !keyring_available() {
+        return Err("no keyring (no D-Bus session bus): use --logdata-token or UCLOG_LOGDATA_TOKEN".into());
+    }
     let e = keyring::Entry::new(KEYRING_SERVICE, KEYRING_TOKEN).map_err(|e| e.to_string())?;
     match token {
         Some(t) => e.set_password(t).map_err(|e| e.to_string()),

@@ -107,11 +107,13 @@ fn main() -> std::process::ExitCode {
     let is_hub = matches!(cli.cmd, Command::Hub(_));
     // btleplug logs at error level for things it then reports as Ok (CoreBluetooth: disconnecting a
     // peripheral that is already gone); its real failures come back as errors from its calls.
+    // winit warns on every cursor change when Wayland has no cursor theme (WSLg, minimal installs).
+    const QUIET: &str = "btleplug=off,winit::platform_impl::linux::wayland::window::state=error";
     let level = match cli.verbose {
-        0 if is_hub => "info,btleplug=off",
-        0 => "warn,btleplug=off",
-        1 => "info,btleplug=off",
-        _ => "debug",
+        0 if is_hub => format!("info,{QUIET}"),
+        0 => format!("warn,{QUIET}"),
+        1 => "info,btleplug=off".to_string(),
+        _ => "debug".to_string(),
     };
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| level.into()))

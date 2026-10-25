@@ -184,11 +184,41 @@ uclog hub -d loopback:rate=10 --port 0 --json-ready --exit-on-stdin-eof   # simu
 
 ## Platforms
 
-Linux builds need `libudev-dev` and `libdbus-1-dev`. `packaging/linux/70-uclog.rules` gives users
+Linux builds need `pkg-config`, `libudev-dev` and `libdbus-1-dev`. `packaging/linux/70-uclog.rules` gives users
 access to Zephyr USB devices.
 
 On macOS, `build.rs` embeds `packaging/macos/Info.plist` into both executables. Its
 `NSBluetoothAlwaysUsageDescription` lets CoreBluetooth work from the command line.
+
+### Windows
+
+Tested on Windows 11 x64 (2026-10-25): the tests pass and the TUI, GUI and `term` work with
+serial, BLE and a remote hub. Building needs rustup and the Visual Studio C++ Build Tools
+(`winget install Rustlang.Rustup`).
+
+- Settings from `setx` (for example `setx UCLOG_LOGDATA_DOMAIN example.com`) reach only windows
+  opened afterwards. The logdata domain can also be set in the TUI or GUI settings.
+- The logdata cache is `%USERPROFILE%\.cache\uclog`, as on the other platforms.
+- The semihost sandbox is not tested against Windows symlinks, junctions and `\\?\` paths yet (plan
+  07 task 34).
+
+### WSL2
+
+Tested on WSL2 with Ubuntu 22.04 (2026-10-25). Install the Linux packages above and rustup.
+
+- WSL has no USB or Bluetooth of its own. Run a hub where the device is attached (Windows, or
+  another machine) and connect to it by address: `uclog tui -d tcp://192.168.1.20:9000`. WSL's
+  network translation blocks mDNS, so `.local` names and hub discovery don't work from WSL.
+- There is no keyring: WSL has no D-Bus session bus, so the TUI and GUI skip the keyring and
+  can't save a token. Use `--logdata-token` or `UCLOG_LOGDATA_TOKEN`.
+- The GUI runs through WSLg. Install `adwaita-icon-theme-full` for mouse cursors. On Ubuntu
+  22.04 `adwaita-icon-theme` has only the theme's name. Without a theme winit warns on every
+  cursor change; `uclog` hides that warning unless `-v` is given.
+- If the GUI fails with "Connection reset by peer" (Wayland) or "Failed to open connection to X
+  server", WSLg's compositor has crashed: `/mnt/wslg/stderr.log` shows `weston … terminated with
+  signal 11`. `wsl --shutdown` in Windows, then reopen Ubuntu.
+
+### Releases
 
 Release builds: `.github/workflows/release.yml` runs on a `v*` tag and builds Linux, macOS and
 Windows (x64 and arm64) archives with checksums. Code signing, notarisation and armv7 are not set
