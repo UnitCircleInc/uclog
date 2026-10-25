@@ -17,6 +17,9 @@ Next-generation ucLog clients for Unit Circle devices. Every client shares one w
 
 Start with [docs/plans/README.md](docs/plans/README.md): decisions, architecture and phasing.
 
+Building the Rust workspace on macOS needs Homebrew's `rustup` and direnv (the repository's
+`.envrc` puts `cargo` on `PATH`): see [native/README.md](native/README.md#setup).
+
 ## Protocol
 
 - [`spec/protocol.md`](spec/protocol.md) — normative wire protocol v1

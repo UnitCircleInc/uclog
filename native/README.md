@@ -13,6 +13,26 @@ subcommands, the hub, the terminal UI and the GUI.
 | `uclog-hub` | the hub ([plan 01](../docs/plans/01-hub-server.md)): backlog ring, device task, raw/WebSocket/TLS on one port, UDP clients, admission, port-63 routing, mDNS, local registry. Library plus the small `uclog-hub` executable |
 | `uclog` | the executable: `list`, `decode`, `term`, `tui`, `gui`, `fw-update`, `hub`; settings shared by the front ends. `--no-default-features` leaves out the GUI (no windowing dependencies) |
 
+## Setup
+
+macOS: the toolchain comes from Homebrew's `rustup`, and the repository's `.envrc` puts it on
+`PATH` with [direnv](https://direnv.net):
+
+```sh
+brew install rustup direnv
+rustup default stable            # installs the stable toolchain
+echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc   # once (bash: direnv hook bash)
+# then, in the repository root:
+direnv allow
+```
+
+Homebrew's `rustup` is keg-only, so without direnv `cargo` is not found unless
+`$(brew --prefix rustup)/bin` is on `PATH`. Other platforms: install the stable toolchain with
+[rustup](https://rustup.rs); `.envrc` is not needed there (Linux also needs the packages under
+[Platforms](#platforms)).
+
+## Build and test
+
 ```sh
 cargo test                       # unit tests, spec/vectors, fake-device session tests, hub tests, CLI tests
 cargo clippy --all-targets
