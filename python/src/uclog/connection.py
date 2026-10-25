@@ -575,7 +575,7 @@ def connect(host: Optional[str] = None, device: Optional[str] = None, *, logdata
   - `device`: choose the hub (or start one) for this device: a URI (`serial:/dev/ttyACM0`) or a
     serial number.
   - `logdata`: a file or a list of files (`.logdata` or ELF). See `Resolver` for the order.
-  - `files_dir`: answer the device's file syscalls inside this directory (else ENOSYS).
+  - `files_dir`: answer the device's file syscalls inside this directory (else OPEN and MKDIR get EACCES).
   - `stdin`: callable(max_bytes) → bytes/str for the device's stdin reads (else EOF).
   - `device_timeout`: how long to wait for data from the device itself (a frame, or a pulse the
     hub sends only while the device is alive), after the hub's backlog replay, before raising

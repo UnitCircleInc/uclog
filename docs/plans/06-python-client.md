@@ -96,8 +96,9 @@ operator approval; `connect()` waits up to `approval_timeout` (60 s) and then ra
 - A background thread sends a pulse every 0.5 s and sends the pulse/≥ 50 ms wake gap before the first
   frame after idle (README §3.1). It also tracks liveness (`alive`).
 - **Port 63**: connecting means the script answers syscalls (D3). The hub answers the time calls
-  itself (D31), so the library only sees file ops. It replies `ENOSYS` to them by default. With
-  `files_dir=DIR`, it also implements the sandboxed file ops (newlib errno, D25). This means a
+  itself (D31), so the library only sees file ops. Without `files_dir`, OPEN and MKDIR get `EACCES`
+  (decided 2026-10-25: the library implements them but has no directory; `ENOSYS` is for ops it
+  doesn't implement). With `files_dir=DIR`, it does the sandboxed file ops (newlib errno, D25). This means a
   script that never reads from the connection still does not stall the device.
 - Receive queues per port are bounded (`max_queue`, default 10 000 frames). On overflow the oldest
   frame is dropped and `Connection.dropped[port]` is incremented. The backlog replay on connect (hub
@@ -122,7 +123,7 @@ operator approval; `connect()` waits up to `approval_timeout` (60 s) and then ra
 | 1 | Package skeleton, CI (pytest on 3 OS × Python 3.9/3.13), vectors runner | S |
 | 2 | COBS, scanner, peek, framing; `Connection` I/O thread, pulses, liveness, per-port queues | S |
 | 3 | Hub discovery (registry, optional mDNS), spawn + `--json-ready`, errors | S |
-| 4 | Port 63: ENOSYS by default; optional sandboxed file ops | S |
+| 4 | Port 63: EACCES for OPEN/MKDIR by default; optional sandboxed file ops | S |
 | 5 | Logdata port + ELF reader + decoder switching on port 62; optional resolver | S |
 | 6 | `command()` (port 0 CBOR), `aio` wrapper | S |
 | 7 | Platform wheels with bundled `uclog-hub` (cibuildwheel-style job pulling release artefacts); PyPI publish | S |

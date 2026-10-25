@@ -223,7 +223,21 @@ export interface FsProvider {
   mkdir(path: string[]): Promise<void>;
 }
 
-/** Split a device path inside the sandbox: absolute paths and escaping `..` → EACCES (§5.5.5). */
+const DEVICES = new Set(['CON', 'PRN', 'AUX', 'NUL', 'CONIN$', 'CONOUT$']);
+
+/** A name every host can store as a plain file (§5.5.5). Refused, so a device sees the same result
+ * on every host: `:` (Windows drive letters and alternate data streams), the Windows device names
+ * with any extension (`CON`, `NUL`, `COM1`, `aux.txt`), a trailing dot or space (Windows drops
+ * them), and control characters and `<>"|?*`. */
+export function portableName(s: string): boolean {
+  if (!s || /[. ]$/.test(s) || /[\x00-\x1f<>:"|?*]/.test(s)) return false;
+  // Windows matches the part before the first dot, ignoring trailing spaces.
+  const stem = s.split('.')[0].replace(/ +$/, '').toUpperCase();
+  return !DEVICES.has(stem) && !/^(COM|LPT)[0-9\u00b9\u00b2\u00b3]$/.test(stem);
+}
+
+/** Split a device path inside the sandbox: absolute paths, escaping `..` and names that are not
+ * portable → EACCES (§5.5.5). */
 export function sandboxPath(path: string): string[] {
   if (!path) throw new FsError('ENOENT');
   if (path.startsWith('/') || path.startsWith('\\') || (path.length > 1 && path[1] === ':')) throw new FsError('EACCES');
@@ -233,7 +247,8 @@ export function sandboxPath(path: string): string[] {
     if (c === '..') {
       if (!parts.length) throw new FsError('EACCES');
       parts.pop();
-    } else parts.push(c);
+    } else if (portableName(c)) parts.push(c);
+    else throw new FsError('EACCES');
   }
   if (!parts.length) throw new FsError('EACCES');
   return parts;

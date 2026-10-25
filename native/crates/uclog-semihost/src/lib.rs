@@ -254,6 +254,13 @@ impl Handler {
             use std::os::unix::fs::OpenOptionsExt;
             o.custom_flags(libc::O_NOFOLLOW);
         }
+        // Windows: open a link that appeared since as itself, rather than following it.
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+            o.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+        }
         let file = o.open(&p).map_err(|e| map_err(&e))?;
         let fid = self.next_fid;
         self.next_fid = if self.next_fid >= 0x7FFF_FFF0 { 3 } else { self.next_fid + 1 };
@@ -262,18 +269,24 @@ impl Handler {
     }
 
     /// Resolve `path` inside the sandbox to a path without symlinks. Absolute paths, `..`
-    /// escapes and symlinks pointing outside (or nowhere) fail with EACCES (protocol.md §5.5.5).
+    /// escapes, symlinks pointing outside (or nowhere) and names that are not portable fail with
+    /// EACCES (protocol.md §5.5.5). `\` separates components on every platform.
     fn resolve(&self, path: &str) -> Result<PathBuf, i32> {
         // Canonicalized on each call, so a directory created after the session started works.
         let root = self.cfg.files_dir.as_ref().ok_or(errno::EACCES)?.canonicalize().map_err(|_| errno::EACCES)?;
-        let rel = Path::new(path);
         if path.is_empty() {
             return Err(errno::ENOENT);
         }
+        let path = path.replace('\\', "/");
         let mut lexical = PathBuf::new();
-        for c in rel.components() {
+        for c in Path::new(&path).components() {
             match c {
-                Component::Normal(s) => lexical.push(s),
+                Component::Normal(s) => {
+                    if !s.to_str().is_some_and(portable_name) {
+                        return Err(errno::EACCES);
+                    }
+                    lexical.push(s)
+                }
                 Component::CurDir => {}
                 Component::ParentDir => {
                     if !lexical.pop() {
@@ -297,6 +310,23 @@ impl Handler {
         }
         Ok(full)
     }
+}
+
+/// A name every host can store as a plain file (protocol.md §5.5.5). Refused, so a device sees the
+/// same result on every host: `:` (Windows drive letters and alternate data streams), the Windows
+/// device names with any extension (`CON`, `NUL`, `COM1`, `aux.txt`), a trailing dot or space
+/// (Windows drops them), and control characters and `<>"|?*`.
+pub fn portable_name(s: &str) -> bool {
+    const DEVICES: [&str; 6] = ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"];
+    if s.is_empty() || s.ends_with(['.', ' ']) || s.chars().any(|c| c < ' ' || "<>:\"|?*".contains(c)) {
+        return false;
+    }
+    // Windows matches the part before the first dot, ignoring trailing spaces.
+    let stem = s.split('.').next().unwrap_or("").trim_end_matches(' ').to_ascii_uppercase();
+    let numbered = |p: &str| {
+        stem.strip_prefix(p).is_some_and(|n| matches!(n, "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"))
+    };
+    !(DEVICES.contains(&stem.as_str()) || numbered("COM") || numbered("LPT"))
 }
 
 fn stat_of(m: &std::fs::Metadata) -> Stat {
@@ -398,6 +428,22 @@ mod tests {
         Handler::with_clock(Config { files_dir: Some(dir.into()), ..Default::default() }, Box::new(Fixed))
     }
 
+    /// `link` → `target`; false where the OS refuses (Windows without the symlink privilege or
+    /// Developer Mode).
+    fn symlink(target: &Path, link: &Path, dir: bool) -> bool {
+        #[cfg(unix)]
+        {
+            let _ = dir;
+            std::os::unix::fs::symlink(target, link).unwrap();
+            true
+        }
+        #[cfg(windows)]
+        {
+            let r = if dir { std::os::windows::fs::symlink_dir(target, link) } else { std::os::windows::fs::symlink_file(target, link) };
+            r.is_ok()
+        }
+    }
+
     #[test]
     fn file_roundtrip() {
         let d = tempfile::tempdir().unwrap();
@@ -424,14 +470,14 @@ mod tests {
     fn sandbox() {
         let d = tempfile::tempdir().unwrap();
         let mut h = handler(d.path());
-        for p in ["../x", "/etc/passwd", "a/../../x"] {
+        for p in ["../x", "/etc/passwd", "a/../../x", "a\\..\\..\\x", "\\x", "C:/x", "C:x", "\\\\?\\C:\\x", "//srv/share/x"] {
             assert_eq!(r_errno(&reply(h.handle(&open_req(oflag::RDONLY, p)))), (-1, errno::EACCES), "{p}");
         }
         assert_eq!(r_errno(&reply(h.handle(&open_req(oflag::RDONLY, "missing")))), (-1, errno::ENOENT));
-        #[cfg(unix)]
-        {
-            std::os::unix::fs::symlink("/etc", d.path().join("link")).unwrap();
-            assert_eq!(r_errno(&reply(h.handle(&open_req(oflag::RDONLY, "link/hosts")))), (-1, errno::EACCES));
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("secret"), b"s").unwrap();
+        if symlink(outside.path(), &d.path().join("link"), true) {
+            assert_eq!(r_errno(&reply(h.handle(&open_req(oflag::RDONLY, "link/secret")))), (-1, errno::EACCES));
         }
         let mut no_dir = Handler::with_clock(Config::default(), Box::new(Fixed));
         assert_eq!(r_errno(&reply(no_dir.handle(&open_req(oflag::RDONLY, "x")))), (-1, errno::EACCES));
@@ -443,16 +489,20 @@ mod tests {
 
     /// A dangling symlink must not be followed by O_CREAT (it would create a file outside the
     /// sandbox); a symlink that stays inside works.
-    #[cfg(unix)]
     #[test]
     fn sandbox_symlinks() {
         let d = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
         let target = outside.path().join("pwned");
-        std::os::unix::fs::symlink(&target, d.path().join("dangling")).unwrap();
-        std::os::unix::fs::symlink("/etc/hosts", d.path().join("hosts")).unwrap();
+        let secret = outside.path().join("secret");
+        std::fs::write(&secret, b"s").unwrap();
+        if !symlink(&target, &d.path().join("dangling"), false) {
+            eprintln!("skipped: this account cannot create symlinks");
+            return;
+        }
+        assert!(symlink(&secret, &d.path().join("hosts"), false));
         std::fs::write(d.path().join("real.txt"), b"in").unwrap();
-        std::os::unix::fs::symlink("real.txt", d.path().join("inside")).unwrap();
+        assert!(symlink(Path::new("real.txt"), &d.path().join("inside"), false));
         let mut h = handler(d.path());
         let creat = oflag::WRONLY | oflag::CREAT | oflag::TRUNC;
         assert_eq!(r_errno(&reply(h.handle(&open_req(creat, "dangling")))), (-1, errno::EACCES));
@@ -461,6 +511,56 @@ mod tests {
         assert_eq!(r_errno(&reply(h.handle(&open_req(oflag::RDONLY, "hosts")))), (-1, errno::EACCES));
         let (fid, e) = r_errno(&reply(h.handle(&open_req(oflag::RDONLY, "inside"))));
         assert_eq!((e, fid >= 3), (0, true));
+    }
+
+    /// A directory junction (Windows; no privilege needed to create one) that leads out of the
+    /// sandbox is refused, as a directory symlink is.
+    #[cfg(windows)]
+    #[test]
+    fn sandbox_junctions() {
+        let d = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("secret"), b"s").unwrap();
+        let ok = std::process::Command::new("cmd")
+            .args(["/c", "mklink", "/J"])
+            .arg(d.path().join("j"))
+            .arg(outside.path())
+            .output()
+            .unwrap()
+            .status
+            .success();
+        assert!(ok, "mklink /J");
+        let mut h = handler(d.path());
+        let creat = oflag::WRONLY | oflag::CREAT | oflag::TRUNC;
+        assert_eq!(r_errno(&reply(h.handle(&open_req(oflag::RDONLY, "j/secret")))), (-1, errno::EACCES));
+        assert_eq!(r_errno(&reply(h.handle(&open_req(creat, "j/new")))), (-1, errno::EACCES));
+        assert!(!outside.path().join("new").exists());
+        let mut m = 0o755i32.to_le_bytes().to_vec();
+        m.extend_from_slice(b"j/sub");
+        assert_eq!(r_errno(&reply(h.handle(&req(op::MKDIR, &m)))), (-1, errno::EACCES));
+    }
+
+    /// Names a Windows host could not store as plain files are refused on every host.
+    #[test]
+    fn portable_names() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("plain.txt"), b"p").unwrap();
+        std::fs::create_dir(d.path().join("sub")).unwrap();
+        let mut h = handler(d.path());
+        let creat = oflag::WRONLY | oflag::CREAT | oflag::TRUNC;
+        for p in [
+            "CON", "nul", "Nul.txt", "aux.tar.gz", "PRN ", "COM1", "lpt9.log", "COM¹", "CONIN$", "conout$.x",
+            "plain.txt:stream", "sub/C:x", "trail.", "trail ", "...", "q?.txt", "a*", "<x>", "\"q\"", "p|q",
+            "x\u{1}y", "sub/NUL/x",
+        ] {
+            assert_eq!(r_errno(&reply(h.handle(&open_req(creat, p)))), (-1, errno::EACCES), "{p:?}");
+        }
+        assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 2, "nothing was created");
+        for p in ["log-1.txt", "a.b.c", "COM10.txt", "CONSOLE", "nul_x", "con-fig", ".hidden", "sub\\x.txt", "LPT"] {
+            let (fid, e) = r_errno(&reply(h.handle(&open_req(creat, p))));
+            assert_eq!((e, fid >= 3), (0, true), "{p:?}");
+        }
+        assert!(d.path().join("sub").join("x.txt").exists());
     }
 
     /// The sandbox root may be created after the handler.

@@ -174,6 +174,9 @@ describe('semihost files', () => {
     await expect(fs.open(['link'], RO)).rejects.toMatchObject({ errno: 'EACCES' });
     await expect(fs.open(['out', 'new.txt'], RW)).rejects.toMatchObject({ errno: 'EACCES' });
     await expect(fs.mkdir(['out', 'd'])).rejects.toMatchObject({ errno: 'EACCES' });
+    for (const p of ['CON', 'nul.txt', 'COM1', 'a:b', 'trail.', 'trail ', 'q?']) {
+      await expect(fs.open([p], RW), p).rejects.toMatchObject({ errno: 'EACCES' });
+    }
   });
 
   it('refuses a dangling symlink that O_CREAT would follow out of the root', async () => {

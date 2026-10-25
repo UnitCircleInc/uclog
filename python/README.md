@@ -150,9 +150,9 @@ A connected script answers the device's syscalls. The hub answers the time calls
 - **stdout and stderr** writes go to `console()`.
 - **stdin reads** call `stdin=` (a function taking the maximum byte count and returning bytes or
   str), or get EOF.
-- **File operations** get `ENOSYS`, unless `files_dir=DIR` is given. Then they work inside `DIR`
-  only: absolute paths, `..` escapes and symlinks that leave it fail with `EACCES`. Errors use
-  newlib errno values.
+- **File operations** (OPEN, MKDIR) get `EACCES`, unless `files_dir=DIR` is given. Then they
+  work inside `DIR` only: absolute paths, `..` escapes, symlinks that leave it and names that are
+  not portable (protocol.md §5.5.5) fail with `EACCES`. Errors use newlib errno values.
 
 The connection's own thread answers syscalls, so a script that never reads from it still does not
 stall the device.

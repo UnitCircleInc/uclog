@@ -307,7 +307,7 @@ describe('semihost sandbox', () => {
 
   test('escapes and missing sandbox', async () => {
     const h = new SemihostHandler(new MemoryFs());
-    for (const p of ['/etc/passwd', '../x', 'a/../../x', 'C:\\x']) {
+    for (const p of ['/etc/passwd', '../x', 'a/../../x', 'C:\\x', 'C:x', 'a\\..\\..\\x', '\\\\?\\C:\\x', '//srv/x']) {
       expect(rv(await h.handle(req(OP.OPEN, 0, p))).slice(0, 2), p).toEqual([-1, 13]);
     }
     expect(rv(await h.handle(req(OP.OPEN, 0, 'missing'))).slice(0, 2)).toEqual([-1, 2]);
@@ -315,6 +315,18 @@ describe('semihost sandbox', () => {
     expect(rv(await none.handle(req(OP.OPEN, 0, 'x'))).slice(0, 2)).toEqual([-1, 13]);
     expect(rv(await none.handle(req(0x20, 1))).slice(0, 2)).toEqual([-1, 88]);
     expect(rv(await none.handle(req(OP.CLOSE, 1, 2))).slice(0, 2)).toEqual([-1, 22]); // malformed
+  });
+
+  test('names that are not portable are refused, and nothing is created', async () => {
+    const fs = new MemoryFs();
+    const h = new SemihostHandler(fs);
+    for (const p of ['CON', 'nul', 'Nul.txt', 'aux.tar.gz', 'COM1', 'lpt9.log', 'COM\u00b9', 'CONIN$', 'plain.txt:stream', 'sub/C:x', 'trail.', 'trail ', '...', 'q?.txt', 'a*', '<x>', 'p|q', 'x\u0001y', 'sub/NUL/x']) {
+      expect(rv(await h.handle(req(OP.OPEN, 0x601, p))).slice(0, 2), JSON.stringify(p)).toEqual([-1, 13]);
+    }
+    expect(fs.files.size).toBe(0);
+    for (const p of ['log-1.txt', 'a.b.c', 'COM10.txt', 'CONSOLE', 'nul_x', 'con-fig', '.hidden', 'LPT']) {
+      expect(rv(await h.handle(req(OP.OPEN, 0x601, p)))[1], p).toBe(0);
+    }
   });
 
   test('a WRITE without a reply request gets none, even when the write fails', async () => {

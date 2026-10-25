@@ -430,10 +430,22 @@ connected. They are never forwarded. Vectors: `semihost.json` → `time_replies`
 | Hub, client connected, `--client-syscalls off` | hub | hub default: `ENOSYS` |
 | Hub, no client | hub | `ENOSYS` |
 
-**Sandbox.** Every path resolves against the host's files directory:
-- absolute paths, `..` that escapes, and symlinks that resolve outside → `EACCES`;
-- no files directory configured → `ENOSYS` for OPEN and MKDIR (file access is not provided, as
-  in the table above).
+**Sandbox.** Every path resolves against the host's files directory. `/` and `\` both separate
+components.
+- absolute paths (including `C:…` and `\\?\…`), `..` that escapes, and symlinks or Windows
+  junctions that resolve outside → `EACCES`;
+- names a Windows host could not store as plain files → `EACCES` on **every** host, so a device
+  sees the same result wherever it runs:
+  - names containing `:` (drive letters, alternate data streams);
+  - the Windows device names `CON`, `PRN`, `AUX`, `NUL`, `COM0`–`COM9`, `LPT0`–`LPT9`
+    (also with `¹²³`), `CONIN$` and `CONOUT$`, in any case and with any extension (`nul.txt`);
+  - names ending in `.` or a space;
+  - names containing control characters (0x00–0x1F) or `<>"|?*`;
+- no files directory configured → `EACCES` for OPEN and MKDIR (the handler implements file
+  ops, but has no directory to work in).
+
+`ENOSYS` is only for ops the answering handler doesn't implement: the unsupported ops in §5.5.2,
+and OPEN and MKDIR where the table above says `ENOSYS` (a hub's default handler).
 
 ### 5.6 Port 60 — plots
 

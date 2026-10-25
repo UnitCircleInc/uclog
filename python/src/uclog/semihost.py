@@ -4,8 +4,10 @@
 """Port-63 semihost requests from the device (protocol.md §5.5).
 
 A connected script answers the device's syscalls (D3); the hub answers the time ops itself (D31).
-By default file ops get ENOSYS. With `files_dir`, they work inside that directory only, like the
-native tools (absolute paths, `..` escapes and symlinks leaving it fail with EACCES).
+Without `files_dir`, OPEN and MKDIR get EACCES (no directory to work in; ops the handler doesn't
+implement get ENOSYS). With `files_dir`, they work inside that directory only, like the
+native tools (absolute paths, `..` escapes, symlinks leaving it and names that are not portable
+fail with EACCES).
 """
 
 import errno as host_errno
@@ -156,7 +158,7 @@ class Handler:
     if op == MKDIR:
       mode, = struct.unpack_from('<i', a)
       if self.root is None:
-        return error_reply(op, 'ENOSYS'), None
+        return error_reply(op, 'EACCES'), None
       try:
         os.mkdir(self._resolve(a[4:].decode('utf-8')), mode & 0o7777)
         return reply(0), None
@@ -206,7 +208,7 @@ class Handler:
 
   def _open(self, flags, path):
     if self.root is None:
-      return error_reply(OPEN, 'ENOSYS')
+      return error_reply(OPEN, 'EACCES')
     try:
       p = self._resolve(path)
     except _Errno as e:
@@ -223,7 +225,8 @@ class Handler:
       osflags |= os.O_CREAT
       if flags & O_EXCL:
         osflags |= os.O_EXCL
-    osflags |= getattr(os, 'O_BINARY', 0)
+    # `p` is resolved: a symlink there now was put there since (Unix; Windows has no such flag).
+    osflags |= getattr(os, 'O_BINARY', 0) | getattr(os, 'O_NOFOLLOW', 0)
     if len(self.files) >= MAX_FILES:
       return error_reply(OPEN, 'EMFILE')
     try:
@@ -249,14 +252,36 @@ class Handler:
         if not parts:
           raise _Errno('EACCES')
         parts.pop()
-      else:
+      elif portable_name(c):
         parts.append(c)
+      else:
+        raise _Errno('EACCES')
     full = os.path.join(self.root, *parts)
-    # Resolve symlinks in the existing part of the path to catch ones that leave the sandbox.
+    # Resolve symlinks in the existing part of the path to catch ones that leave the sandbox (a
+    # dangling one resolves to its target, so O_CREAT can't follow it out).
     real = os.path.realpath(full)
     if os.path.commonpath([real, self.root]) != self.root:
       raise _Errno('EACCES')
-    return full
+    return real
+
+
+_DEVICES = {'CON', 'PRN', 'AUX', 'NUL', 'CONIN$', 'CONOUT$'}
+_NUMBERED = set('0123456789\u00b9\u00b2\u00b3')
+
+
+def portable_name(s: str) -> bool:
+  """A name every host can store as a plain file (protocol.md §5.5.5).
+
+  Refused, so a device sees the same result on every host: `:` (Windows drive letters and
+  alternate data streams), the Windows device names with any extension (`CON`, `NUL`, `COM1`,
+  `aux.txt`), a trailing dot or space (Windows drops them), and control characters and `<>"|?*`.
+  """
+  if not s or s[-1] in '. ' or any(c < ' ' or c in '<>:"|?*' for c in s):
+    return False
+  # Windows matches the part before the first dot, ignoring trailing spaces.
+  stem = s.split('.')[0].rstrip(' ').upper()
+  numbered = len(stem) == 4 and stem[:3] in ('COM', 'LPT') and stem[3] in _NUMBERED
+  return stem not in _DEVICES and not numbered
 
 
 class _Errno(Exception):

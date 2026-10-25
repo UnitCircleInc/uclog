@@ -27,12 +27,14 @@ def rv(r):
   return struct.unpack_from('<ii', r)
 
 
-def test_no_files_dir_means_enosys():
+def test_no_files_dir_means_eacces():
+  # File ops are implemented, but there is no directory to work in: EACCES. Ops the handler
+  # does not implement: ENOSYS (protocol.md §5.5.5).
   h = Handler()
   r, _ = h.handle(req(sh.OPEN, i32(0), b'a.txt'))
-  assert rv(r) == (-1, ERRNO['ENOSYS'])
+  assert rv(r) == (-1, ERRNO['EACCES'])
   r, _ = h.handle(req(sh.MKDIR, i32(0o755), b'd'))
-  assert rv(r) == (-1, ERRNO['ENOSYS'])
+  assert rv(r) == (-1, ERRNO['EACCES'])
   for op in (sh.SYSTEM, sh.RENAME, sh.UNLINK, sh.LINK, sh.STAT, sh.LSEEK, 0x55):
     r, _ = h.handle(req(op, b'xx'))
     assert rv(r) == (-1, ERRNO['ENOSYS'])
@@ -88,7 +90,8 @@ def test_file_round_trip(tmp_path):
   h.close_all()  # files the device left open
 
 
-@pytest.mark.parametrize('path', [b'../x', b'/etc/passwd', b'a/../../x', b''])
+@pytest.mark.parametrize('path', [b'../x', b'/etc/passwd', b'a/../../x', b'', b'a\\..\\..\\x', b'C:x',
+                                  b'\\\\?\\C:\\x', b'//srv/share/x'])
 def test_sandbox_escapes(tmp_path, path):
   h = Handler(tmp_path / 'root')
   os.makedirs(tmp_path / 'root')
@@ -96,15 +99,68 @@ def test_sandbox_escapes(tmp_path, path):
   assert rv(r)[0] == -1 and rv(r)[1] in (ERRNO['EACCES'], ERRNO['ENOENT'])
 
 
-@pytest.mark.skipif(sys.platform == 'win32', reason='symlinks need privileges on Windows')
+def _symlink(target, link, dir=False):
+  try:
+    os.symlink(target, link, target_is_directory=dir)
+  except OSError:
+    pytest.skip('this account cannot create symlinks (Windows without the privilege)')
+
+
 def test_symlink_escape(tmp_path):
   root = tmp_path / 'root'
   root.mkdir()
   (tmp_path / 'secret').write_text('x')
-  os.symlink(tmp_path / 'secret', root / 'link')
+  _symlink(tmp_path / 'secret', root / 'link')
+  _symlink(tmp_path / 'pwned', root / 'dangling')
+  (root / 'real.txt').write_text('in')
+  _symlink('real.txt', root / 'inside')
   h = Handler(root)
   r, _ = h.handle(req(sh.OPEN, i32(sh.O_RDONLY), b'link'))
   assert rv(r) == (-1, ERRNO['EACCES'])
+  r, _ = h.handle(req(sh.OPEN, i32(sh.O_WRONLY | sh.O_CREAT | sh.O_TRUNC), b'dangling'))
+  assert rv(r) == (-1, ERRNO['EACCES'])
+  assert not (tmp_path / 'pwned').exists()
+  r, _ = h.handle(req(sh.OPEN, i32(sh.O_RDONLY), b'inside'))
+  assert rv(r)[1] == 0
+  h.close_all()
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='directory junctions are Windows only')
+def test_junction_escape(tmp_path):
+  import subprocess
+  root = tmp_path / 'root'
+  root.mkdir()
+  (tmp_path / 'out').mkdir()
+  (tmp_path / 'out' / 'secret').write_text('x')
+  subprocess.run(['cmd', '/c', 'mklink', '/J', str(root / 'j'), str(tmp_path / 'out')], check=True,
+                 capture_output=True)
+  h = Handler(root)
+  r, _ = h.handle(req(sh.OPEN, i32(sh.O_RDONLY), b'j/secret'))
+  assert rv(r) == (-1, ERRNO['EACCES'])
+  r, _ = h.handle(req(sh.OPEN, i32(sh.O_WRONLY | sh.O_CREAT), b'j/new'))
+  assert rv(r) == (-1, ERRNO['EACCES'])
+  assert not (tmp_path / 'out' / 'new').exists()
+
+
+@pytest.mark.parametrize('name', ['CON', 'nul', 'Nul.txt', 'aux.tar.gz', 'COM1', 'lpt9.log', 'COM\u00b9',
+                                  'CONIN$', 'plain.txt:stream', 'sub/C:x', 'trail.', 'trail ', '...',
+                                  'q?.txt', 'a*', '<x>', 'p|q', 'x\x01y', 'sub/NUL/x'])
+def test_names_not_portable(tmp_path, name):
+  (tmp_path / 'sub').mkdir()
+  h = Handler(tmp_path)
+  r, _ = h.handle(req(sh.OPEN, i32(sh.O_WRONLY | sh.O_CREAT | sh.O_TRUNC), name.encode()))
+  assert rv(r) == (-1, ERRNO['EACCES'])
+  assert sorted(p.name for p in tmp_path.iterdir()) == ['sub']
+
+
+def test_names_portable(tmp_path):
+  (tmp_path / 'sub').mkdir()
+  h = Handler(tmp_path)
+  for name in ['log-1.txt', 'a.b.c', 'COM10.txt', 'CONSOLE', 'nul_x', 'con-fig', '.hidden', 'sub\\x.txt', 'LPT']:
+    r, _ = h.handle(req(sh.OPEN, i32(sh.O_WRONLY | sh.O_CREAT | sh.O_TRUNC), name.encode()))
+    assert rv(r)[1] == 0, name
+  assert (tmp_path / 'sub' / 'x.txt').exists()
+  h.close_all()
 
 
 def test_close_error_is_a_reply(tmp_path):

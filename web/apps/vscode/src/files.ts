@@ -64,6 +64,16 @@ interface Handle {
   write: boolean;
 }
 
+const DEVICES = new Set(['CON', 'PRN', 'AUX', 'NUL', 'CONIN$', 'CONOUT$']);
+
+/** The same rule as @uclog/core's portableName (protocol.md §5.5.5), checked again here: no `:`,
+ * Windows device names, trailing dot or space, control characters or `<>"|?*`. */
+function portableName(s: string): boolean {
+  if (!s || /[. ]$/.test(s) || /[\x00-\x1f<>:"|?*]/.test(s)) return false;
+  const stem = s.split('.')[0].replace(/ +$/, '').toUpperCase();
+  return !DEVICES.has(stem) && !/^(COM|LPT)[0-9\u00b9\u00b2\u00b3]$/.test(stem);
+}
+
 /** Semihost files under `root` (the webview has already split and checked the path; checked again
  * here, including symlinks that lead out of the root). */
 export class NodeFs {
@@ -75,7 +85,7 @@ export class NodeFs {
   private async resolve(parts: string[], forCreate: boolean): Promise<string> {
     if (!parts.length) throw new FsError('EACCES');
     for (const p of parts) {
-      if (!p || p === '.' || p === '..' || /[\\/]/.test(p) || p.includes('\0')) throw new FsError('EACCES');
+      if (!p || p === '.' || p === '..' || /[\\/]/.test(p) || !portableName(p)) throw new FsError('EACCES');
     }
     // The root is created when the device first creates something in it.
     if (forCreate) await fsp.mkdir(this.root, { recursive: true }).catch(() => {});
