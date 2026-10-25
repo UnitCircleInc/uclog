@@ -31,6 +31,9 @@ import {
   type ToUi,
   type CborValue,
   getText,
+  PlotSet,
+  PLOTS_MAX,
+  POINTS_MAX,
 } from '../src/index.ts';
 
 const SAMPLE = new Uint8Array(readFileSync(join(__dirname, '../../../../spec/vectors/sample.logdata')));
@@ -45,13 +48,13 @@ async function until(what: string, f: () => boolean, ms = 3000) {
   }
 }
 
-function rig(opts: { rate?: number; manual?: boolean; cache?: MemoryCache; fs?: MemoryFs } = {}) {
+function rig(opts: { rate?: number; manual?: boolean; manualName?: string; cache?: MemoryCache; fs?: MemoryFs } = {}) {
   const store = new LogStore(1000);
   const events: DecoderEvent[] = [];
   const ui: ToUi[] = [];
   const resolver = new Resolver({}, opts.cache ?? null, null);
   const dec = new DecodeSession(resolver, (r) => store.push(r), (e) => events.push(e));
-  if (opts.manual !== false) dec.loadManual(SAMPLE, 'sample.logdata');
+  if (opts.manual !== false) dec.loadManual(SAMPLE, opts.manualName ?? 'sample.logdata');
   let dev: LoopbackDevice;
   const t = new TransportSession(
     { hub: false, write: (b) => dev.write(b) },
@@ -105,7 +108,7 @@ describe('session with the loopback device', () => {
 
   test('a manual file is remembered in the cache under the app_hash', async () => {
     const cache = new MemoryCache();
-    const r = rig({ cache });
+    const r = rig({ cache, manualName: `${hex(LOOPBACK_APP_HASH)}.logdata` });
     try {
       await until('cached', () => cache.map.has(hex(LOOPBACK_APP_HASH)));
     } finally {
@@ -118,6 +121,23 @@ describe('session with the loopback device', () => {
       expect(r2.store.errors).toBe(0);
     } finally {
       r2.close();
+    }
+  });
+
+  test('a manual file without the app_hash in its name is not cached (it may be for another image)', async () => {
+    const cache = new MemoryCache();
+    const r = rig({ cache, rate: 50 });
+    try {
+      await until('logs', () => r.store.length >= 2);
+      expect(r.events.some((e) => e.t === 'logdata' && e.source?.kind === 'manual')).toBe(true);
+      await new Promise((res) => setTimeout(res, 20));
+      expect(cache.map.size).toBe(0);
+      // Loading it again after the device info does not cache it either.
+      r.dec.loadManual(SAMPLE, 'other.logdata');
+      await new Promise((res) => setTimeout(res, 20));
+      expect(cache.map.size).toBe(0);
+    } finally {
+      r.close();
     }
   });
 
@@ -165,7 +185,7 @@ describe('session with the loopback device', () => {
 });
 
 /** A device that implements the FW update on `ports` (59 and/or 3). */
-function fwDevice(ports: number[], blockSize = 100) {
+function fwDevice(ports: number[], blockSize = 100, silent: string[] = []) {
   const got: { cmd: string; n?: number }[] = [];
   const sc = new FrameScanner();
   let t!: TransportSession;
@@ -184,6 +204,7 @@ function fwDevice(ports: number[], blockSize = 100) {
       const cmd = getText(msg, 'cmd')!;
       const data = (msg as Map<CborValue, CborValue>).get('data') as Uint8Array | undefined;
       got.push({ cmd, n: data?.length });
+      if (silent.includes(cmd)) continue;
       const rsp: Record<string, CborValue> = { rsp: cmd };
       if (cmd === 'fw-start') rsp['block-size'] = blockSize;
       queueMicrotask(() => {
@@ -222,6 +243,25 @@ describe('FW update', () => {
     await expect(t.fwUpdate(new Uint8Array(10), () => {}, ac.signal)).rejects.toThrow(/cancelled/);
     t.close();
   });
+
+  test('cancel while waiting for a block reply is reported as cancelled, not a timeout', async () => {
+    const { t, got } = fwDevice([59], 100, ['fw-block']);
+    const ac = new AbortController();
+    const p = t.fwUpdate(new Uint8Array(250), () => {}, ac.signal);
+    await until('block sent', () => got.some((g) => g.cmd === 'fw-block'));
+    ac.abort();
+    await expect(p).rejects.toThrow(/^cancelled$/);
+    t.close();
+  });
+
+  test('a block-size that does not fit in one frame is refused before any block', async () => {
+    for (const port of [59, 3]) {
+      const { t, got } = fwDevice([port], 1440);
+      await expect(t.fwUpdate(new Uint8Array(5000), () => {})).rejects.toThrow(/block-size 1440 does not fit/);
+      expect(got.some((g) => g.cmd === 'fw-block')).toBe(false);
+      t.close();
+    }
+  }, 10_000);
 });
 
 describe('semihost sandbox', () => {
@@ -275,6 +315,66 @@ describe('semihost sandbox', () => {
     expect(rv(await none.handle(req(OP.OPEN, 0, 'x'))).slice(0, 2)).toEqual([-1, 13]);
     expect(rv(await none.handle(req(0x20, 1))).slice(0, 2)).toEqual([-1, 88]);
     expect(rv(await none.handle(req(OP.CLOSE, 1, 2))).slice(0, 2)).toEqual([-1, 22]); // malformed
+  });
+
+  test('a WRITE without a reply request gets none, even when the write fails', async () => {
+    const fs = new MemoryFs();
+    fs.files.set('ro.txt', new Uint8Array(0));
+    const h = new SemihostHandler(fs);
+    const [fid] = rv(await h.handle(req(OP.OPEN, 0, 'ro.txt')));
+    // Write to a read-only file: the provider throws EBADF.
+    expect(rv(await h.handle(req(OP.WRITE, fid, 'x'))).slice(0, 2)).toEqual([-1, 9]);
+    expect(await h.handle(req(OP.WRITE, fid | 0x80000000, 'x'))).toEqual({});
+    expect(await h.handle(req(OP.WRITE, 77 | 0x80000000, 'x'))).toEqual({ reply: undefined, console: undefined });
+  });
+
+  test('a stdin line longer than the READ is kept for the next READ', async () => {
+    const h = new SemihostHandler(null);
+    expect(await h.handle(req(OP.READ, 0, 4))).toEqual({ stdin: 4 });
+    const r = h.stdinReply(te.encode('abcdefg\r'), 4);
+    expect(td.decode(r.subarray(8))).toBe('abcd');
+    const [n, , rest] = rv(await h.handle(req(OP.READ, 0, 64)));
+    expect([n, td.decode(rest)]).toEqual([4, 'efg\n']);
+    expect(await h.handle(req(OP.READ, 0, 64))).toEqual({ stdin: 64 });
+  });
+
+  test('a port-62 frame (device reset) closes the files and drops a pending stdin read', async () => {
+    const fs = new MemoryFs();
+    const replies: Uint8Array[] = [];
+    const sc = new FrameScanner();
+    const t = new TransportSession(
+      {
+        hub: true,
+        write: (b) => {
+          for (const e of sc.feed(b)) {
+            if (!('frame' in e)) continue;
+            const m = muxDecode(cobsDecode(e.frame));
+            if (m.kind === 'port' && m.port === PORTS.SEMIHOST) replies.push(m.data.slice());
+          }
+        },
+      },
+      () => {},
+      () => {},
+      { fs },
+    );
+    const ask = async (frame: Uint8Array) => {
+      const n = replies.length;
+      t.onData(wirePort(PORTS.SEMIHOST, frame));
+      await until('reply', () => replies.length > n);
+      return rv({ reply: replies[n] });
+    };
+    try {
+      const [fid] = await ask(req(OP.OPEN, 0x601, 'a.txt'));
+      expect(fid).toBe(3);
+      t.onData(wirePort(PORTS.SEMIHOST, req(OP.READ, 0, 16)));
+      await until('stdin wanted', () => t.stdinPending);
+      t.onData(wirePort(PORTS.DEVICE_INFO, encode({ app_hash: LOOPBACK_APP_HASH })));
+      expect(t.stdinPending).toBe(false);
+      expect((await ask(req(OP.WRITE, fid, 'x'))).slice(0, 2)).toEqual([-1, 9]); // EBADF: gone
+      expect((await ask(req(OP.OPEN, 0x601, 'b.txt')))[0]).toBe(3);
+    } finally {
+      t.close();
+    }
   });
 });
 
@@ -347,6 +447,48 @@ describe('log store', () => {
     expect(() => new Filter({ minLevel: 0, source: '', line: '', search: '(' })).toThrow();
     expect(s.errors).toBe(1);
     expect(s.csv().split('\n')[1]).toBe('0.000,WARN,"a.c","1","m100"');
+  });
+
+  test('a full store still signals new rows (the view re-fetches by version)', () => {
+    const s = new LogStore(100);
+    for (let k = 0; k < 100; k++) s.push(rec('INFO', 'a.c', `m${k}`));
+    const v = s.version;
+    s.push(rec('INFO', 'a.c', 'new'));
+    expect(s.visibleLength).toBe(100);
+    expect(s.version).not.toBe(v);
+    expect(s.visibleAt(99)!.text).toBe('new');
+  });
+});
+
+describe('plot limits', () => {
+  test('an oversized heatmap is refused with an error record, not allocated', () => {
+    const records: { error?: string; text: string }[] = [];
+    const dec = new DecodeSession(new Resolver({}, null, null), (r) => records.push(r), () => {});
+    dec.handle({ t: 'plot', data: encode({ heatmap: 'big', heatmap_rows: 4096, heatmap_cols: 4096, xlabel: 'x' }) });
+    expect(dec.plots.get('big')).toBeUndefined();
+    expect(dec.plots.errors).toBe(1);
+    expect(records[0]).toMatchObject({ error: 'plot_limit' });
+    expect(records[0].text).toMatch(/4096×4096 cells/);
+    dec.handle({ t: 'plot', data: encode({ spectrogram: 'ok', heatmap_rows: 1024, heatmap_cols: 1024, xlabel: 'x' }) });
+    expect(dec.plots.get('ok')).toBeDefined();
+    // A spectrogram column longer than the rows is cut to the rows.
+    dec.handle({ t: 'plot', data: encode({ spectrogram: 'ok', y11: Array.from({ length: 2000 }, (_, i) => i) }) });
+    const g = dec.plots.get('ok')!.p;
+    expect(g.kind === 'grid' && g.columns[0][1].length).toBe(1024);
+  });
+
+  test('plots and line points are bounded in total', () => {
+    const ps = new PlotSet();
+    const limited: string[] = [];
+    ps.onLimit = (t) => limited.push(t);
+    const nine = Array.from({ length: 9 }, (_, i) => `s${i}`);
+    for (let i = 0; i < PLOTS_MAX + 1; i++) ps.handle(encode({ plot: `p${i}`, xlabel: 't', yser: nine, y2ser: nine, y3ser: nine }));
+    expect(ps.plots.length).toBe(PLOTS_MAX);
+    expect(limited).toHaveLength(1);
+    const share = Math.floor(POINTS_MAX / (PLOTS_MAX * 27));
+    ps.handle(encode({ plot: 'p0', y11: Array.from({ length: share + 500 }, (_, i) => i) }));
+    const l = ps.get('p0')!.p;
+    expect(l.kind === 'line' && l.axes[0].series[0].y.length).toBe(share);
   });
 });
 

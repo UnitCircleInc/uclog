@@ -44,7 +44,7 @@ are fragile across VS Code releases. So:
 | Logdata fetch/cache | resolver | the ext host fetches (no CORS; the `vscode-webview://` origin would be rejected) and caches in `globalStorageUri/logdata/` |
 | Token | — | `SecretStorage` |
 | File pickers | `pickFile()` hook | `vscode.window.showOpenDialog` |
-| Semihost FS | `FsProvider` | ext-host provider sandboxed to `uclog.semihost.root` (default `${workspaceFolder}`); time calls are answered by the hub (D31) |
+| Semihost FS | `FsProvider` | ext-host provider sandboxed to `uclog.semihost.root` (default `${workspaceFolder}/uclog-files`); time calls are answered by the hub (D31) |
 
 Webview CSP: `default-src 'none'`, nonce scripts, `worker-src blob:`.
 
@@ -153,7 +153,7 @@ above:
     `uclog.terminal.onConnect`.
   - What the logger remembers lives in `globalState`: history, colours, recent hubs and layout.
   - The logger's *Settings…* opens VS Code's settings filtered to ucLog.
-- **Semihost files** are served under `uclog.semihost.root`, `${workspaceFolder}` by default.
+- **Semihost files** are served under `uclog.semihost.root`, `${workspaceFolder}/uclog-files` by default (a subfolder, so that a device cannot write `.git/hooks` or `.vscode/`; created on the first create).
   Paths are checked again in the extension host, including symlinks that lead outside the root
   (EACCES).
 - **Terminal mode:** the pseudoterminal works in line mode and the device echoes, as in the

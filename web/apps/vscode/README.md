@@ -45,8 +45,9 @@ Port 59 is tried first, then port 3.
 
 ## Semihost
 
-The device may open and create files under `uclog.semihost.root` (default: the first workspace
-folder). Paths that leave that folder are refused. Its stdout and stderr appear in the terminal.
+The device may open and create files under `uclog.semihost.root` (default: `uclog-files` in the
+first workspace folder, created when the device first creates a file). Paths that leave that folder
+are refused. The default is a subfolder so that a device cannot write `.git/hooks` or `.vscode/`. Its stdout and stderr appear in the terminal.
 
 ## Settings
 

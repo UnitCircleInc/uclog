@@ -100,6 +100,8 @@ export class LogStore {
   errorCounts = new Map<string, number>();
   received = 0;
   discarded = 0;
+  /** Bumped whenever the visible rows change; at `max` a push changes them without changing their count. */
+  version = 0;
 
   constructor(private max = 100_000) {
     this.max = Math.max(100, max);
@@ -115,6 +117,7 @@ export class LogStore {
       return undefined;
     }
     this.nextSeq++;
+    this.version++;
     if (ok) this.visible.push(row.seq);
     this.rows.push(row);
     while (this.rows.length > this.max) {
@@ -133,6 +136,7 @@ export class LogStore {
     const v: number[] = [];
     for (const r of this.rows) if (this.filter.matches(r)) v.push(r.seq);
     this.visible.replace(v);
+    this.version++;
   }
 
   setMax(max: number) {
@@ -144,6 +148,7 @@ export class LogStore {
   clear() {
     this.rows.clear();
     this.visible.clear();
+    this.version++;
   }
 
   get length() {

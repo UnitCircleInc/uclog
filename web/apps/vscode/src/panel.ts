@@ -58,7 +58,8 @@ export class LoggerPanel {
     this.panel.webview.onDidReceiveMessage((m: FromWebview) => this.onMessage(m));
     this.panel.onDidDispose(() => {
       this.disposed = true;
-      for (const id of [...this.conns.keys()]) this.closeLink(id);
+      // Targets too: a link whose private hub is still starting has no connection yet.
+      for (const id of new Set([...this.conns.keys(), ...this.targets.keys()])) this.closeLink(id);
       this.host.onDispose();
     });
   }
@@ -102,11 +103,19 @@ export class LoggerPanel {
       t.released?.();
       return this.linkState(id, 'error', (e as Error).message);
     }
-    if (!this.targets.has(id)) return; // closed while the hub started
-    const c = new HubConnection(
+    if (this.disposed || !this.targets.has(id)) {
+      // Closed while the hub started: release again, as the hub may not have existed at close.
+      t.released?.();
+      return;
+    }
+    // A repeated `open` for the same link replaces its connection.
+    this.conns.get(id)?.close();
+    let c: HubConnection | undefined;
+    c = new HubConnection(
       addr.host,
       addr.port,
       (s, detail) => {
+        if (c && this.conns.get(id) !== c) return; // replaced
         this.linkState(id, s, detail);
         if (s !== 'connecting' && s !== 'approval' && s !== 'open') this.closeLink(id);
       },

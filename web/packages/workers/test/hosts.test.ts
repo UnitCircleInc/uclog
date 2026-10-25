@@ -99,3 +99,34 @@ test('back-pressure: log frames dropped while the decoder does not acknowledge, 
     ch.port2.close();
   }
 });
+
+test('one item that throws does not drop the rest of its batch', () => {
+  const fromD: DecodeToMain[] = [];
+  const d = new DH((m) => fromD.push(m), null);
+  try {
+    const orig = d.session.handle.bind(d.session);
+    d.session.handle = (m) => {
+      if (m.t === 'plot') throw new Error('boom');
+      orig(m);
+    };
+    const acks: number[] = [];
+    d.onTransport(
+      {
+        t: 'batch',
+        id: 7,
+        items: [
+          { t: 'plot', data: new Uint8Array(0) },
+          { t: 'error', ts: 1, kind: 'framing_invalid', text: 'after', target: null },
+        ],
+      },
+      (a) => acks.push(a.id),
+    );
+    expect(acks).toEqual([7]);
+    expect(d.store.window(0, 10).map((r) => [r.error, r.text])).toEqual([
+      ['internal', 'decode: boom'],
+      ['framing_invalid', 'after'],
+    ]);
+  } finally {
+    d.dispose();
+  }
+});

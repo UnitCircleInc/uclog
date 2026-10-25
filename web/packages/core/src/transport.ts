@@ -55,6 +55,8 @@ export interface TransportOptions {
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/** Timer period; a pulse goes out once TX has been idle for `PULSE_INTERVAL - TICK`, so gaps stay ≤ 0.5 s. */
+const TICK = PULSE_INTERVAL / 5;
 
 export class TransportSession {
   readonly start = performance.now();
@@ -92,7 +94,7 @@ export class TransportSession {
     this.toUi({ t: 'liveness', state: 'waiting' });
     this.toDecoder({ t: 'start', direct: !this.link.hub });
     if (!this.link.hub) this.enqueue(wirePort(PORTS.DEVICE_INFO, new Uint8Array(0)));
-    this.timer = setInterval(() => this.tick(), PULSE_INTERVAL / 2);
+    this.timer = setInterval(() => this.tick(), TICK);
   }
 
   close() {
@@ -122,7 +124,7 @@ export class TransportSession {
 
   private tick() {
     if (this.closed) return;
-    if (!this.pumping && (this.lastTx === null || this.now() - this.lastTx >= PULSE_INTERVAL)) {
+    if (!this.pumping && (this.lastTx === null || this.now() - this.lastTx >= PULSE_INTERVAL - TICK)) {
       if (this.idle()) this.ready = this.now() + WAKE_GAP;
       this.write(PULSE).catch(() => {});
     }
@@ -224,9 +226,19 @@ export class TransportSession {
   private onPort(port: number, data: Uint8Array) {
     switch (port) {
       case PORTS.SEMIHOST:
-        this.shChain = this.shChain.then(() => this.onSemihost(data));
+        this.shChain = this.shChain
+          .then(() => this.onSemihost(data))
+          .catch((e) => this.toUi({ t: 'note', text: `semihost: ${(e as Error).message}` }));
         return;
       case PORTS.DEVICE_INFO:
+        // A new context (§5.2): the device may have reset, so its files and stdin read are gone.
+        this.stdinWanted = null;
+        this.shChain = this.shChain
+          .then(() => {
+            this.stdinWanted = null;
+            return this.semihost.reset();
+          })
+          .catch(() => {});
         return this.toDecoder({ t: 'info', ts: this.ts(), data });
       case PORTS.PLOT:
         return this.toDecoder({ t: 'plot', data });
@@ -279,14 +291,16 @@ export class TransportSession {
           if (sig?.aborted) return undefined;
           const left = end - this.now();
           if (left <= 0) return undefined;
+          const onAbort = () => this.fwWake?.();
           await new Promise<void>((r) => {
             const t = setTimeout(r, left);
             this.fwWake = () => {
               clearTimeout(t);
               r();
             };
-            sig?.addEventListener('abort', () => this.fwWake?.(), { once: true });
+            sig?.addEventListener('abort', onAbort, { once: true });
           });
+          sig?.removeEventListener('abort', onAbort);
           this.fwWake = null;
         }
         return this.fwQueue!.shift();

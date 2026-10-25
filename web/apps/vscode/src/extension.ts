@@ -547,7 +547,7 @@ class App implements vscode.Disposable {
   }
 
   private updateFiles() {
-    const raw = this.cfg().get<string>('semihost.root', '${workspaceFolder}').trim();
+    const raw = this.cfg().get<string>('semihost.root', '${workspaceFolder}/uclog-files').trim();
     const ws = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     let root: string | null = null;
     if (raw) {

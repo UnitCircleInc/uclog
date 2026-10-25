@@ -16,8 +16,10 @@ import {
   LogStore,
   Resolver,
   toPlain,
+  UCLOG_SOURCE,
   type CborValue,
   type LogdataCache,
+  type LogRecord,
   type Row,
 } from '@uclog/core';
 import type { DecodeState, DecodeToMain, DecoderToTransport, MainToDecode, PlotData, TransportToDecoder } from './protocol.ts';
@@ -42,11 +44,7 @@ export class DecodeHost {
     this.resolver = new Resolver({}, cache);
     this.session = new DecodeSession(
       this.resolver,
-      (r) => {
-        const row = this.store.push(r);
-        if (row && this.emitLogs) this.newRows.push(row);
-        this.dirty = true;
-      },
+      (r) => this.record(r),
       (e) => {
         if (e.t === 'device-info') {
           const fields: [string, string][] =
@@ -67,6 +65,12 @@ export class DecodeHost {
     this.timers.forEach(clearInterval);
   }
 
+  private record(r: Omit<LogRecord, 'seq'>) {
+    const row = this.store.push(r);
+    if (row && this.emitLogs) this.newRows.push(row);
+    this.dirty = true;
+  }
+
   private publish() {
     if (this.newRows.length) {
       this.post({ t: 'logs', rows: this.newRows });
@@ -83,6 +87,7 @@ export class DecodeHost {
       received: this.store.received,
       stored: this.store.length,
       visible: this.store.visibleLength,
+      version: this.store.version,
       discarded: this.store.discarded,
       errorCounts: Object.fromEntries(this.store.errorCounts),
       plots: p.plots.map((x) => ({
@@ -100,7 +105,13 @@ export class DecodeHost {
   /** Batches from the transport worker. */
   onTransport(m: TransportToDecoder, ack: (a: DecoderToTransport) => void) {
     for (const item of m.items) {
-      this.session.handle(item);
+      // One bad item must not drop the rest of its batch (or the ack).
+      try {
+        this.session.handle(item);
+      } catch (e) {
+        const ts = 'ts' in item ? item.ts : 0;
+        this.record({ ts, target: null, level: 'ERROR', file: UCLOG_SOURCE, line: '', text: `decode: ${(e as Error).message}`, error: 'internal' });
+      }
       if (item.t === 'plot' || item.t === 'start') this.dirty = true;
     }
     ack({ t: 'ack', id: m.id });

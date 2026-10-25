@@ -75,8 +75,9 @@ counts).
   button lists (JSON, the same schema as the native GUI). Settings are in `localStorage` under
   the `storage-key`. The token is kept for the session unless *Remember* is ticked (IndexedDB).
 - **Logdata** is found by the device's `app_hash`: files loaded manually, then the IndexedDB
-  cache, then the logdata service. A file loaded manually is saved in the cache under the
-  device's `app_hash`, so the next connection finds it.
+  cache, then the logdata service. A file loaded manually whose name is the device's
+  `app_hash` (`<app_hash hex>.logdata`) is saved in the cache, so the next connection finds it;
+  other files are used for the session only.
 
 A runnable example page (both bundles, a strict CSP, the element's methods and events):
 [examples/embed](examples/embed/README.md).

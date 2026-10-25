@@ -207,9 +207,14 @@ export class UcLogView extends LitElement {
     return this.renderRoot.querySelector('.scroll');
   }
 
+  /** `DecodeState.version` of the rows last fetched. */
+  private version = -1;
+
   private onState(s: DecodeState) {
-    if (s.visible !== this.total) {
+    // Once the store is full the count stays put while rows scroll through it: compare the version.
+    if (s.visible !== this.total || s.version !== this.version) {
       this.total = s.visible;
+      this.version = s.version;
       if (this.follow) this.updateComplete.then(() => this.toBottom());
       this.fetch();
     }

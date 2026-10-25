@@ -153,6 +153,15 @@ describe('semihost files', () => {
     await expect(fs.open(['f'], { ...RW, exclusive: true })).rejects.toMatchObject({ errno: 'EEXIST' });
   });
 
+  it('creates a missing root on the first create only', async () => {
+    const root = join(tmp(), 'uclog-files');
+    const fs = new NodeFs(root);
+    await expect(fs.open(['a.txt'], RO)).rejects.toMatchObject({ errno: 'ENOENT' });
+    expect(existsSync(root)).toBe(false);
+    await fs.close(await fs.open(['a.txt'], RW));
+    expect(existsSync(join(root, 'a.txt'))).toBe(true);
+  });
+
   it('refuses paths and symlinks that leave the root', async () => {
     const outside = tmp();
     writeFileSync(join(outside, 'secret'), 'x');
@@ -165,6 +174,16 @@ describe('semihost files', () => {
     await expect(fs.open(['link'], RO)).rejects.toMatchObject({ errno: 'EACCES' });
     await expect(fs.open(['out', 'new.txt'], RW)).rejects.toMatchObject({ errno: 'EACCES' });
     await expect(fs.mkdir(['out', 'd'])).rejects.toMatchObject({ errno: 'EACCES' });
+  });
+
+  it('refuses a dangling symlink that O_CREAT would follow out of the root', async () => {
+    const outside = tmp();
+    const root = tmp();
+    symlinkSync(join(outside, 'planted'), join(root, 'dangling'));
+    const fs = new NodeFs(root);
+    await expect(fs.open(['dangling'], RW)).rejects.toMatchObject({ errno: 'EACCES' });
+    await expect(fs.open(['dangling'], { ...RW, truncate: true })).rejects.toMatchObject({ errno: 'EACCES' });
+    expect(existsSync(join(outside, 'planted'))).toBe(false);
   });
 });
 

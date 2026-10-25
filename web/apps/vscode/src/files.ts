@@ -75,6 +75,8 @@ export class NodeFs {
     for (const p of parts) {
       if (!p || p === '.' || p === '..' || /[\\/]/.test(p) || p.includes('\0')) throw new FsError('EACCES');
     }
+    // The root is created when the device first creates something in it.
+    if (forCreate) await fsp.mkdir(this.root, { recursive: true }).catch(() => {});
     const root = await fsp.realpath(this.root).catch(() => {
       throw new FsError('ENOENT');
     });
@@ -93,7 +95,10 @@ export class NodeFs {
         throw mapError(e2);
       }
       if (!inside(dir)) throw new FsError('EACCES');
-      return path.join(dir, path.basename(full));
+      // realpath also fails on a dangling symlink, which O_CREAT would follow out of the root.
+      const name = path.join(dir, path.basename(full));
+      if (await fsp.lstat(name).then(() => true, () => false)) throw new FsError('EACCES');
+      return name;
     }
     if (!inside(real)) throw new FsError('EACCES');
     return real;
@@ -101,7 +106,8 @@ export class NodeFs {
 
   async open(parts: string[], f: OpenFlags): Promise<number> {
     const p = await this.resolve(parts, f.create);
-    let flags = f.read && f.write ? C.O_RDWR : f.write ? C.O_WRONLY : C.O_RDONLY;
+    // O_NOFOLLOW: `p` is a resolved path, so a symlink there now was put there since (not on Windows).
+    let flags = (f.read && f.write ? C.O_RDWR : f.write ? C.O_WRONLY : C.O_RDONLY) | (C.O_NOFOLLOW ?? 0);
     if (f.create) flags |= C.O_CREAT;
     if (f.truncate) flags |= C.O_TRUNC;
     if (f.exclusive) flags |= C.O_EXCL;

@@ -59,6 +59,8 @@ export interface DecodeState {
   received: number;
   stored: number;
   visible: number;
+  /** Changes whenever the visible rows do (`LogStore.version`). */
+  version: number;
   discarded: number;
   errorCounts: Record<string, number>;
   plots: PlotInfo[];

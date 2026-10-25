@@ -11,6 +11,7 @@ import { decode as decodeCbor, encode, type CborValue, type FilterSpec, type FwP
 import {
   BleLink,
   HidLink,
+  isUclogHid,
   requestBle,
   requestHid,
   requestSerial,
@@ -89,6 +90,7 @@ export class Client extends EventTarget {
   private connGen = 0;
   /** Reopen a serial/HID device when it comes back (unplug, reset). */
   autoReconnect = true;
+  private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   conn: ConnectionState = { link: 'idle', liveness: null, stdinWanted: false, rx: 0, tx: 0 };
   decodeState: DecodeState | null = null;
   deviceInfo: ClientEvents['device-info'] | null = null;
@@ -123,6 +125,7 @@ export class Client extends EventTarget {
   }
 
   dispose() {
+    clearTimeout(this.reconnectTimer);
     void this.disconnect();
     if ('serial' in navigator) navigator.serial.removeEventListener('connect', this.onSerialConnect);
     if ('hid' in navigator) navigator.hid.removeEventListener('connect', this.onHidConnect);
@@ -246,6 +249,8 @@ export class Client extends EventTarget {
       if (!d) throw new Error('no HID device chosen');
       s = { kind: 'hid', device: d };
     } else if (s === 'ble') s = { kind: 'ble', device: await requestBle() };
+    // Another connect() or disconnect() while the chooser was open wins.
+    if (gen !== this.connGen) return;
     this.lastSpec = s;
     if (typeof s === 'string') {
       const init = parseUri(s);
@@ -266,6 +271,8 @@ export class Client extends EventTarget {
     try {
       await link.open();
     } catch (e) {
+      // A half-open link (a BLE GATT connection without the service) still holds the device.
+      await link.close().catch(() => {});
       if (gen !== this.connGen) return;
       const state = (e as { state?: string }).state;
       if (state === 'busy') this.setConn({ link: 'busy', detail: 'hub busy: another client is connected' });
@@ -288,6 +295,7 @@ export class Client extends EventTarget {
   }
 
   async disconnect() {
+    clearTimeout(this.reconnectTimer);
     const l = this.mainLink;
     this.mainLink = null;
     this.connGen++;
@@ -301,22 +309,35 @@ export class Client extends EventTarget {
     if (this.lastSpec) return this.connect(this.lastSpec);
   }
 
-  private lostAndBack(same: boolean) {
-    const s = this.lastSpec;
-    if (!same || !s || !this.autoReconnect || this.mainLink) return;
+  /** The lost device is back as `s`; reconnect unless the user moved on meanwhile. */
+  private lostAndBack(s: LinkSpec | null) {
+    if (!s || !this.autoReconnect || this.mainLink) return;
     if (this.conn.link === 'closed' && this.conn.detail !== 'disconnected') {
-      setTimeout(() => void this.connect(s).catch(() => {}), 500);
+      clearTimeout(this.reconnectTimer);
+      const gen = this.connGen;
+      this.reconnectTimer = setTimeout(() => {
+        if (gen === this.connGen && !this.mainLink) void this.connect(s).catch(() => {});
+      }, 500);
     }
   }
 
   private onSerialConnect = (e: Event) => {
     const s = this.lastSpec;
-    this.lostAndBack(typeof s === 'object' && s?.kind === 'serial' && e.target === s.port);
+    this.lostAndBack(typeof s === 'object' && s?.kind === 'serial' && e.target === s.port ? s : null);
   };
 
   private onHidConnect = (e: HIDConnectionEvent) => {
     const s = this.lastSpec;
-    this.lostAndBack(typeof s === 'object' && s?.kind === 'hid' && e.device === s.device);
+    if (typeof s !== 'object' || s?.kind !== 'hid' || this.mainLink) return;
+    // A replugged device is a new HIDDevice object: match it by its IDs and name instead.
+    const d = e.device;
+    const same =
+      d === s.device ||
+      (d.vendorId === s.device.vendorId && d.productId === s.device.productId && d.productName === s.device.productName && isUclogHid(d));
+    if (same) {
+      this.lastSpec = { kind: 'hid', device: d };
+      this.lostAndBack(this.lastSpec);
+    }
   };
 
   // -------------------------------------------------------------------------------------------

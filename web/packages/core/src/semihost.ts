@@ -297,6 +297,8 @@ export type ShOutcome =
 export class SemihostHandler {
   private files = new Map<number, FsFile>();
   private nextFid = 3;
+  /** The rest of a stdin line longer than the READ that took it; the next READ gets it. */
+  private stdinRest = new Uint8Array(0);
 
   constructor(
     public fs: FsProvider | null = null,
@@ -310,8 +312,16 @@ export class SemihostHandler {
   }
 
   async closeAll() {
-    for (const f of this.files.values()) await f.close().catch(() => {});
+    const files = [...this.files.values()];
     this.files.clear();
+    for (const f of files) await f.close().catch(() => {});
+  }
+
+  /** A new device context (port 62, §5.2): forget open files and buffered stdin. */
+  async reset() {
+    this.stdinRest = new Uint8Array(0);
+    this.nextFid = 3;
+    await this.closeAll();
   }
 
   timeReply(op: number): Uint8Array | undefined {
@@ -328,6 +338,8 @@ export class SemihostHandler {
       return { reply: errorReply(op, 'EINVAL') };
     }
     const f = req.fields;
+    // A WRITE without a reply request is never answered, not even with an error (§5.5.1).
+    const quiet = req.name === 'WRITE' && !f.reply;
     try {
       switch (req.name) {
         case 'TIMEOFDAY':
@@ -353,7 +365,7 @@ export class SemihostHandler {
         case 'READ': {
           const fid = f.fid as number;
           const n = Math.min(f.len as number, MAX_READ);
-          if (fid === 0) return { stdin: n };
+          if (fid === 0) return this.stdinRest.length ? { reply: this.stdinReply(new Uint8Array(0), n) } : { stdin: n };
           const file = this.files.get(fid);
           if (!file) return { reply: errorReply(op, 'EBADF') };
           const d = await file.read(n);
@@ -411,17 +423,26 @@ export class SemihostHandler {
           return { reply: errorReply(op, 'ENOSYS') };
       }
     } catch (e) {
+      if (quiet) return {};
       return { reply: errorReply(op, e instanceof FsError ? e.errno : 'EIO') };
     }
   }
 
-  /** READ reply for a stdin line (a trailing CR becomes LF). */
+  /** READ reply for a stdin line (a trailing CR becomes LF); what does not fit in `n` is kept
+   * for the next READ. */
   stdinReply(line: Uint8Array, n: number): Uint8Array {
     let l = line;
     if (l.length && l[l.length - 1] === 13) {
       l = new Uint8Array(l);
       l[l.length - 1] = 10;
     }
+    if (this.stdinRest.length) {
+      const c = new Uint8Array(this.stdinRest.length + l.length);
+      c.set(this.stdinRest);
+      c.set(l, this.stdinRest.length);
+      l = c;
+    }
+    this.stdinRest = l.slice(n);
     l = l.subarray(0, n);
     const r = reply(l.length, 0, l.length);
     r.set(l, 8);

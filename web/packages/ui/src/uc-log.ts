@@ -383,9 +383,15 @@ export class UcLog extends LitElement {
     );
   }
 
+  /** `addEventListener`, removed with the client (an element removed and re-added starts anew). */
+  private listen(t: EventTarget, type: string, f: (e: Event) => void) {
+    t.addEventListener(type, f);
+    this.off.push(() => t.removeEventListener(type, f));
+  }
+
   private wire() {
     const c = this.client;
-    this.settings.addEventListener('change', () => {
+    this.listen(this.settings, 'change', () => {
       this.configure();
       this.requestUpdate();
     });
@@ -414,8 +420,8 @@ export class UcLog extends LitElement {
       c.on('note', (n) => this.addNote(n)),
       c.on('logs', (rows) => this.fire('uc-log', { records: rows })),
     );
-    this.addEventListener('uc-note', (e) => this.addNote((e as CustomEvent<string>).detail));
-    document.addEventListener('pointerdown', (e) => {
+    this.listen(this, 'uc-note', (e) => this.addNote((e as CustomEvent<string>).detail));
+    this.listen(document, 'pointerdown', (e) => {
       if (this.menuOpen && !e.composedPath().includes(this.renderRoot.querySelector('.menu') as EventTarget)) this.menuOpen = false;
     });
   }

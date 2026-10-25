@@ -10,6 +10,12 @@ import { decode, get, getInt, getText, type CborValue } from './cbor.ts';
 
 /** Points kept per series when the plot sets no `xscroll`. */
 export const SERIES_MAX = 1_000_000;
+/** Points kept over all line series together: each series keeps its share. */
+export const POINTS_MAX = 4_000_000;
+/** Plots at most; definitions of further plots are counted as errors. */
+export const PLOTS_MAX = 64;
+/** Cells in one heatmap or spectrogram (rows × cols) at most; larger definitions are errors. */
+export const GRID_CELLS_MAX = 1 << 20;
 
 /** Growable float ring: append, drop from the front. */
 export class Floats {
@@ -143,6 +149,15 @@ export class PlotSet {
   errors = 0;
   /** Plots created since the view last looked. */
   created: string[] = [];
+  /** Line series over all plots, for the share of `POINTS_MAX`. */
+  private seriesCount = 0;
+  /** Told about definitions refused for a limit (an error record), besides `errors`. */
+  onLimit: ((text: string) => void) | null = null;
+
+  private limit(text: string) {
+    this.errors++;
+    this.onLimit?.(text);
+  }
 
   get(name: string): Plot | undefined {
     return this.plots.find((p) => p.name === name);
@@ -153,15 +168,20 @@ export class PlotSet {
     if (old) {
       old.p = p;
       old.version++;
+    } else if (this.plots.length >= PLOTS_MAX) {
+      return this.limit(`plot ${name}: more than ${PLOTS_MAX} plots; not created`);
     } else {
       this.plots.push({ name, p, version: 0 });
       this.created.push(name);
     }
+    this.seriesCount = 0;
+    for (const x of this.plots) if (x.p.kind === 'line') for (const a of x.p.axes) this.seriesCount += a.series.length;
   }
 
   clearAll() {
     this.plots = [];
     this.created = [];
+    this.seriesCount = 0;
   }
 
   /** One port-60 payload. */
@@ -236,7 +256,8 @@ export class PlotSet {
       if (!p || p.p.kind !== 'line') return void this.orphans++;
       const l = p.p;
       const xs = nums(get(m, 'x'));
-      const keep = l.xscroll > 0 ? Math.min(l.xscroll, SERIES_MAX) : SERIES_MAX;
+      const share = Math.floor(POINTS_MAX / Math.max(1, this.seriesCount));
+      const keep = Math.min(l.xscroll > 0 ? l.xscroll : SERIES_MAX, SERIES_MAX, share);
       for (const [k, v] of m) {
         const sk = seriesKey(k);
         if (!sk) continue;
@@ -265,9 +286,11 @@ export class PlotSet {
       const gname = getText(m, key);
       if (gname === undefined) continue;
       if (has('heatmap_rows') || has('xlabel')) {
-        const rows = Math.min(Math.max(getInt(m, 'heatmap_rows') ?? 0, 0), 4096);
-        const cols = Math.min(Math.max(getInt(m, 'heatmap_cols') ?? 0, 0), 4096);
+        const rows = Math.max(getInt(m, 'heatmap_rows') ?? 0, 0);
+        const cols = Math.max(getInt(m, 'heatmap_cols') ?? 0, 0);
+        // A 40-byte definition must not allocate (and copy on every poll) hundreds of MB.
         if (!rows || !cols) return void this.errors++;
+        if (rows * cols > GRID_CELLS_MAX) return this.limit(`plot ${gname}: ${rows}×${cols} cells exceed ${GRID_CELLS_MAX}; not created`);
         this.put(gname, {
           kind: 'grid',
           spectrogram,
@@ -286,7 +309,7 @@ export class PlotSet {
       const v = nums(get(m, 'y11'));
       if (g.spectrogram) {
         const x = nums(get(m, 'x'))[0] ?? g.columns.length;
-        g.columns.push([x, Float64Array.from(v)]);
+        g.columns.push([x, Float64Array.from(v.slice(0, g.rows))]);
         if (g.columns.length > g.cols) g.columns.splice(0, g.columns.length - g.cols);
       } else if (v.length === g.rows * g.cols) {
         g.values = Float64Array.from(v);

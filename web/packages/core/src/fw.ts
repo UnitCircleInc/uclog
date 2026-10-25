@@ -4,7 +4,7 @@
 /** FW update (protocol.md §5.4): message encoding for ports 59 and 3, and the client. */
 
 import { decode, encode, get, getInt, getText, display, type CborValue } from './cbor.ts';
-import { cobsDecode, cobsEncode, FrameScanner, PORTS } from './frame.ts';
+import { cobsDecode, cobsEncode, FrameScanner, MAX_PORT_DATA, PORTS } from './frame.ts';
 
 let table: Uint32Array | undefined;
 
@@ -77,6 +77,7 @@ async function call(io: FwIo, port: number, cmd: string, msg: CborValue, ms: num
     const left = deadline - Date.now();
     if (left <= 0) return undefined;
     const r = await io.next(left, signal);
+    if (signal?.aborted) throw new FwError('cancelled');
     if (!r) return undefined;
     if (r.port !== port) continue;
     let v: CborValue;
@@ -118,6 +119,9 @@ export async function fwUpdate(
   const r = await must(call(io, port, 'fw-start', { cmd: 'fw-start' }, 60_000, signal), 'fw-start', 60_000);
   const block = getInt(r, 'block-size') ?? 0;
   if (block <= 0) throw new FwError('device reported an error for fw-start: reply has no block-size');
+  // A block must fit in one port frame (§2.4), or every fw-block would be refused and time out.
+  const probe = fwEncode(port, { cmd: 'fw-block', data: new Uint8Array(Math.min(block, MAX_PORT_DATA + 1)) });
+  if (probe.length > MAX_PORT_DATA) throw new FwError(`device block-size ${block} does not fit in one port-${port} frame`);
   const total = Math.ceil(image.length / block);
   for (let i = 0; i < total; i++) {
     const chunk = image.subarray(i * block, (i + 1) * block);

@@ -101,8 +101,8 @@
         },
         "uclog.semihost.root": {
           "type": "string",
-          "default": "${workspaceFolder}",
-          "markdownDescription": "Folder the device may open and create files in (semihost). `${workspaceFolder}` is the first workspace folder. Empty: file operations fail."
+          "default": "${workspaceFolder}/uclog-files",
+          "markdownDescription": "Folder the device may open and create files in (semihost). `${workspaceFolder}` is the first workspace folder; a relative path is taken from it. The folder is created when the device first creates a file. Empty: file operations fail."
         },
         "uclog.maxLogLines": {
           "type": "number",

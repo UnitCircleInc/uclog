@@ -32,13 +32,17 @@ export class DecodeSession {
   private infoWait: number | null = null;
   appHash: string | null = null;
   private appHashBytes: Uint8Array | null = null;
+  private lastTs = 0;
 
   constructor(
     readonly resolver: Resolver,
     private emitRecord: (r: Omit<LogRecord, 'seq'>) => void,
     private emit: (e: DecoderEvent) => void,
     private now: () => number = () => performance.now(),
-  ) {}
+  ) {
+    // Plot frames carry no timestamp: use the latest one seen.
+    this.plots.onLimit = (text) => this.error(this.lastTs, 'plot_limit', text, null);
+  }
 
   /** A new connection: forget the previous device. Manual logdata stays. */
   reset() {
@@ -57,8 +61,9 @@ export class DecodeSession {
     this.resolver.manual.push(ld);
     this.decoders.insert(ld);
     // Remember it for this device, so the next connection finds it (replaces the legacy
-    // target_info_archive).
-    if (this.appHashBytes && (!ld.appHash || hex(ld.appHash) === this.appHash)) {
+    // target_info_archive). Only a file whose own app_hash (its name) is the device's: anything
+    // else may be for another image, and would be served from the cache as if it matched.
+    if (this.appHashBytes && ld.appHash && hex(ld.appHash) === this.appHash) {
       void this.resolver.remember(this.appHashBytes, ld.cbor).catch(() => {});
     }
     return ld;
@@ -83,6 +88,7 @@ export class DecodeSession {
   }
 
   handle(m: ToDecoder) {
+    if ('ts' in m) this.lastTs = m.ts;
     switch (m.t) {
       case 'start':
         this.reset();
@@ -159,10 +165,9 @@ export class DecodeSession {
     if (r.source) {
       this.decoders.clear();
       for (const ld of r.logdata) this.decoders.insert(ld);
-      // A manual file that matched: remember it for the next connection.
-      if (r.source.kind === 'manual' && this.appHashBytes) {
-        void this.resolver.remember(this.appHashBytes, r.logdata[0].cbor).catch(() => {});
-      }
+      // A manual file that names this app_hash: remember it for the next connection.
+      const named = r.source.kind === 'manual' ? r.logdata.find((ld) => ld.appHash && hex(ld.appHash) === h) : undefined;
+      if (named && this.appHashBytes) void this.resolver.remember(this.appHashBytes, named.cbor).catch(() => {});
     }
     this.emit({ t: 'logdata', appHash: h, source: r.source, targets: r.source ? r.logdata.map((l) => l.target) : [] });
     this.flush();
