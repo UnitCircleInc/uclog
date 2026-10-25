@@ -54,7 +54,8 @@ removed. App signatures and FW update are not included.
     straight away, so a host that reconnects within 2 s still gets it.
 - **RX**:
   - `log_poll()` splits the RX ring into frames: it drops bytes before the first `00` and rejects
-    runs over 1450 bytes or invalid COBS (ucComm `cobs_dec`).
+    runs over 1450 bytes, invalid COBS (ucComm `cobs_dec`) and frames that decode to more than
+    1444 bytes (a 1450-byte run can decode to 1449). Rejected frames are counted in `rx_errors`.
   - Each frame is dispatched to the handler for its port, or to a waiting `log_rx()`.
 - **Fatal**: `LOG_FATAL` switches the port to polled TX with interrupts off and flushes the whole
   ring. It then executes `bkpt` if a debugger is attached, or resets.
@@ -98,6 +99,10 @@ Changes, marked "uclog-clientv2":
 - `_read` requests the capped length; the original requested the caller's length.
 - `_read` keeps `errno` on failure; the original always cleared it.
 - `_fstat` reads `st_uid` from bytes 24–27; the original read byte 27 twice.
+- Reply lengths are clamped to the request buffer (`log_rx` returns the payload length, which can
+  be longer than what it copied), and `_read` copies at most the requested length.
+- `_isatty` returns 0 with `errno` set on failure; the original returned -1, which newlib takes as
+  "a tty".
 
 **Files**: logs come from `src/main.c`, `src/drivers/sensor.c`, `src/sh/*.c` (the app, built with
 `-ffile-prefix-map=../app/=src/`), `board/*.c` and `../uclog/log.c`, so file names can be checked in
@@ -191,8 +196,9 @@ Everything decoded correctly:
 | Backlog | Logs written while no host was connected arrived on the next connection, after the device info |
 | `fatal` | The FATAL line was flushed, the board reset, and the boot logs (including `log-pre-init`) followed with no framing errors |
 
-**Not tested on hardware**: a device receiving a frame over the limit. `uclog` refuses to send
-one, so a raw serial tool would be needed.
+**Over the limit, host → device** (2026-10-24, raw serial with pyserial): a 1450-byte run that
+decodes to 1449 bytes is rejected and counted in `rx_errors`, on all three boards. Before the fix it
+reached the port-5 handler and reset the board (`FATAL tx message too long 1448`).
 
 ## NUCLEO-C071RB test firmware
 
@@ -269,6 +275,10 @@ Found on the way:
   wrap point and was zero padded. Packets are now filled across the wrap.
 - The web client chose any HID interface with VID 2FE3; it now takes the one with input report A1
   (a composite device's other HID interfaces are listed separately by the browser).
+- (2026-10-24) 20 back-to-back 100-byte port-5 frames over HID lost the first 3 echoes and gave a
+  framing error. The native HID link wrote every report of a batch before reading again; a write
+  waits while the device's RX is full, and hidapi on macOS drops the oldest input reports beyond
+  30 queued. It now reads between reports: 20/20, 20 × 1443 and 100 × 200 bytes all intact.
 
 **Not tested**: Web Serial and WebHID with this board (the browser's chooser cannot be automated:
 Chrome's DevTools `DeviceAccess` domain only covers Bluetooth, and seeded permissions are
@@ -280,8 +290,12 @@ state).
 **Board setup**:
 - 32 MHz from the HSE (the radio's crystal) as SYSCLK, SMPS, voltage range 1; the LSE clocks the
   radio's sleep timer.
-- USART1 on PB12/PA8 (the STLINK-V3 virtual COM port, `0483:374e`) at **1 Mbaud**, interrupt driven
-  with the 8-byte FIFOs (`board/uart.c`; 2 KiB RX ring, TX from the log ring).
+- USART1 on PB12/PA8 (the STLINK-V3 virtual COM port, `0483:374e`) at **1 Mbaud** (`board/uart.c`):
+  - RX: circular DMA (GPDMA1 channel 0, one linked-list item that reloads itself) into a 4 KiB
+    ring. The first version was interrupt driven with the 8-byte FIFO (80 µs at 1 Mbaud), and the
+    ucLog lock masks USART1 while `log_tx()` encodes a frame (~400 µs for the largest): 20
+    back-to-back 1443-byte port-5 frames gave 1 intact echo and 10 overruns. Now 20 of 20.
+  - TX: interrupt driven with the FIFO, from the log ring.
 - **BLE** (`board/ble.c`, protocol.md §4.2): one service and one characteristic, both
   `8683b8f3-0000-1000-8000-00805f9b34fb`, with write, write without response and notify.
   - Advertises as **"ucLog test STM32WBA55G-DK1"**: the 128-bit service UUID in the advertisement,

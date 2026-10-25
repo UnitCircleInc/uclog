@@ -80,11 +80,12 @@ static uint32_t sh_clock(void) {
   return v;
 }
 
-static void expect_err(const char *what, int32_t r, int32_t err, int32_t want) {
-  if (r == -1 && err == want) {
-    LOG_INFO("%s: -1 errno %d as expected", what, (int)err);
+// `err` is read here, after `r` (the call that sets it) has been evaluated.
+static void expect_err(const char *what, int32_t r, const int32_t *err, int32_t want) {
+  if (r == -1 && *err == want) {
+    LOG_INFO("%s: -1 errno %d as expected", what, (int)*err);
   } else {
-    LOG_ERROR("%s: got %d errno %d, want -1 errno %d", what, (int)r, (int)err, (int)want);
+    LOG_ERROR("%s: got %d errno %d, want -1 errno %d", what, (int)r, (int)*err, (int)want);
   }
 }
 
@@ -198,15 +199,15 @@ void sh_selftest(void) {
 
   // Error replies.
   static const char escape[] = "\0\0\0\0../escape.txt";
-  expect_err("open ../escape", sh_rerr(SH_OPEN, escape, sizeof(escape) - 1, &err, NULL), err, EACCES);
-  expect_err("close bad fid", sh_rerr(SH_CLOSE, (const int32_t[]){77}, 4, &err, NULL), err, EBADF);
-  expect_err("lseek", sh_rerr(SH_LSEEK, (const int32_t[]){1, 0, 0}, 12, &err, NULL), err, ENOSYS);
-  expect_err("unknown op 0x55", sh_rerr(0x55, NULL, 0, &err, NULL), err, ENOSYS);
-  expect_err("malformed ISATTY", sh_rerr(SH_ISATTY, "ab", 2, &err, NULL), err, EINVAL);
-  expect_err("write to a closed fid", sh_rerr(SH_WRITE, (const uint32_t[]){55}, 4, &err, NULL), err, EBADF);
+  expect_err("open ../escape", sh_rerr(SH_OPEN, escape, sizeof(escape) - 1, &err, NULL), &err, EACCES);
+  expect_err("close bad fid", sh_rerr(SH_CLOSE, (const int32_t[]){77}, 4, &err, NULL), &err, EBADF);
+  expect_err("lseek", sh_rerr(SH_LSEEK, (const int32_t[]){1, 0, 0}, 12, &err, NULL), &err, ENOSYS);
+  expect_err("unknown op 0x55", sh_rerr(0x55, NULL, 0, &err, NULL), &err, ENOSYS);
+  expect_err("malformed ISATTY", sh_rerr(SH_ISATTY, "ab", 2, &err, NULL), &err, EINVAL);
+  expect_err("write to a closed fid", sh_rerr(SH_WRITE, (const uint32_t[]){55}, 4, &err, NULL), &err, EBADF);
   size_t len;
   r = sh_rerr(SH_FSTAT, (const int32_t[]){99}, 4, &err, &len);
-  expect_err("fstat bad fid", r, err, EBADF);
+  expect_err("fstat bad fid", r, &err, EBADF);
   if (len != 48) LOG_ERROR("fstat error reply is %zu bytes, want 48", len);
 
   LOG_INFO("semihost selftest done");

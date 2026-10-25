@@ -63,7 +63,7 @@ static void reply(int port, const char *fmt, ...) {
   // Replies are not optional like logs: wait (briefly) for the TX interrupt to make room. No
   // log_poll() here: reply() also runs inside port handlers.
   uint32_t t0 = board_ms();
-  while (log_tx_avail() < (size_t)n + 8 && board_ms() - t0 < 200) {
+  while (log_tx_avail() < (size_t)n && board_ms() - t0 < 200) { // avail is net of the overhead
   }
   log_tx((uint8_t)port, (const uint8_t *)b, (size_t)n);
 }
@@ -166,7 +166,10 @@ static void big(int port, size_t n) {
   int h = snprintf((char *)b, sizeof(frame_buf), "%u:", (unsigned)n);
   for (size_t i = (size_t)h; i < n - 3; i++) b[i] = (uint8_t)('a' + i % 26);
   memcpy(b + n - 3, "|\r\n", 3);
-  while (log_tx_avail() < n) {
+  // Bounded like reply(): this runs without log_poll(), so RX is not drained meanwhile. Without
+  // room by then (no host), log_tx() drops the frame and counts it.
+  uint32_t t0 = board_ms();
+  while (log_tx_avail() < n && board_ms() - t0 < 200) {
   }
   log_tx((uint8_t)port, b, n);
   LOG_INFO("big: sent %u bytes on port %d, crc32c %08lx", (unsigned)n, port,

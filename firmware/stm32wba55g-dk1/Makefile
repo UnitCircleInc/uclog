@@ -67,7 +67,8 @@ LIBS := $(WPAN)/link_layer/ll_cmd_lib/lib/LinkLayer_BLE_Peripheral_Only_V3_0.a \
 CPU    := -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mfp16-format=ieee
 DEFS   := -DSTM32WBA55xx -DUSE_HAL_DRIVER -DUSE_FULL_LL_DRIVER -DBLE_LL -DPHY_40nm_3_00_a \
           -DBLE_STACK_PERIPHERAL_ONLY
-# board/ first: its app_conf.h and skel_ble.h stand in for the example's.
+# board/ first: its skel_ble.h stands in for the example's application header (app_conf.h is the
+# example's own; ble.c overrides its MBLOCK margin).
 INCS   := -I$(APP_DIR) -Iboard -I$(UCLOG_DIR) -I$(UCCOMM_DIR) \
           -I$(WBA_EX)/Core/Inc -I$(WBA_EX)/STM32_WPAN/App -I$(WBA_EX)/STM32_WPAN/Target \
           -I$(WBA_EX)/System/Modules \
@@ -92,6 +93,12 @@ OBJS := $(patsubst %.c,$(BUILD)/obj/%.o,$(subst ../,,$(SRCS))) \
         $(patsubst %,$(BUILD)/obj/cube/%.o,$(basename $(notdir $(CUBE_SRCS))))
 
 all: $(BUILD)/app.bin
+
+# Rebuild every object when the compiler or its flags change (a -D buffer size, say): the stamp
+# file is rewritten only then.
+FLAGS_STAMP := $(BUILD)/cflags.txt
+$(shell mkdir -p $(BUILD); echo '$(CC) $(CFLAGS)' | cmp -s - $(FLAGS_STAMP) || echo '$(CC) $(CFLAGS)' > $(FLAGS_STAMP))
+$(OBJS): $(FLAGS_STAMP)
 
 $(BUILD)/obj/%.o: %.c
 	@mkdir -p $(dir $@)
@@ -123,7 +130,8 @@ $(BUILD)/obj/cube/%.o: %.s
 # 1. link (the .apphash field is zero)
 # 2. app_hash = SHA-512 of that image; write it into .apphash
 # 3. logdata from the ELF; embed it as .logdata_cbor; save <app_hash>.logdata too
-$(BUILD)/app.elf: $(OBJS) board/stm32wba55cg.ld $(UCLOG_DIR)/log.ld $(UCLOG_DIR)/tools/logdata.py
+$(BUILD)/app.elf: $(OBJS) board/stm32wba55cg.ld $(UCLOG_DIR)/log.ld $(UCLOG_DIR)/tools/logdata.py \
+             $(UCLOG_DIR)/tools/apphash.py
 	$(CC) $(LDFLAGS) $(OBJS) $(LDLIBS) -o $@.tmp
 	$(OBJCOPY) -O binary $@.tmp $(BUILD)/app.unhashed.bin
 	$(PYTHON) $(UCLOG_DIR)/tools/apphash.py $(BUILD)/app.unhashed.bin -o $(BUILD)/app.hash > $(BUILD)/app.hash.txt

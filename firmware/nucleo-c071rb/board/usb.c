@@ -616,7 +616,9 @@ const uint8_t *usb_rx_peek(usb_fn_t fn) {
 void usb_rx_skip(usb_fn_t fn, size_t n) {
   fn_t *f = &fns[fn];
   NVIC_DisableIRQ(USB_DRD_FS_IRQn);
-  cb_skip(&f->rx, n);
+  // Never past the data: a bus reset may have emptied the ring since the caller's peek.
+  size_t a = cb_read_avail(&f->rx);
+  cb_skip(&f->rx, n < a ? n : a);
   if (f->rx_held && cb_write_avail(&f->rx) >= PKT) fn_rx_take(f);
   NVIC_EnableIRQ(USB_DRD_FS_IRQn);
 }

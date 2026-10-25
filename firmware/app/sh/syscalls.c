@@ -72,6 +72,13 @@ int	mkdir		(const char *, mode_t mode);
 
 static uint8_t txrx[SH_BUF_SIZE];
 
+// uclog-clientv2: the reply length, at most sizeof(txrx). log_rx returns the payload length, which
+// can exceed what it copied: without the clamp a long reply made the callers read past txrx.
+static size_t sh_rx(void) {
+  size_t n = log_rx(63, txrx, sizeof(txrx));
+  return n < sizeof(txrx) ? n : sizeof(txrx);
+}
+
 // uclog-clientv2: a request that needs a reply fails at once when no host is connected (otherwise
 // it would wait in the TX buffer and reach a later host as a stale request).
 static bool no_host(void) {
@@ -97,7 +104,7 @@ int __attribute__((weak)) _read (int fd, void * ptr, size_t len) {
   txrx[8] = (n >> 24) & 0xff;
 
   log_tx(63, txrx, 9);
-  size_t rxn = log_rx(63, txrx, sizeof(txrx));
+  size_t rxn = sh_rx();
   if (rxn < 8) {
     LOG_ERROR("_read - response incomplete");
     errno = EIO;
@@ -106,7 +113,9 @@ int __attribute__((weak)) _read (int fd, void * ptr, size_t len) {
   int r = (txrx[0] << 0) | (txrx[1] << 8) | (txrx[2] << 16) | (txrx[3] << 24);
   errno = (txrx[4] << 0) | (txrx[5] << 8) | (txrx[6] << 16) | (txrx[7] << 24);
   if (r > 0) {
-    if ((size_t) r > rxn - 8) r = rxn - 8; // uclog-clientv2: never copy past the reply
+    // uclog-clientv2: never copy past the reply, or more than was asked for.
+    if ((size_t) r > rxn - 8) r = rxn - 8;
+    if ((size_t) r > n) r = n;
     memmove(ptr, txrx+8, r);
   }
   //LOG_INFO("%d = _read(%d, %p, %zu) (errno: %d)", r, fd, ptr, len, errno);
@@ -155,7 +164,7 @@ int __attribute__((weak)) _write (int fd, const void * ptr, size_t len) {
   //LOG_INFO("log_tx_avail() wait %zu", wait);
   log_tx(63, txrx, n + 5);
 #if defined(WRITE_EXPECT_RESPONSE)
-  size_t rxn = log_rx(63, txrx, sizeof(txrx));
+  size_t rxn = sh_rx();
   if (rxn != 8) {
     LOG_ERROR("_write - response incomplete");
     errno = EIO;
@@ -188,7 +197,7 @@ int __attribute__((weak)) mkdir (const char * path, mode_t mode) {
   }
   memmove(txrx + 5, path, n);
   log_tx(63, txrx, 5 + n);
-  size_t rxn = log_rx(63, txrx, sizeof(txrx));
+  size_t rxn = sh_rx();
   if (rxn != 8) {
     LOG_ERROR("_open - response incomplete");
       errno = EIO;
@@ -214,7 +223,7 @@ int __attribute__((weak)) _open (const char * path, int flags, ...) {
   }
   memmove(txrx + 5, path, n);
   log_tx(63, txrx, 5 + n);
-  size_t rxn = log_rx(63, txrx, sizeof(txrx));
+  size_t rxn = sh_rx();
   if (rxn != 8) {
     LOG_ERROR("_open - response incomplete");
       errno = EIO;
@@ -234,7 +243,7 @@ int __attribute__((weak)) _close (int fd) {
   txrx[3] = (fd >> 16) & 0xff;
   txrx[4] = (fd >> 24) & 0xff;
   log_tx(63, txrx, 5);
-  size_t rxn = log_rx(63, txrx, sizeof(txrx));
+  size_t rxn = sh_rx();
   if (rxn != 8) {
     LOG_ERROR("_close - response incomplete");
       errno = EIO;
@@ -293,7 +302,7 @@ int __attribute__((weak)) _fstat (int fd, struct stat * st) {
   txrx[3] = (fd >> 16) & 0xff;
   txrx[4] = (fd >> 24) & 0xff;
   log_tx(63, txrx, 5);
-  size_t rxn = log_rx(63, txrx, sizeof(txrx));
+  size_t rxn = sh_rx();
   if (rxn != 8 + 10 * 4) {
     LOG_ERROR("_fstat - response incomplete");
     errno = EIO;
@@ -337,7 +346,7 @@ int _gettimeofday (struct timeval * tp, void * tzvp) {
   if (no_host()) return -1;
   txrx[0] = SH_TIMEOFDAY;
   log_tx(63, txrx, 1);
-  size_t rxn = log_rx(63, txrx, sizeof(txrx));
+  size_t rxn = sh_rx();
   if (rxn != 12) {
     LOG_ERROR("_gettimeofday - response incomplete");
       errno = EIO;
@@ -392,24 +401,25 @@ clock_t _times (struct tms * tp) {
   return timeval;
 };
 
+// uclog-clientv2: failures return 0 with errno set (was -1, which newlib takes as "a tty").
 int _isatty (int fd) {
-  if (no_host()) return -1;
+  if (no_host()) return 0;
   txrx[0] = SH_ISATTY;
   txrx[1] = (fd >>  0) & 0xff;
   txrx[2] = (fd >>  8) & 0xff;
   txrx[3] = (fd >> 16) & 0xff;
   txrx[4] = (fd >> 24) & 0xff;
   log_tx(63, txrx, 5);
-  size_t rxn = log_rx(63, txrx, sizeof(txrx));
+  size_t rxn = sh_rx();
   if (rxn != 8) {
     LOG_ERROR("_isatty - response incomplete");
     errno = EIO;
-    return -1;
+    return 0;
   }
   int r = (txrx[0] << 0) | (txrx[1] << 8) | (txrx[2] << 16) | (txrx[3] << 24);
   errno = (txrx[4] << 0) | (txrx[5] << 8) | (txrx[6] << 16) | (txrx[7] << 24);
   //LOG_INFO("%d = _isatty(%d) (errno: %d)", r, fd, errno);
-  return r;
+  return r > 0;
 }
 
 int _system (const char *s) {

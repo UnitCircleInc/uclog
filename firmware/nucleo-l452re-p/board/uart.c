@@ -114,6 +114,16 @@ void uart_on_wakeup_notify(uart_t* uart, void (*notify)(void* ctx), void* ctx) {
   uart->notify = notify;
 }
 
+// uclog-clientv2: bytes that arrive after RE but before the DMA request is on overrun, and an
+// overrun is fatal in uart_restart_rx. They are lost either way and the host's next frame starts
+// with 00: clear the flags (through ICR, so no byte is taken from the DMA) before the error
+// interrupt is enabled.
+static void clear_rx_errors(uart_t* uart) {
+  LL_USART_ClearFlag_ORE(uart->uart);
+  LL_USART_ClearFlag_FE(uart->uart);
+  LL_USART_ClearFlag_NE(uart->uart);
+}
+
 void uart_init(uart_t* uart) {
   LOG_INFO("uart init %p", (void*) uart->uart);
   uart->notify = NULL;
@@ -250,6 +260,7 @@ void uart_init(uart_t* uart) {
     while(!(LL_USART_IsActiveFlag_REACK(uart->uart))) __NOP();
     dma_start(uart->rx_dma, uart->rx_cb->b, uart->rx_cb->n);
     LL_USART_EnableDMAReq_RX(uart->uart);
+    clear_rx_errors(uart);
     LL_USART_EnableIT_ERROR(uart->uart);
   }
 }
@@ -296,6 +307,7 @@ void uart_restart_rx(uart_t* uart) {
   while(!(LL_USART_IsActiveFlag_REACK(uart->uart))) __NOP();
   dma_start(uart->rx_dma, uart->rx_cb->b, uart->rx_cb->n);
   LL_USART_EnableDMAReq_RX(uart->uart);
+  clear_rx_errors(uart);
   LL_USART_EnableIT_ERROR(uart->uart);
 }
 
@@ -398,6 +410,7 @@ void uart_set_baud(uart_t* uart, uint32_t baud) {
     while(!(LL_USART_IsActiveFlag_REACK(uart->uart))) __NOP();
     dma_start(uart->rx_dma, uart->rx_cb->b, uart->rx_cb->n);
     LL_USART_EnableDMAReq_RX(uart->uart);
+    clear_rx_errors(uart);
     LL_USART_EnableIT_ERROR(uart->uart);
   }
 }
@@ -455,11 +468,15 @@ void uart_tx_panic(uart_t* uart) {
   uart->panic_mode = true;
   // Shut things down DMA/INTERRUPTs if we are in mid transfer
   if (uart->tx_n > 0 || uart->tx_prefix_busy) {
+    // uclog-clientv2: with the DMA request already off, the DMA has finished and every byte went
+    // to the USART (only its TC is pending): count them as sent, or the flush sends them again.
+    size_t n = uart->tx_n;
     if (LL_USART_IsEnabledDMAReq_TX(uart->uart)) {
       LL_USART_DisableDMAReq_TX(uart->uart);
-      size_t n = uart->tx_n - dma_get_length(uart->tx_dma);
-      if (!uart->tx_prefix_busy) cb_skip(uart->tx_cb, n);
+      n = uart->tx_n - dma_get_length(uart->tx_dma);
     }
+    if (uart->tx_prefix_busy) uart->tx_prefix_n = 0;
+    else cb_skip(uart->tx_cb, n);
     uart->tx_n = 0;
     uart->tx_prefix_busy = false;
     LL_USART_DisableIT_TC(uart->uart);
@@ -582,6 +599,7 @@ void uart_resume(uart_t* uart) {
     LL_USART_ClearFlag_NE(uart->uart);
     dma_start(uart->rx_dma, uart->rx_cb->b, uart->rx_cb->n);
     LL_USART_EnableDMAReq_RX(uart->uart);
+    clear_rx_errors(uart);
     LL_USART_EnableIT_ERROR(uart->uart);
   }
 }
@@ -621,6 +639,7 @@ void uart_resume_set_baud(uart_t* uart, uint32_t baud) {
     LL_USART_ClearFlag_NE(uart->uart);
     dma_start(uart->rx_dma, uart->rx_cb->b, uart->rx_cb->n);
     LL_USART_EnableDMAReq_RX(uart->uart);
+    clear_rx_errors(uart);
     LL_USART_EnableIT_ERROR(uart->uart);
   }
 }

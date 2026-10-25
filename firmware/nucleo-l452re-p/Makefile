@@ -67,6 +67,12 @@ OBJS := $(patsubst %.c,$(BUILD)/obj/%.o,$(subst ../,,$(SRCS))) \
 
 all: $(BUILD)/app.bin
 
+# Rebuild every object when the compiler or its flags change (a -D buffer size, say): the stamp
+# file is rewritten only then.
+FLAGS_STAMP := $(BUILD)/cflags.txt
+$(shell mkdir -p $(BUILD); echo '$(CC) $(CFLAGS)' | cmp -s - $(FLAGS_STAMP) || echo '$(CC) $(CFLAGS)' > $(FLAGS_STAMP))
+$(OBJS): $(FLAGS_STAMP)
+
 $(BUILD)/obj/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -94,7 +100,8 @@ $(BUILD)/obj/cube/%.o: $(CMSIS_DEV)/Source/Templates/gcc/%.s
 # 1. link (the .apphash field is zero)
 # 2. app_hash = SHA-512 of that image; write it into .apphash
 # 3. logdata from the ELF; embed it as .logdata_cbor; save <app_hash>.logdata too
-$(BUILD)/app.elf: $(OBJS) board/stm32l452re.ld $(UCLOG_DIR)/log.ld $(UCLOG_DIR)/tools/logdata.py
+$(BUILD)/app.elf: $(OBJS) board/stm32l452re.ld $(UCLOG_DIR)/log.ld $(UCLOG_DIR)/tools/logdata.py \
+             $(UCLOG_DIR)/tools/apphash.py
 	$(CC) $(LDFLAGS) $(OBJS) $(LDLIBS) -o $@.tmp
 	$(OBJCOPY) -O binary $@.tmp $(BUILD)/app.unhashed.bin
 	$(PYTHON) $(UCLOG_DIR)/tools/apphash.py $(BUILD)/app.unhashed.bin -o $(BUILD)/app.hash > $(BUILD)/app.hash.txt

@@ -1,8 +1,10 @@
 // © 2026 Unit Circle Inc.
 // SPDX-License-Identifier: Apache-2.0
 //
-// USART1 (PB12 TX, PA8 RX: the ST-LINK virtual COM port), interrupt driven with the FIFOs, on the
-// STM32WBA55 (uart.h).
+// USART1 (PB12 TX, PA8 RX: the ST-LINK virtual COM port) on the STM32WBA55 (uart.h). RX: circular
+// DMA (GPDMA1 channel 0) into the ring, so the ucLog lock, which masks this interrupt while
+// log_tx() encodes a frame (~400 us for the largest at 32 MHz), cannot overrun the 8-byte FIFO
+// (80 us at 1 Mbaud). TX: interrupt driven with the FIFO.
 
 #include "uart.h"
 
@@ -12,6 +14,8 @@
 #include "log.h"
 
 #define UART USART1
+#define RX_CH GPDMA1_Channel0
+#define RX_REQUEST 11u // GPDMA1 request USART1_RX (LL_GPDMA1_REQUEST_USART1_RX)
 
 static struct {
   cb_t *tx_cb, *rx_cb;
@@ -19,8 +23,39 @@ static struct {
   size_t prefix_n;
   bool busy, paused, panic;
   volatile uart_error_t error;
-  volatile uint32_t rx_total;
+  uint32_t rx_total;
+  size_t rx_pos; // DMA write position at the last uart_rx_count()
 } u;
+
+// The linked-list item that makes the DMA circular: at the end of each block it reloads the block
+// size and the destination address, and links back to itself (RM0493 GPDMA linked-list mode).
+static uint32_t rx_lli[3]; // CBR1, CDAR, CLLR: the order of the update bits UB1, UDA, ULL
+
+static void rx_dma_start(void) {
+  RCC->AHB1ENR |= RCC_AHB1ENR_GPDMA1EN;
+  (void)RCC->AHB1ENR;
+  uint32_t lla = (uint32_t)rx_lli;
+  uint32_t cllr = DMA_CLLR_UB1 | DMA_CLLR_UDA | DMA_CLLR_ULL | (lla & DMA_CLLR_LA);
+  rx_lli[0] = u.rx_cb->n;
+  rx_lli[1] = (uint32_t)u.rx_cb->b;
+  rx_lli[2] = cllr;
+  RX_CH->CCR = 0;
+  RX_CH->CFCR = 0x7F00; // clear all flags
+  RX_CH->CLBAR = lla & DMA_CLBAR_LBA;
+  RX_CH->CTR1 = DMA_CTR1_DINC; // bytes in and out, destination incremented
+  RX_CH->CTR2 = RX_REQUEST << DMA_CTR2_REQSEL_Pos; // the source (the USART) requests
+  RX_CH->CBR1 = u.rx_cb->n;
+  RX_CH->CSAR = (uint32_t)&UART->RDR;
+  RX_CH->CDAR = (uint32_t)u.rx_cb->b;
+  RX_CH->CLLR = cllr;
+  RX_CH->CCR = DMA_CCR_EN;
+}
+
+// Where the DMA writes next. BNDT counts down to 0, then the item reloads it.
+static size_t rx_dma_pos(void) {
+  size_t w = u.rx_cb->n - (RX_CH->CBR1 & DMA_CBR1_BNDT);
+  return w >= u.rx_cb->n ? w - u.rx_cb->n : w;
+}
 
 void uart_init(uint32_t baud, cb_t *rx_cb) {
   u.rx_cb = rx_cb;
@@ -39,9 +74,10 @@ void uart_init(uint32_t baud, cb_t *rx_cb) {
   GPIOA->PUPDR = (GPIOA->PUPDR & ~GPIO_PUPDR_PUPD8) | GPIO_PUPDR_PUPD8_0;
   GPIOA->OSPEEDR |= GPIO_OSPEEDR_OSPEED8;
 
+  rx_dma_start();
   UART->BRR = (SystemCoreClock + baud / 2) / baud; // kernel clock PCLK2 = SYSCLK, 16x oversampling
-  UART->CR3 = USART_CR3_ONEBIT | USART_CR3_EIE;
-  UART->CR1 = USART_CR1_FIFOEN | USART_CR1_RXNEIE_RXFNEIE | USART_CR1_TE | USART_CR1_RE | USART_CR1_UE;
+  UART->CR3 = USART_CR3_ONEBIT | USART_CR3_EIE | USART_CR3_DMAR;
+  UART->CR1 = USART_CR1_FIFOEN | USART_CR1_TE | USART_CR1_RE | USART_CR1_UE;
   while (!(UART->ISR & USART_ISR_TEACK) || !(UART->ISR & USART_ISR_REACK)) {
   }
   NVIC_SetPriority(USART1_IRQn, 2);
@@ -73,16 +109,6 @@ static bool tx_fill(void) {
 
 void uart_irq(void) {
   uint32_t isr = UART->ISR;
-  while (isr & USART_ISR_RXNE_RXFNE) {
-    uint8_t c = (uint8_t)UART->RDR;
-    if (cb_write_avail(u.rx_cb) > 0) {
-      cb_write(u.rx_cb, &c, 1);
-      u.rx_total++;
-    } else {
-      u.error |= UART_ERROR_RX_FULL;
-    }
-    isr = UART->ISR;
-  }
   uint32_t errors = isr & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE);
   if (errors) {
     if (errors & USART_ISR_ORE) u.error |= UART_ERROR_OR;
@@ -147,6 +173,7 @@ void uart_tx_panic(void) {
 }
 
 size_t uart_rx_avail(void) {
+  u.rx_cb->write = rx_dma_pos();
   return cb_peek_avail(u.rx_cb);
 }
 
@@ -155,7 +182,10 @@ const uint8_t *uart_rx_peek(void) {
 }
 
 void uart_rx_skip(size_t n) {
-  cb_skip(u.rx_cb, n);
+  // uclog-clientv2: never past the data (a link handover or reset may have emptied the ring
+  // since the caller's peek).
+  size_t a = cb_read_avail(u.rx_cb);
+  cb_skip(u.rx_cb, n < a ? n : a);
 }
 
 void uart_rx_discard(void) {
@@ -163,15 +193,18 @@ void uart_rx_discard(void) {
 }
 
 uint32_t uart_rx_count(void) {
+  size_t pos = rx_dma_pos();
+  size_t d = pos >= u.rx_pos ? pos - u.rx_pos : pos + u.rx_cb->n - u.rx_pos;
+  u.rx_pos = pos;
+  u.rx_total += d;
   return u.rx_total;
 }
 
 uart_error_t uart_rx_check(void) {
+  // Read and clear together: an error flagged in between must not be lost.
+  bool en = board_lock();
   uart_error_t e = u.error;
-  if (e != UART_ERROR_NONE) {
-    bool en = board_lock();
-    u.error = UART_ERROR_NONE;
-    board_unlock(en);
-  }
+  u.error = UART_ERROR_NONE;
+  board_unlock(en);
   return e;
 }

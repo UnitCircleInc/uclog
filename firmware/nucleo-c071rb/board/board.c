@@ -31,6 +31,7 @@ static const char *const link_names[LINKS] = {"uart", "cdc", "hid"};
 
 static struct {
   volatile link_t active;
+  link_t rx; // the ring log_poll() reads: latched by log_port_rx_avail() for its peek and skip
   bool paused, panic, started;
   uint32_t count[LINKS], last_rx[LINKS];
   bool heard[LINKS];
@@ -245,6 +246,10 @@ void log_port_tx_pause(bool pause) {
   bool en = disable_irq();
   lk.paused = pause;
   link_pause(lk.active, pause);
+  // Host gone: take back an armed IN packet (its bytes stay in the log ring). A closed CDC port
+  // sends no IN tokens, so it would stay armed and go out, stale and mid-frame, on reopen; and
+  // the device library only drops a cut-off frame when the link is idle.
+  if (pause && lk.active != LINK_UART) usb_tx_abort(lk.active == LINK_CDC ? USB_FN_CDC : USB_FN_HID);
   enable_irq(en);
 }
 
@@ -258,7 +263,9 @@ void log_port_panic(void) {
 }
 
 size_t log_port_rx_avail(void) {
-  switch (lk.active) {
+  // SysTick may hand over to another link between this call and the skip that follows it.
+  lk.rx = lk.active;
+  switch (lk.rx) {
   case LINK_UART:
     return uart_rx_avail();
   case LINK_CDC:
@@ -269,7 +276,7 @@ size_t log_port_rx_avail(void) {
 }
 
 const uint8_t *log_port_rx_peek(void) {
-  switch (lk.active) {
+  switch (lk.rx) {
   case LINK_UART:
     return uart_rx_peek();
   case LINK_CDC:
@@ -280,7 +287,7 @@ const uint8_t *log_port_rx_peek(void) {
 }
 
 void log_port_rx_skip(size_t n) {
-  switch (lk.active) {
+  switch (lk.rx) {
   case LINK_UART:
     uart_rx_skip(n);
     break;

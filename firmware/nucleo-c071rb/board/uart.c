@@ -210,7 +210,10 @@ const uint8_t *uart_rx_peek(void) {
 }
 
 void uart_rx_skip(size_t n) {
-  cb_skip(u.rx_cb, n);
+  // uclog-clientv2: never past the data (a link handover or reset may have emptied the ring
+  // since the caller's peek).
+  size_t a = cb_read_avail(u.rx_cb);
+  cb_skip(u.rx_cb, n < a ? n : a);
 }
 
 void uart_rx_discard(void) {

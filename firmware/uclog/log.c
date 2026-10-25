@@ -293,6 +293,12 @@ static void host_resume(void) {
 
 void log_tick(uint32_t now) {
   if (!s.started || s.panic) return;
+  // The timeout first: a board that hands the log to another link once the one in use has been
+  // quiet for 2 s does so in the same tick, and the new link's bytes must count as a new host.
+  if (s.host && now - s.last_rx_ms > HOST_TIMEOUT_MS) {
+    s.host = false;
+    log_port_tx_pause(true);
+  }
   uint32_t mark = log_port_rx_mark();
   if (mark != s.rx_mark) {
     s.rx_mark = mark;
@@ -300,11 +306,6 @@ void log_tick(uint32_t now) {
     if (!s.host) host_resume();
   }
   if (!s.host) return;
-  if (now - s.last_rx_ms > HOST_TIMEOUT_MS) {
-    s.host = false;
-    log_port_tx_pause(true);
-    return;
-  }
   if (now - s.last_tx_ms >= PULSE_MS && cb_read_avail(&tx_cb) == 0) {
     static const uint8_t pulse = 0;
     tx_buffer(&pulse, 1);
@@ -386,6 +387,8 @@ static bool rx_step(void) {
   log_port_rx_skip(take + 1);
   if (s.synced && s.frame_n > 0) {
     ssize_t d = s.oversize ? -1 : cobs_dec(s.frame, s.frame, s.frame_n);
+    // A 1450-byte run can decode to up to 1449 bytes: over the payload limit (protocol.md §2.2).
+    if (d > LOG_MAX_PACKET_SIZE + 1) s.oversize = true, d = -1;
     if (d < 0) {
       s.rx_errors++;
       LOG_WARN("bad frame from host (%zu bytes%s)", s.frame_n, s.oversize ? ", too long" : "");

@@ -342,7 +342,7 @@ static void tx_pump(void) {
     b.pumping = false;
     if (s == BLE_STATUS_SUCCESS) {
       if (n < room) b.flush = false;
-      if (b.prefix == prefix) { // not replaced meanwhile
+      if (b.prefix == prefix && b.prefix_n >= np) { // not replaced or aborted (ble_tx_abort) meanwhile
         b.prefix += np;
         b.prefix_n -= np;
       }
@@ -417,7 +417,10 @@ const uint8_t *ble_rx_peek(void) {
 }
 
 void ble_rx_skip(size_t n) {
-  cb_skip(&rx_cb, n);
+  // uclog-clientv2: never past the data (a link handover or reset may have emptied the ring
+  // since the caller's peek).
+  size_t a = cb_read_avail(&rx_cb);
+  cb_skip(&rx_cb, n < a ? n : a);
 }
 
 void ble_rx_discard(void) {
@@ -429,8 +432,11 @@ uint32_t ble_rx_count(void) {
 }
 
 bool ble_rx_overflow(void) {
+  // Read and clear together: an overflow flagged in between must not be lost.
+  bool en = board_lock();
   bool o = b.rx_overflow;
   b.rx_overflow = false;
+  board_unlock(en);
   return o;
 }
 

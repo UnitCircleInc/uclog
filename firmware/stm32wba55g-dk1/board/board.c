@@ -36,12 +36,14 @@ static const char *const link_names[LINKS] = {"uart", "ble"};
 
 static struct {
   volatile link_t active;
+  link_t rx; // the ring log_poll() reads: latched by log_port_rx_avail() for its peek and skip
   bool paused, panic, started;
   uint32_t count[LINKS], last_rx[LINKS];
   bool heard[LINKS];
 } lk;
 
-static uint8_t uart_rx_buf[2048];
+// The UART RX ring is written by DMA; it holds more than one maximum frame (1452 bytes).
+static uint8_t uart_rx_buf[4096];
 static cb_t uart_rx_cb = CB_INIT(uart_rx_buf);
 
 // ---------------------------------------------------------------------------------------------
@@ -102,8 +104,12 @@ void Error_Handler(void) {
 
 void board_init(void) {
   HAL_Init();
-  clock_init();
   NVIC_SetPriorityGrouping(3); // 4 bits of preemption priority, as HAL_Init() does
+  // SysTick runs during clock_init() too (at the reset clock), so that the HAL's timeouts for the
+  // oscillators expire and reach Error_Handler() instead of hanging.
+  SysTick_Config(SystemCoreClock / 1000);
+  NVIC_SetPriority(SysTick_IRQn, 3);
+  clock_init();
   SysTick_Config(SystemCoreClock / 1000);
   NVIC_SetPriority(SysTick_IRQn, 3);
   LL_ICACHE_SetMode(LL_ICACHE_1WAY);
@@ -301,15 +307,17 @@ void log_port_panic(void) {
 }
 
 size_t log_port_rx_avail(void) {
-  return lk.active == LINK_UART ? uart_rx_avail() : ble_rx_avail();
+  // SysTick may hand over to the other link between this call and the skip that follows it.
+  lk.rx = lk.active;
+  return lk.rx == LINK_UART ? uart_rx_avail() : ble_rx_avail();
 }
 
 const uint8_t *log_port_rx_peek(void) {
-  return lk.active == LINK_UART ? uart_rx_peek() : ble_rx_peek();
+  return lk.rx == LINK_UART ? uart_rx_peek() : ble_rx_peek();
 }
 
 void log_port_rx_skip(size_t n) {
-  if (lk.active == LINK_UART) uart_rx_skip(n);
+  if (lk.rx == LINK_UART) uart_rx_skip(n);
   else ble_rx_skip(n);
 }
 
