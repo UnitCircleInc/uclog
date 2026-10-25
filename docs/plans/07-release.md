@@ -92,6 +92,7 @@ The review's other findings are fixed. These were left:
 | 33 | Web: remove duplicated code: `FsError`/`OpenFlags`/errno names (core and vscode), `LinkState`, the approval/busy state machine (`WebSocketLink` and `HubConnection`), `bytes()`/`toBytes()`, `DEFAULT_LOGDATA_URL` | review | S |
 | 34 | Windows: build and test the semihost sandbox (native `uclog-semihost`: `O_NOFOLLOW` is `cfg(unix)`; check that a symlink or junction in the root cannot lead out of it on Windows) | review | S |
 | 35 | Rerun the hardware e2e the review didn't run after its fixes: the VS Code extension with the three test boards, `web/e2e/hw.spec.ts` and `web/e2e/ble.spec.ts`; BLE scanning (stops as soon as the device is found) on Linux and Windows | review, 27a, 27b | S |
+| 36 | Optional: NUCLEO-C071RB CDC throughput (~350 kB/s, CPU bound; see firmware/README.md "Why HID and CDC are slower than the bus"): word copies straight from the log ring into the packet memory (measured +10–16%), a double-buffered bulk IN endpoint, `log_tx()` without all interrupts off, a faster COBS encoder | review | S |
 
 ## 8. Not in this phase
 

@@ -280,6 +280,53 @@ Found on the way:
   waits while the device's RX is full, and hidapi on macOS drops the oldest input reports beyond
   30 queued. It now reads between reports: 20/20, 20 × 1443 and 100 × 200 bytes all intact.
 
+### Why HID and CDC are slower than the bus (2026-10-25)
+
+Measured on macOS. The C071 is a full-speed device behind two high-speed Genesys hubs
+(`05e3:0610`). The C071 test firmware was temporarily instrumented: a raw-frame burst, cycle
+counts from SysTick, and a delay in the TX-complete interrupt.
+
+**HID: ~63 kB/s is the full-speed limit for one interrupt endpoint.**
+- A full-speed interrupt endpoint carries at most one transaction of at most 64 bytes per 1 ms
+  frame (USB 2.0 §5.7.3–5.7.4). The endpoint already asks for every frame (`bInterval` 1).
+- Report ID `A1` takes one byte of each report: 63 bytes × 1000 = 63,000 B/s, which is the rate
+  measured. Host to device (output report `A2`) has the same limit.
+- Neither the firmware nor the host can raise it. Only more interrupt endpoints (protocol.md §4.3
+  has one HID interface) or a high-speed device would. HID is there for hosts without a serial
+  driver; CDC is the fast USB link.
+
+**CDC: ~350 kB/s is the CPU, not USB.**
+- Full-speed bulk allows up to 19 packets of 64 bytes per frame (~1.2 MB/s), and ~1 MB/s is
+  normal for a full-speed device. Here the Cortex-M0+ at 48 MHz runs out of time first:
+
+  | Measured | Cycles | Time |
+  |---|---|---|
+  | TX-complete interrupt, one full 64-byte packet: copy from the log ring to a stack buffer, then byte-assembled 32-bit writes into the packet memory | ~1,900 | 40 µs |
+  | `log_tx()` of a 63-byte frame, interrupts off: copy, COBS, ring write (~40 cycles per byte) | ~3,400 | 71 µs |
+  | `log_tx()` of a 1,000-byte frame, interrupts off | ~40,600 | 845 µs |
+
+- A stream of 63-byte frames needs ~111 µs of CPU per 64-byte packet, a ceiling of ~580 kB/s; it
+  measured 519 kB/s.
+- Large frames are slower (1,000-byte frames: 410 kB/s). Interrupts stay off for the whole encode
+  and the endpoint has one buffer, so only the packet already armed goes out in those 845 µs.
+- `burst` (19-byte logs, formatted and encoded one at a time) measured 336 kB/s.
+- Confirmed by two experiments:
+  - A delay added in the TX-complete interrupt lowered the rate at once (10 µs: 519 → 453 kB/s;
+    50 µs: 286 kB/s), so there is no idle time to absorb it.
+  - Copying words instead of bytes into the packet memory cut the interrupt to ~1,150 cycles.
+    Throughput rose 10–16%: 63-byte frames 604 kB/s, 1,000-byte frames 452 kB/s, `burst`
+    362 kB/s.
+
+  Neither change was kept.
+- Ways to get closer to 1 MB/s (plan 07 task 36):
+  - copy words straight from the ring into the packet memory, without the stack buffer;
+  - a double-buffered bulk IN endpoint, so a second packet is armed while the CPU is busy. It
+    needs its own CHEP register, since double buffering is one direction only;
+  - encode with only the ring locked, not all interrupts;
+  - a faster COBS encoder.
+- The UART links don't have this problem: there DMA drains the ring, not the CPU, and 1 Mbaud
+  (100,000 B/s) is far below these costs.
+
 **Not tested**: Web Serial and WebHID with this board (the browser's chooser cannot be automated:
 Chrome's DevTools `DeviceAccess` domain only covers Bluetooth, and seeded permissions are
 ignored), Windows and Linux hosts, and USB suspend/resume (not handled: the device keeps its
