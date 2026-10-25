@@ -105,10 +105,12 @@ fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
     // The hub reports connections at info level; the client tools are quiet by default.
     let is_hub = matches!(cli.cmd, Command::Hub(_));
+    // btleplug logs at error level for things it then reports as Ok (CoreBluetooth: disconnecting a
+    // peripheral that is already gone); its real failures come back as errors from its calls.
     let level = match cli.verbose {
-        0 if is_hub => "info",
-        0 => "warn",
-        1 => "info",
+        0 if is_hub => "info,btleplug=off",
+        0 => "warn,btleplug=off",
+        1 => "info,btleplug=off",
         _ => "debug",
     };
     tracing_subscriber::fmt()

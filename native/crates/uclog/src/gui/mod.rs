@@ -66,6 +66,12 @@ impl eframe::App for Eframe {
         self.app.save_settings();
     }
 
+    /// Only the dock layout and the window are kept: egui's own memory (scroll offsets, popups)
+    /// is not worth restoring, and after an egui upgrade it fails to parse ("Failed to parse RON").
+    fn persist_egui_memory(&self) -> bool {
+        false
+    }
+
     /// eframe has saved by now (`save` runs first). On macOS, exit here rather than let winit tear
     /// the window down: AppKit can throw from its Touch Bar observer (`NSRangeException`, "Cannot
     /// remove an observer … for the key path nextResponder") and abort the process.
