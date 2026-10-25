@@ -1,0 +1,286 @@
+# Plan 08 — Public repository, distribution and documentation site
+
+Shared context, protocol and decisions: [README.md](README.md). D# = decisions (README §1).
+
+## 1. Goal
+
+Make ucLog public as one product: the device library and the host tools, with published build
+products and a documentation site at **uclog.unitcircle.ca**.
+
+| Product | Published as |
+|---|---|
+| Python library | PyPI (`uclog`, plan 07 tasks 11–12); `python/` in the repository, with `python/examples/` |
+| Web app | uclog.unitcircle.ca/app/ (GitHub Pages), usable offline once loaded; a single-file download (`uclog-app-N.html`) on the site and each release (§3.1) |
+| Native `uclog` / `uclog-hub` | GitHub Releases (plan 07). The site has a download page that links to the release assets: Pages cannot run them, and release assets have no 100 MB file limit |
+| Embeddable `<uc-log>` | npm `@uclog/element` (plan 07 task 13a); versioned single-file builds on the site (uclog.unitcircle.ca/element/N/ and `/element/latest/`); `web/` in the repository, with the reference integration |
+| VS Code extension | VS Code Marketplace and Open VSX (plan 07 task 13b) |
+| Documentation | uclog.unitcircle.ca, built with Zensical and the www.unitcircle.ca theme; one copy per release with a version selector (§3.2) |
+| Device library | in the repository (§2), plus a small clone for device-only users (§2.3) |
+
+Plan 07 (remote, CI, signing, publishing jobs, first release) comes first. This plan adds the
+repository layout, the site and its content.
+
+## 2. One repository or two
+
+Today:
+- [UnitCircleInc/uclog](https://github.com/UnitCircleInc/uclog) (public) is the device side as a
+  Zephyr module: `include/log.h`, `lib/log.c`, `lib/logserver.c`, the `ucuart`, `ucuart_z` and
+  `ucusb` drivers, Kconfig, snippets, the `apphash`/`signature` CMake helpers, and the legacy
+  Python host scripts (`scripts/uclog.py`, `logdata.py`, `sbl.py`, …). 21 commits. Its sources
+  carry Apache-2.0 headers, but it has no `LICENSE` file.
+- It depends on [UnitCircleInc/ucComm](https://github.com/UnitCircleInc/ucComm) (COBS, CBOR,
+  CRC-32C, `cb`), another Zephyr module.
+- This repository (host side, Apache-2.0) has its own bare-metal copy of the device library in
+  `firmware/uclog/`, with the protocol changes of `spec/firmware-changes.md` (1443-byte frames, the
+  F7 device-info request, RX rejection rules). Its `firmware/uccomm/` is a copy of ucComm at
+  `8bc8e3b`. The two `log.c` files have already diverged.
+
+### 2.1 Tradeoffs
+
+| | One repository (device library moved in) | Two repositories (as now) |
+|---|---|---|
+| Protocol changes | One commit changes the spec, the device library, every host and the test vectors. CI runs the device encoder against `spec/vectors` and the hosts against the device | Two pull requests that must land together; the device side can't be tested against the hosts in CI |
+| Duplicate `log.c` | Gone: one library with a Zephyr port and a bare-metal port; the test boards build it | Stays: the bare-metal copy here, and the Zephyr one there, kept in step by hand |
+| Hardware tests | The test firmware and the hosts it exercises are in one place (already true for the bare-metal copy) | The Zephyr library has no hardware tests next to it |
+| Issues, docs, releases | One tracker, one site, one changelog; the compatibility table (device ↔ host versions) is in the same place as both | Spread out; users report host problems against the device repository and vice versa |
+| Device-only users | Pull a much larger repository (Rust, TypeScript, Python, docs) unless there is a small clone (§2.3) | Small clone with only the device code |
+| Zephyr `west` | Works: a `zephyr/module.yml` at the root points `cmake`/`kconfig` into the device directory. `west update` fetches the whole repository; it has no sparse checkout | Works as now |
+| Versioning | Device library and hosts need separate version lines in one repository (separate tag prefixes) | Natural: one version line each |
+| CI | Path filters so device-only changes don't run the Rust/web/VS Code jobs, and the other way round | Separate and simpler |
+| Existing users | Their `west.yml` URL changes, unless the monorepo takes over the `uclog` name or a mirror keeps it (§2.2) | Nothing changes |
+| Legacy scripts | `scripts/uclog.py` and friends (frozen, D27) are retired in the move; `logdata.py`, `cachelogdata.py`, `apphash`, `signature` stay as build-time tools | Stay where they are |
+
+**Recommendation: one repository, with a published device-only mirror.** The protocol is shared,
+and keeping two `log.c` files in step is already a real cost. The main drawback, device users
+pulling everything, is solved by a mirror (§2.3).
+
+### 2.2 Naming (decided 2026-10-25: option A)
+
+- **Monorepo: `UnitCircleInc/uclog`**. This repository is pushed there, and the current device
+  history is imported under `device/`. Everything sits under the name people know, which matches
+  the site.
+- **Device-only clone: `UnitCircleInc/uclog-device`**, a read-only mirror.
+- **Existing `west.yml` URLs keep working** through a root `zephyr/module.yml`, but they fetch the
+  whole monorepo. The docs point Zephyr users at `uclog-device` for a small clone.
+
+Rejected:
+- Option B: a new `uclog-client` repository, with `uclog` becoming the mirror.
+- Option C: keeping two repositories.
+
+### 2.2a Versions: SoloVer (decided 2026-10-25)
+
+[SoloVer](https://beza1e1.tuxen.de/SoloVer): one non-negative integer, optionally followed by a
+postfix. A postfix starts with `-` (a pre-release, sorts before the number) or `+` (a hotfix,
+sorts after it). Postfixes compare alphanumerically: `1-beta1 < 1 < 1+hotfix1 < 2`.
+
+- **Two version lines.** The host tools are tagged `vN` (Rust, Python, VSIX, `<uc-log>` and the
+  web app in step). The device library is tagged `device-vN`.
+- **Numbering starts at 4** (decided 2026-10-25). The device repository already has tags `v1`, `v2`
+  and `v3`; they come along with the imported history and still point at the old layout, so
+  current users who pin them (`west.yml` `revision: v3`, a submodule) are unaffected. The first
+  release of the new layout is tagged `v4` and `device-v4` on the same commit; after that the two
+  lines move independently. Nothing below 4 is ever published from the monorepo, so `v1`–`v3`
+  always mean the old device-only layout. The mirror (§2.3) carries the device line as plain
+  `vN` tags (`v1`–`v3` from the old history, then `v4` from `device-v4`), so device-only users
+  see one unbroken series.
+- **Protocol version.** The wire protocol keeps its own number (protocol.md, v1). The
+  compatibility table maps device versions to host versions through it.
+- **Postfixes** are limited to `-alphaK`, `-betaK`, `-rcK` and `+hotfixK`, with K from 1 to 9.
+  Plain alphanumeric order puts `alpha10` before `alpha2`, so a tenth one starts the next letter or
+  number.
+- **Each ecosystem gets a mapped number.** Their rules require it, so a CI step derives every
+  manifest's version from the tag and checks it (plan 07 task 13):
+
+  | SoloVer tag | PyPI (PEP 440) | Cargo, npm (SemVer) | VS Code Marketplace / Open VSX |
+  |---|---|---|---|
+  | `N` | `N` | `N.0.0` | `N.0.0` |
+  | `N-alphaK`, `N-betaK`, `N-rcK` | `NaK`, `NbK`, `NrcK` | `N.0.0-alpha.K`, `-beta.K`, `-rc.K` | not published: the VSIX goes to the GitHub release only (the Marketplace allows no pre-release suffix) |
+  | `N+hotfixK` | `N.postK` | `N.0.K` | `N.0.K` |
+
+  - **PyPI** refuses `+` local versions, so hotfixes become post-releases.
+  - **SemVer** ignores `+` build metadata when ordering, so hotfixes go in the patch number.
+  - **The device library** reports its SoloVer string as is (`UCLOG_DEVICE_VERSION` in `log.h`,
+    and in the device info).
+
+### 2.3 Cloning only what you need
+
+- **Device-only mirror** (`uclog-device`, §2.2): CI runs `git subtree split
+  --prefix=device` on every push to `main` and on each device tag, and pushes the result. It is a
+  normal small repository with its own history, so it works with `west`, CMake `FetchContent`,
+  git submodules and plain clones. Its README says where pull requests go.
+- **Release archives**: each device tag attaches `uclog-device-N.tar.gz` (the library, ucComm
+  and the build helpers), for Makefile projects with no git dependency.
+- **Partial clone of the monorepo** (documented for people who want one directory):
+  ```sh
+  git clone --filter=blob:none --sparse https://github.com/UnitCircleInc/uclog
+  cd uclog && git sparse-checkout set device        # or python, web/examples/embed, …
+  ```
+- **ucComm**: keep it a separate repository; it is shared with other projects (for example
+  `ucsbl`). The device library pins a version: a `west.yml` entry for Zephyr, a pinned copy in the
+  release archive and the mirror for Makefile and CMake users.
+- Python users install from PyPI. The examples are under `python/examples/`, which a sparse
+  checkout can fetch alone.
+
+### 2.4 Layout after the move
+
+```
+device/            the device library (one log.c): include/, src/, ports/{zephyr,baremetal}/,
+                   zephyr drivers (ucuart, ucuart_z, ucusb), Kconfig, CMakeLists.txt, uclog.mk,
+                   cmake/ (apphash, signature), tools/ (logdata.py, apphash.py), examples/
+firmware/          test firmware for the hosts (boards + app), built against device/
+native/ python/ web/ spec/    as now
+website/           the documentation site (Zensical): zensical.toml, docs/, overrides/
+docs/plans/        design plans (not published)
+zephyr/module.yml  points into device/
+```
+
+## 3. The site (uclog.unitcircle.ca)
+
+- **Hosting**: GitHub Pages from Actions on this repository. The DNS record is a CNAME from
+  `uclog.unitcircle.ca` to `unitcircleinc.github.io`, and HTTPS is enforced. Pages needs the
+  repository to be public, or a paid plan while it is private.
+- **One deploy job** builds three things and uploads them as one Pages artifact:
+  - the Zensical site at `/`;
+  - the web app (`web/apps/demo`) at `/app/`;
+  - the element builds at `/element/N/` and `/element/latest/`.
+
+  Older element versions and docs versions (§3.2) must stay published. Each deploy fetches them
+  from the release assets, because a Pages deploy replaces the whole site.
+- **Theme**: copied from [uc-www](https://github.com/UnitCircleInc/uc-www) (`zensical.toml` theme
+  section, `overrides/`, `stylesheets/extra.css`, logo and favicons). Record the commit it came
+  from, and update by hand. Built with `uv run zensical build` like uc-www.
+- **Single sources**:
+  - The protocol pages include `spec/protocol.md` (pymdownx snippets), so the spec is not copied.
+  - The device code snippets come from files that CI compiles.
+  - The Python examples are files that CI runs.
+- **The web app on a public HTTPS origin**:
+  - Web Serial, WebHID and Web Bluetooth all work there.
+  - **The hub's default `--allow-origin` list must add `https://uclog.unitcircle.ca`**. Today it
+    holds only `localhost`, `127.0.0.1` and VS Code webviews, so the app's hub connections would
+    otherwise need approval each time.
+  - Chrome's Local Network Access permission prompt (public site → `ws://localhost`) has to be
+    checked and documented.
+  - The logdata service ([fw.unitcircle.ca](https://fw.unitcircle.ca/docs/errors-and-limits)):
+    - Its customer API (`/logdata`) accepts the account's own `https://{domain}` and its
+      subdomains, origins registered for the account, and origins the operator allows. Token-free
+      log reads, when an account enables them, accept any origin.
+    - So `https://uclog.unitcircle.ca` must be on the operator's allow list, or else customers on
+      other domains can't fetch logdata from the hosted app with a token.
+
+### 3.1 The web app offline and as a single file (decided 2026-10-25)
+
+- **Offline at `/app/`**: a service worker precaches the app shell, workers and wasm (Vite PWA
+  plugin, or a small hand-written worker). After one visit the app loads with no network. Updates
+  apply on the next load, with a "new version" notice; the worker's cache is keyed by version.
+- **Single-file download**: a second build inlines everything (scripts, CSS, workers as blob URLs,
+  wasm as base64) into one `uclog-app-N.html`. It is linked from the app ("Download for offline
+  use"), the download page, and each GitHub release. It opens from disk with no server, for
+  machines with no network or a locked-down browser profile. The element's single-file build
+  (§1) is the starting point.
+- **To check for `file://`**:
+  - Web Serial, WebHID and Web Bluetooth in a `file://` page (Chrome treats `file://` as a secure
+    context; each API's own rule has to be checked). If one is refused, the download page says
+    which links work.
+  - Hub connections: the page's Origin is `null`. The hub refuses it by default, so the docs
+    show `uclog hub --allow-origin null` (an explicit opt-in; plan 01 §4.3), and the app explains
+    the refusal when it sees it.
+  - Storage (settings, logdata cache): `file://` pages share one origin per browser, so keys are
+    prefixed.
+  - Logdata service fetches send `Origin: null`, which the service refuses for token requests.
+    Offline use gets logdata from the ELF, `.logdata` files or the cache instead; the docs say so.
+    Making them work is a future task (task 20).
+
+### 3.2 Versioned docs (decided 2026-10-25)
+
+- **One copy per release** at `/vN/`, plus `/latest/` (the newest release; `/` redirects to it)
+  and `/dev/` (built from `main`). The theme's version selector lists them, newest first, with
+  pre-releases marked.
+- **How** (decided 2026-10-25): mike's layout and `versions.json`, which the Material-derived
+  version selector reads. Use mike itself if it works with Zensical's build; otherwise build each
+  version ourselves and write `versions.json` in mike's format.
+- **Keeping old versions**: each release attaches its built site (`uclog-docs-N.tar.gz`). The Pages
+  deploy unpacks every one into `/vN/`, then builds `latest` and `dev`. A broken old version is
+  fixed by a `+hotfixK` release, not by editing the archive.
+- **Device and host versions**: the docs follow the host line (`vN`). Each version's device pages
+  name the device version they describe, and the compatibility table links the two.
+- **Search** covers the version being viewed. Pages outside the docs (`/app/`, `/element/…`, the
+  download page) are not versioned; the download page lists every release.
+
+## 4. Documentation content
+
+| Section | Contents |
+|---|---|
+| Getting started | What ucLog is; install each host (pip, VS Code, download, the web app link); first connection with the simulated device, then a board |
+| Using the hosts | With screenshots: the web app, VS Code, `uclog gui`, `uclog tui`, the CLI (`list`, `decode`, `term`, `fw-update`, `hub`), Python. Connecting over each link (serial, CDC, HID, BLE, UDP, a remote hub), the terminal and command buttons, plots, device info, FW update, semihost files |
+| From device code to screen | Side by side: device C code and what each host shows. Levels, 0–4 arguments, ints, floats, strings, `{enum:name}%d`, `{sym}%p`, `LOG_MEM_*`, terminal commands (port 61), plots (port 60), semihost `printf`/files, FW update |
+| Adding ucLog to a device project | The port interface; UART, USB CDC/HID, BLE and UDP links; **Makefile** (`uclog.mk`), **CMake** (`add_subdirectory` / `FetchContent`), **Zephyr** (west module, Kconfig, snippets); generating logdata (`.logdata_cbor` in the ELF, app hash); minimal examples simplified from `firmware/` (one bare-metal, one Zephyr) |
+| Logdata and services | How hosts find logdata: the ELF, `.logdata` files, the cache in `~/.cache/uclog` (what is stored, keyed by app hash, how to clear it), offline use. The logdata service when configured: what ucLog sends (`GET /logdata/{domain}/{id}` with the bearer token, then the 5-minute download link it redirects to), where each host keeps the token, and uploading logdata at build time. The service itself is documented publicly at [fw.unitcircle.ca/docs](https://fw.unitcircle.ca/docs) (accounts, tokens, API, CORS, limits); link to it rather than repeat it |
+| AI assistants | The service's MCP server ([fw.unitcircle.ca/docs/mcp](https://fw.unitcircle.ca/docs/mcp), `https://fw.unitcircle.ca/mcp`, bearer token): an assistant can list firmware and logdata, fetch download links, and check what a device would be offered. Setup for Claude Code, Cursor and VS Code, linked from the service docs |
+| Embedding `<uc-log>` | Script tag vs npm; attributes, events, the host services (`rpc.ts`), styling (custom properties), workers (`worker-base`), CSP, self-hosting. The worked example is `web/apps/demo`, the site's own web app (§5) |
+| Security | Hub admission, the Origin check (D14; plan 01 §4.3), TLS, the semihost sandbox, logdata tokens |
+| Protocol and performance | The rendered spec; transports; performance (§6) |
+| Reference | CLI options, Python API (generated from docstrings), `<uc-log>` API (generated from the TypeScript), device API (`log.h`) |
+| Release notes and compatibility | Changelog; a table of device library versions against host versions |
+
+**Screenshots** are generated, not taken by hand, so they stay current:
+- the web app and VS Code with Playwright (`web/e2e/screens.spec.ts` already does some);
+- the GUI from its headless UI tests (egui snapshots);
+- the TUI from ratatui's `TestBackend`, rendered to SVG.
+
+## 5. Embedding reference
+
+- `web/apps/demo` (the site's web app) is already `<uc-log>` plus ~30 lines of `main.ts`. Make it
+  the documented reference: comments, no private imports, built only from the published package.
+- Merge `web/examples/embed` (a branded portal, events, host services) into the docs as a second,
+  fuller example.
+- Both are tested in CI (Playwright, `embed.spec.ts` exists), so the docs' example cannot rot.
+
+## 6. Performance and footprint
+
+A `bench` command in the test firmware, and a script that writes the results as JSON. The docs
+render their tables from that JSON, so they can be regenerated per release. Boards: C071
+(Cortex-M0+), L452 (Cortex-M4F), WBA55 (Cortex-M33).
+
+| Metric | ucLog | Compared with |
+|---|---|---|
+| Wire bytes per log statement, 0–4 arguments (int, float, string), including COBS and the frame header | measured | the same message formatted as text by `snprintf` |
+| Encode time per statement (cycles; DWT CYCCNT on the M4/M33, SysTick on the M0+), per argument kind | measured | newlib-nano `snprintf` (with float support) of the same message |
+| End-to-end throughput per link (logs/s, B/s) | from `burst` (UART 100 kB/s, CDC ~350 kB/s, HID 63 kB/s, BLE ~72 kB/s; firmware/README.md) | a text log over the same link |
+| Footprint: flash and RAM of the library, ucComm and buffers (configurable) | `arm-none-eabi-size` per object, `-Os` | newlib-nano printf with float support |
+| Host side: decode rate and hub latency | measured | — |
+
+## 7. Tasks
+
+| # | Task | Size |
+|---|---|---|
+| 1 | Versions (§2.2a, starting at 4): the tag → manifest mapping and its CI check (Cargo, `pyproject.toml`, `package.json` files, VSIX), `UCLOG_DEVICE_VERSION` and its place in the device info, the compatibility table | S |
+| 2 | Add a `LICENSE` file to the device repository now (Apache-2.0, as its headers say); check the third-party notices (ST HAL/CMSIS are not redistributed: the test firmware points at STM32Cube packages) | S |
+| 3 | Import the device repository with its history under `device/` (`git subtree add`, or `git filter-repo --to-subdirectory-filter`), and retire `scripts/uclog.py` and the other legacy host scripts (D27) | S |
+| 4 | One `log.c`: merge the bare-metal library (`firmware/uclog`) with the Zephyr one. Port interface; the Zephyr `ucuart`/`ucuart_z`/`ucusb` drivers move to it; apply `spec/firmware-changes.md` (F1–F7) to the Zephyr side; the test boards build `device/` | L |
+| 5 | Build integrations: `zephyr/module.yml` at the root, `device/CMakeLists.txt` usable outside Zephyr, `device/uclog.mk` for Makefiles; ucComm pinned for each | M |
+| 6 | Device CI: build the examples and the test firmware (arm-none-eabi, a Zephyr board in the Zephyr SDK container); a host build of the encoder run against `spec/vectors` | M |
+| 7 | Device-only mirror `UnitCircleInc/uclog-device` (§2.3): the `subtree split` job, its README, the `uclog-device-N.tar.gz` release archive, and its `vN` tags (`v1`–`v3` from the old history, then from `device-vN`) | S |
+| 8 | A small device plot API (`log_plot_create`, `log_plot_data`, `log_plot_clear` over port 60, protocol.md §5.6): today plots need hand-built CBOR, which is hard to document | S |
+| 9 | `website/`: Zensical project, theme from uc-www, spec included from `spec/`; Pages deploy job (site + `/app/` + `/element/…`); custom domain and HTTPS | M |
+| 9a | Versioned docs (§3.2, mike): `/vN/`, `/latest/`, `/dev/`, the version selector, `uclog-docs-N.tar.gz` per release and their reassembly in the deploy | M |
+| 9b | Web app offline (§3.1): service worker at `/app/`; the single-file `uclog-app-N.html` build, its download link and release asset; the `file://` checks, and `--allow-origin null` documented | M |
+| 10 | Hub: add `https://uclog.unitcircle.ca` to the default `--allow-origin`; check Chrome's Local Network Access prompt; the service operator allows the origin for the logdata API (§3) | S |
+| 11 | Screenshot generation (Playwright, egui snapshots, ratatui SVG) wired into the docs build | M |
+| 12 | Docs: getting started, using the hosts, logdata and services, security | L |
+| 13 | Docs: from device code to screen; adding ucLog to a project (Makefile, CMake, Zephyr) with the minimal examples (`device/examples/`), compiled in CI | L |
+| 14 | Docs: embedding, with `web/apps/demo` as the reference (§5); the generated `<uc-log>` API reference | M |
+| 15 | Python: `python/examples/` (connect and filter logs, send commands, a pytest hardware fixture, decode a capture), run against the loopback device in CI; API reference from docstrings | M |
+| 16 | `bench` firmware command, the results script and the performance pages (§6), on the three boards | M |
+| 17 | Download page: picks the right release asset for the visitor's OS/arch; checksums; signing status | S |
+| 18 | Release notes and the compatibility table generated from tags | S |
+| 19 | Go public: push this repository to `UnitCircleInc/uclog` with the device history merged in (task 3), keeping its `v1`–`v3` tags; release `v4` and `device-v4`; make it public; announce from www.unitcircle.ca | S |
+| 20 | Future: `Origin: null` logdata requests to fw.unitcircle.ca from the single-file app (§3.1). Explore with the service: for example, accept `null` on token requests when the token is one meant for it (a scoped, read-only logdata token, or a token flag the customer sets); what a leaked token then exposes; whether rate limits differ | S |
+
+Order: task 2 now. Then 1 and 3, then 4–7 (one device library), 8 and 10 alongside. Then 9, 9a, 9b and 11, then the content
+(12–16), then 17–19 (20 is not needed for going public). Plan 07's publishing jobs (PyPI, Marketplace, Open VSX, npm) must be done
+before task 19.
+
+## 8. Open questions
+
+None at the moment. Decided 2026-10-25: option A (§2.2), SoloVer starting at 4 (§2.2a), the
+offline web app with a single-file download (§3.1), versioned docs (§3.2).

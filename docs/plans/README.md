@@ -1,6 +1,6 @@
 # ucLog client re-architecture — overview
 
-This directory holds seven separate plans plus this shared overview:
+This directory holds eight separate plans plus this shared overview:
 
 | Plan | File | Code family |
 |---|---|---|
@@ -11,6 +11,7 @@ This directory holds seven separate plans plus this shared overview:
 | Native TUI client | [05-tui.md](05-tui.md) | Native (Rust) |
 | Python client library for scripts | [06-python-client.md](06-python-client.md) | Python (uses the native hub) |
 | Release, platforms and hardware coverage | [07-release.md](07-release.md) | Native, Python, CI |
+| Public repository, distribution and documentation site | [08-public.md](08-public.md) | All, plus the device library |
 
 Read this overview first. It records the decisions made so far (§1), the wire protocol (§3),
 the shared architecture (§4), cross-cutting requirements (§5), and the **open questions that are
@@ -432,6 +433,7 @@ Hub flags are in the hub plan.
 | 5 | ✅ Web ([02](02-web.md)): `web/` pnpm workspace; `@uclog/core` (protocol, logdata, semihost, FW update, resolver, session halves, simulated device), browser links, transport + decode workers with back-pressure, Lit components, `<uc-log>` (ESM and IIFE, inlined workers or `worker-base`), demo page. ✅ Verified with Vitest (all vectors) and Playwright in Chrome: every view, both bundles under CSP, the native hub over WebSocket (busy), ~175k logs/s with no main-thread long tasks; on the NUCLEO-L452RE-P through the hub. Web Serial/HID/BLE with real devices, other OSes, npm publishing: Phase 7 | VS Code |
 | 6 | ✅ VS Code ([03](03-vscode.md)): extension in `web/apps/vscode` with the web UI in a webview; private `uclog-hub` per local device (or a hub over TCP: mDNS, address, recent), Devices view, status bar, pseudoterminal, `file:line` click-through, workspace logdata and FW images, semihost files under a workspace folder, logdata fetched by the extension host (token in SecretStorage); `uclog-hub list --hubs/--ble-scan`; VSIX packaging and a release job. ✅ Verified with Vitest and Playwright driving VS Code 1.133 (also from an installed VSIX), and on the NUCLEO-L452RE-P through a private hub. Marketplace/Open VSX, all targets incl. armv7, signed hubs, Windows/Linux, Remote-SSH/WSL: Phase 7 | — |
 | 7 | Release ([07](07-release.md)): GitHub repository and CI on 3 OS; signing and notarisation, `.dmg`, AppImage, signed exe, armv7; PyPI trusted publisher and publish job; npm `@uclog/element`; GUI/TUI/Python/hub on Linux, Windows and the Pi; HID, BLE, UDP, FTDI/Zephyr CDC, FW update, mDNS and soak on hardware; Web Serial/HID/BLE in Chrome and Edge; hub `--config`, GUI character mode and fonts; VS Code Marketplace and Open VSX, the extension on Windows/Linux and over Remote-SSH/WSL | first public release |
+| 8 | Public ([08](08-public.md)): one repository with the device library (one `log.c`, Zephyr and bare-metal ports) and a device-only mirror; uclog.unitcircle.ca with the docs (Zensical, www.unitcircle.ca theme), the web app and versioned `<uc-log>` builds; device integration guides (Makefile, CMake, Zephyr), device-code-to-screen examples, embedding guide, performance and footprint tables; going public | — |
 
 ---
 
