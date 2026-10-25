@@ -70,6 +70,9 @@ pub enum Event {
     StdinWanted,
     /// Informational message (resolver notes, etc.).
     Note(String),
+    /// The service refused the logdata token, but read without it worked (`Outcome::token_refused`):
+    /// the host may offer to remove the token.
+    TokenRefused,
     Closed(CloseReason),
 }
 
@@ -566,6 +569,9 @@ impl Session {
         }
         for n in o.notes {
             self.emit(Event::Note(n)).await;
+        }
+        if o.token_refused {
+            self.emit(Event::TokenRefused).await;
         }
         let (source, targets) = match o.resolved {
             Some(r) => {

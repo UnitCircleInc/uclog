@@ -2,7 +2,8 @@
 # Three links at once: USART2 (ST-LINK virtual COM port), USB CDC-ACM and USB HID (the user USB
 # connector); the first one a host talks on is used.
 #
-#   make            build build/app.elf (with .logdata_cbor), app.bin, app.logdata
+#   make            build build/app.elf (with .logdata_cbor), app.bin, app.logdata;
+#                   copies <app_hash>.logdata to $(UCLOG_CACHE)
 #   make flash      program over this board's ST-LINK (STM32_Programmer_CLI)
 #   make clean
 #
@@ -24,6 +25,8 @@ OBJDUMP := $(CROSS)objdump
 SIZE    := $(CROSS)size
 PROG    ?= $(CUBECLT)/STM32CubeProgrammer/bin/STM32_Programmer_CLI
 PYTHON  ?= python3
+# The hosts find logdata here by the device's app_hash (same default as uclog and the Python library)
+UCLOG_CACHE ?= $(or $(UCLOG_CACHE_DIR),$(XDG_CACHE_HOME:%=%/uclog),$(HOME)/.cache/uclog)
 
 STM32CUBE_C0 ?= $(HOME)/STM32Cube/Repository/STM32Cube_FW_C0_V1.4.1
 CMSIS_CORE   ?= $(STM32CUBE_C0)/Drivers/CMSIS/Include
@@ -115,6 +118,7 @@ $(BUILD)/app.elf: $(OBJS) board/stm32c071rb.ld $(UCLOG_DIR)/log.ld $(UCLOG_DIR)/
 	$(OBJCOPY) --add-section .logdata_cbor=$(BUILD)/app.logdata --set-section-flags .logdata_cbor=noload,readonly $@.tmp $@
 	@rm -f $@.tmp
 	cp $(BUILD)/app.logdata $(BUILD)/$$(cat $(BUILD)/app.hash.txt).logdata
+	@mkdir -p $(UCLOG_CACHE) && cp $(BUILD)/app.logdata $(UCLOG_CACHE)/$$(cat $(BUILD)/app.hash.txt).logdata
 	$(SIZE) $@
 
 $(BUILD)/app.bin: $(BUILD)/app.elf

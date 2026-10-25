@@ -4,12 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync, chmodSync } from 'node:fs';
 import * as net from 'node:net';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bundledHubPath, deviceProblem, listDevices, parseHubAddress, PrivateHub, resolveHub } from '../src/hub.ts';
 import { HubConnection } from '../src/connection.ts';
-import { findLocalLogdata, ImageHashes, imageHash, LogdataStore, NodeFs } from '../src/files.ts';
+import { findLocalLogdata, ImageHashes, imageHash, LogdataStore, NodeFs, sharedCacheDir } from '../src/files.ts';
 import { allowedUrl, hostFetch } from '../src/fetch.ts';
 import type { LinkState } from '../src/messages.ts';
 
@@ -200,6 +200,23 @@ describe('logdata in the extension host', () => {
     expect(await s.get(hash)).toBeUndefined();
   });
 
+  it('writes the shared cache and still reads the older one', async () => {
+    const shared = join(tmp(), 'uclog');
+    const older = tmp();
+    const other = 'cd'.repeat(64);
+    writeFileSync(join(older, `${other}.logdata`), new Uint8Array([9]));
+    const s = new LogdataStore(shared, [older]);
+    expect([...(await s.get(other))!]).toEqual([9]);
+    await s.put(hash, new Uint8Array([1]));
+    expect(existsSync(join(shared, `${hash}.logdata`))).toBe(true);
+    expect(await s.count()).toBe(1);
+    expect(await s.clear()).toBe(2);
+    expect(await s.get(other)).toBeUndefined();
+    expect(sharedCacheDir({})).toBe(join(homedir(), '.cache', 'uclog'));
+    expect(sharedCacheDir({ XDG_CACHE_HOME: '/x' })).toBe(join('/x', 'uclog'));
+    expect(sharedCacheDir({ UCLOG_CACHE_DIR: '/c', XDG_CACHE_HOME: '/x' })).toBe('/c');
+  });
+
   it('finds a <hash>.logdata, or the ELF next to a matching signed image', async () => {
     const d = tmp();
     const named = join(d, `${hash}.logdata`);
@@ -238,7 +255,18 @@ describe('logdata fetch', () => {
     const r = await hostFetch('https://fw.unitcircle.ca/logdata/a/b', {}, 'tok', f);
     expect(seen.Authorization).toBe('Bearer tok');
     expect(r.status).toBe(429);
-    expect(r.headers).toEqual({ 'retry-after': '3', 'x-request-id': 'r1' });
+    expect(r.headers).toEqual({ 'retry-after': '3', 'x-request-id': 'r1', 'x-uclog-token-sent': '1' });
     expect([...r.body]).toEqual([7]);
+  });
+
+  it('leaves the token out when asked (the retry after a refused token)', async () => {
+    let seen: Record<string, string> = {};
+    const f = (async (_u: string, init: RequestInit) => {
+      seen = init.headers as Record<string, string>;
+      return new Response(new Uint8Array([7]));
+    }) as unknown as typeof fetch;
+    const r = await hostFetch('https://fw.unitcircle.ca/logdata/a/b', { 'x-uclog-no-token': '1' }, 'tok', f);
+    expect(seen).toEqual({});
+    expect(r.headers['x-uclog-token-sent']).toBeUndefined();
   });
 });

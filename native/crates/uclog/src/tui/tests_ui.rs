@@ -9,7 +9,7 @@ use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 use uclog_proto::cbor::{self, Value};
 
-use super::app::{button_payload, Action, App, Bg, Tab};
+use super::app::{button_payload, Action, App, Bg, Modal, Tab};
 use super::ui;
 use crate::settings::{Button, Settings};
 
@@ -237,4 +237,27 @@ fn export_and_help() {
     assert!(screen(&app).contains("Help (Esc)"));
     app.on_key(key(KeyCode::Esc));
     assert!(!screen(&app).contains("Help (Esc)"));
+}
+
+#[test]
+fn refused_token_prompt() {
+    let mut app = App::new(Settings::default(), PathBuf::from("."));
+    app.token_set = true;
+    app.on_session(uclog_session::Event::TokenRefused);
+    assert!(matches!(&app.modal, Modal::Prompt(p) if p.title.contains("Remove the saved token?")));
+    app.on_key(key(KeyCode::Char('y')));
+    assert_eq!(app.on_key(key(KeyCode::Enter)), vec![Action::SaveSettings { token: Some(None) }]);
+    assert!(!app.token_set);
+    // Asked once per run.
+    app.token_set = true;
+    app.on_session(uclog_session::Event::TokenRefused);
+    assert!(matches!(app.modal, Modal::None));
+
+    // A token from the command line or the environment: advice only.
+    let mut app = App::new(Settings::default(), PathBuf::from("."));
+    app.token_set = true;
+    app.token_from_keyring = false;
+    app.on_session(uclog_session::Event::TokenRefused);
+    assert!(matches!(app.modal, Modal::None));
+    assert!(screen(&app).contains("UCLOG_LOGDATA_TOKEN"));
 }

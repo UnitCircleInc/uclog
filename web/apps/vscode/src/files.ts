@@ -3,13 +3,15 @@
 
 /**
  * Files in the extension host (plan 03 §3, §4): semihost file ops sandboxed to a folder, the logdata
- * cache in `globalStorageUri/logdata/`, and logdata from local builds (a `<app_hash>.logdata`, or
+ * cache shared with the other hosts and the device builds (`~/.cache/uclog`), and logdata from
+ * local builds (a `<app_hash>.logdata`, or
  * the ELF next to a signed image whose SHA-512 after the 512-byte header is the app_hash).
  * No `vscode` import (unit tested).
  */
 
 import { createHash } from 'node:crypto';
 import { constants as C, promises as fsp, type Stats } from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 
 /** newlib errno names the device understands (protocol.md §5.5, D25). */
@@ -190,17 +192,31 @@ export class NodeFs {
 
 const HASH = /^[0-9a-f]{128}$/;
 
-/** `<dir>/<app_hash>.logdata`. */
+/** The cache shared with `uclog`, the Python library and the device builds: `$UCLOG_CACHE_DIR`,
+ * else `$XDG_CACHE_HOME/uclog`, else `~/.cache/uclog`, on every platform. */
+export function sharedCacheDir(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.UCLOG_CACHE_DIR) return env.UCLOG_CACHE_DIR;
+  return path.join(env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), 'uclog');
+}
+
+/** `<dir>/<app_hash>.logdata`. `older` folders (the extension's cache before it used the shared
+ * one) are read after `dir` and cleared with it; new files go to `dir`. */
 export class LogdataStore {
-  constructor(readonly dir: string) {}
+  constructor(
+    readonly dir: string,
+    readonly older: string[] = [],
+  ) {}
 
   async get(hashHex: string): Promise<Uint8Array | undefined> {
     if (!HASH.test(hashHex)) return undefined;
-    try {
-      return new Uint8Array(await fsp.readFile(path.join(this.dir, `${hashHex}.logdata`)));
-    } catch {
-      return undefined;
+    for (const d of [this.dir, ...this.older]) {
+      try {
+        return new Uint8Array(await fsp.readFile(path.join(d, `${hashHex}.logdata`)));
+      } catch {
+        /* next */
+      }
     }
+    return undefined;
   }
 
   async put(hashHex: string, data: Uint8Array): Promise<void> {
@@ -211,12 +227,19 @@ export class LogdataStore {
     await fsp.rename(tmp, path.join(this.dir, `${hashHex}.logdata`));
   }
 
+  /** The `.logdata` files in `dir`. */
+  async count(): Promise<number> {
+    return (await fsp.readdir(this.dir).catch(() => [] as string[])).filter((f) => f.endsWith('.logdata')).length;
+  }
+
   async clear(): Promise<number> {
     let n = 0;
-    for (const f of await fsp.readdir(this.dir).catch(() => [] as string[])) {
-      if (f.endsWith('.logdata') || f.endsWith('.tmp')) {
-        await fsp.rm(path.join(this.dir, f), { force: true });
-        n++;
+    for (const d of [this.dir, ...this.older]) {
+      for (const f of await fsp.readdir(d).catch(() => [] as string[])) {
+        if (f.endsWith('.logdata') || f.endsWith('.tmp')) {
+          await fsp.rm(path.join(d, f), { force: true });
+          if (f.endsWith('.logdata')) n++;
+        }
       }
     }
     return n;

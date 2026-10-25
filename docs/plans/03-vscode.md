@@ -41,7 +41,7 @@ are fragile across VS Code releases. So:
 | Protocol, decode, FW update (59→3), semihost logic, workers | `@uclog/core`, `@uclog/workers` | — |
 | UI | `@uclog/ui` / `<uc-log>` | theme bridge `--vscode-*` → `--uc-*` |
 | Transport | `Link` interface | `MessagePortLink` + `HostBridge` (spawn hub, TCP socket, mDNS via `bonjour-service`) |
-| Logdata fetch/cache | resolver | the ext host fetches (no CORS; the `vscode-webview://` origin would be rejected) and caches in `globalStorageUri/logdata/` |
+| Logdata fetch/cache | resolver | the ext host fetches (no CORS; the `vscode-webview://` origin would be rejected) and caches in the cache shared with the other hosts, `~/.cache/uclog` (decided 2026-10-25; it was `globalStorageUri/logdata/`, still read) |
 | Token | — | `SecretStorage` |
 | File pickers | `pickFile()` hook | `vscode.window.showOpenDialog` |
 | Semihost FS | `FsProvider` | ext-host provider sandboxed to `uclog.semihost.root` (default `${workspaceFolder}/uclog-files`); time calls are answered by the hub (D31) |
@@ -70,7 +70,8 @@ Webview CSP: `default-src 'none'`, nonce scripts, `worker-src blob:`.
 - No extension dependencies, no global installs, no PATH changes. Binaries live inside the
   extension folder.
 - State only in `globalStorageUri` + `SecretStorage`. VS Code removes these on uninstall, and
-  *Reset All Data* clears them manually.
+  *Reset All Data* clears them manually. The exception is the shared logdata cache
+  (`~/.cache/uclog`), which the other hosts and the device builds use too: it is kept.
 - Spawned hubs are child processes, killed on `deactivate` and when the extension host exits.
 - `extensionKind: ["ui", "workspace"]`, so in Remote-SSH/WSL/containers it runs locally, where the
   USB devices are.
@@ -144,7 +145,10 @@ above:
 - **Logdata:**
   - The extension host fetches only from the configured service URL. The token stays in
     SecretStorage and never enters the webview.
-  - The cache is `globalStorageUri/logdata/<app_hash>.logdata`.
+  - The cache is the one shared with the other hosts and the device builds
+    (`$UCLOG_CACHE_DIR`, else `$XDG_CACHE_HOME/uclog`, else `~/.cache/uclog`):
+    `<app_hash>.logdata`. The older `globalStorageUri/logdata/` is still read, and *Clear Logdata
+    Cache* empties both after asking.
   - The workspace is searched for `**/<app_hash>.logdata`, then for the ELF next to a
     `**/*.signed.bin` with a matching hash. Image hashes are remembered while a file's mtime and
     size are unchanged.

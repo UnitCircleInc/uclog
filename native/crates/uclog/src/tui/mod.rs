@@ -128,6 +128,7 @@ async fn run_stream(a: TuiArgs, s: Settings) -> anyhow::Result<ExitCode> {
                 let _ = h.stdin(vec![]).await;
             }
             Event::Note(n) => eprintln!("uclog: {n}"),
+            Event::TokenRefused => eprintln!("uclog: {}", crate::front::stale_token_advice(&a.logdata)),
             Event::Logdata { source: Some(s), .. } => eprintln!("uclog: logdata: {s}"),
             Event::Liveness(uclog_session::Liveness::NotResponding) => eprintln!("uclog: device not responding"),
             Event::Closed(r) => {
@@ -307,7 +308,8 @@ impl Runner {
                 let mut msg = vec![];
                 if let Some(t) = token {
                     match settings::set_keyring_token(t.as_deref()) {
-                        Ok(()) => msg.push("token saved in the keyring".to_string()),
+                        Ok(()) if t.is_some() => msg.push("token saved in the keyring".to_string()),
+                        Ok(()) => msg.push("token removed from the keyring".to_string()),
                         Err(e) => msg.push(format!("keyring: {e}")),
                     }
                 }
@@ -379,6 +381,7 @@ async fn run_ui(
     let cwd = std::env::current_dir().unwrap_or_default();
     let mut app = App::new(settings, cwd);
     app.token_set = settings::keyring_token().is_some();
+    app.token_from_keyring = crate::front::token_from_keyring(&a.logdata);
     if let Some(l) = &a.level {
         let mut f = app.logs.filter.clone();
         f.min_level = level_num(l);

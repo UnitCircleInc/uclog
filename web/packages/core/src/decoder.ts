@@ -20,7 +20,7 @@ export const INFO_WAIT = 1000;
 
 export type DecoderEvent =
   | { t: 'device-info'; info: CborValue; appHash: string | null }
-  | { t: 'logdata'; appHash: string; source: Resolved['source']; targets: number[] }
+  | { t: 'logdata'; appHash: string; source: Resolved['source']; targets: number[]; tokenRefused?: boolean }
   | { t: 'note'; text: string };
 
 type LogMsg = Extract<ToDecoder, { t: 'log' }>;
@@ -169,7 +169,13 @@ export class DecodeSession {
       const named = r.source.kind === 'manual' ? r.logdata.find((ld) => ld.appHash && hex(ld.appHash) === h) : undefined;
       if (named && this.appHashBytes) void this.resolver.remember(this.appHashBytes, named.cbor).catch(() => {});
     }
-    this.emit({ t: 'logdata', appHash: h, source: r.source, targets: r.source ? r.logdata.map((l) => l.target) : [] });
+    this.emit({
+      t: 'logdata',
+      appHash: h,
+      source: r.source,
+      targets: r.source ? r.logdata.map((l) => l.target) : [],
+      ...(r.tokenRefused && { tokenRefused: true }),
+    });
     this.flush();
   }
 }

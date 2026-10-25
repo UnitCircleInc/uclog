@@ -130,6 +130,7 @@ pub async fn run(a: TermArgs) -> anyhow::Result<ExitCode> {
                         }
                     }
                     Event::Note(n) => eprint!("uclog: {n}{nl}"),
+                    Event::TokenRefused => eprint!("uclog: {}{nl}", crate::front::stale_token_advice(&a.logdata)),
                     Event::Logdata { source: Some(s), .. } => eprint!("uclog: logdata: {s}{nl}"),
                     Event::Closed(r) => {
                         eprint!("{nl}uclog: {r}{nl}");

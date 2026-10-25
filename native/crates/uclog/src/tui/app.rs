@@ -98,6 +98,7 @@ pub enum Then {
     },
     Setting(usize),
     ConfirmFw(PathBuf),
+    RemoveToken,
 }
 
 pub enum Modal {
@@ -207,6 +208,10 @@ pub struct App {
     /// Token as edited in Settings: `None` = unchanged.
     pub token_edit: Option<Option<String>>,
     pub token_set: bool,
+    /// The session's token is the keyring's (so removing it there helps).
+    pub token_from_keyring: bool,
+    /// Asked about removing a refused token in this run.
+    pub token_asked: bool,
     pub status: Option<(String, Instant)>,
     pub cwd: PathBuf,
     sent_on_connect: bool,
@@ -274,6 +279,8 @@ impl App {
             settings_sel: 0,
             token_edit: None,
             token_set: false,
+            token_from_keyring: true,
+            token_asked: false,
             status: None,
             cwd,
             sent_on_connect: false,
@@ -282,6 +289,21 @@ impl App {
 
     pub fn say(&mut self, s: impl Into<String>) {
         self.status = Some((s.into(), Instant::now()));
+    }
+
+    /// The service refused the token but read without it worked: offer to remove the saved token
+    /// (once per run), unless it came from the command line or the environment.
+    fn token_refused(&mut self) {
+        if !(self.token_from_keyring && self.token_set) {
+            self.say("the logdata token was refused, but the account allows reading without one: drop --logdata-token or unset UCLOG_LOGDATA_TOKEN");
+        } else if !self.token_asked && matches!(self.modal, Modal::None) {
+            self.token_asked = true;
+            self.prompt(
+                "Token refused, but reading without one works. Remove the saved token? (y/n)",
+                Then::RemoveToken,
+                false,
+            );
+        }
     }
 
     fn note(&mut self, s: String) {
@@ -358,6 +380,7 @@ impl App {
                 self.say("the device is reading stdin: type a line in the terminal");
             }
             Event::Note(n) => self.note(n),
+            Event::TokenRefused => self.token_refused(),
             Event::Closed(r) => {
                 self.conn.closed = Some(r.to_string());
                 self.conn.liveness = None;
@@ -625,6 +648,12 @@ impl App {
                 return self.next_command_arg(button, answers, remaining);
             }
             Then::Setting(i) => return self.set_setting(i, s),
+            Then::RemoveToken => {
+                if s.trim().eq_ignore_ascii_case("y") || s.trim().eq_ignore_ascii_case("yes") {
+                    self.token_set = false;
+                    return vec![Action::SaveSettings { token: Some(None) }];
+                }
+            }
             Then::ConfirmFw(p) => {
                 if s.trim().eq_ignore_ascii_case("y") || s.trim().eq_ignore_ascii_case("yes") {
                     self.fw.running = true;

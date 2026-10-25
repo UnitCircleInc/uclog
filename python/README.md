@@ -132,10 +132,13 @@ async with await uclog.aio.connect(device="serial:/dev/ttyACM0") as dev:
 order:
 
 1. **The given files.** A file named `<app_hash>.logdata` is used only for that hash.
-2. **The cache directory.** `cache_dir`, which defaults to the native tools' cache, holding
-   `<app_hash>.logdata` files.
+2. **The cache directory.** `cache_dir`, which defaults to the native tools' cache
+   (`$UCLOG_CACHE_DIR`, else `$XDG_CACHE_HOME/uclog`, else `~/.cache/uclog`), holding
+   `<app_hash>.logdata` files. The firmware builds copy theirs there.
 3. **fw.unitcircle.ca.** Used when `logdata_domain` (or `$UCLOG_LOGDATA_DOMAIN`) is set, with
-   `logdata_token` / `$UCLOG_LOGDATA_TOKEN`. The download is saved to the cache.
+   `logdata_token` / `$UCLOG_LOGDATA_TOKEN`. The download is saved to the cache. A refused token
+   (401) is retried once without it, for accounts that allow reading without a token; the
+   resolver's `token_refused` is then set and `notes` says so.
 4. **The first given file**, with a warning in `notes`.
 
 `uclog.LogData.load(path).decode(addr, args)` decodes without a connection.

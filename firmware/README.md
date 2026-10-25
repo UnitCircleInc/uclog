@@ -153,7 +153,7 @@ The build also needs `-mfp16-format=ieee`, because ucComm CBOR uses `__fp16`.
 
 ```sh
 cd firmware/nucleo-l452re-p
-make            # build/app.elf (+ .logdata_cbor), app.bin, app.logdata, <app_hash>.logdata
+make            # build/app.elf (+ .logdata_cbor), app.bin, app.logdata, <app_hash>.logdata (+ cache)
 make flash      # STM32_Programmer_CLI over SWD
 make run        # flash, then: uclog term -l build/app.elf --files-dir build/files
 ```
@@ -174,8 +174,11 @@ The toolchain and build steps are the same for every board.
 4. Generate the logdata.
 5. Embed the logdata as `.logdata_cbor`.
 
-`build/<app_hash>.logdata` lets `--cache-dir build` resolve the logdata from the device info
-without `-l`.
+The build also copies `<app_hash>.logdata` into the hosts' logdata cache, `UCLOG_CACHE` (default
+`$UCLOG_CACHE_DIR`, else `$XDG_CACHE_HOME/uclog`, else `~/.cache/uclog`: the same rule as `uclog`
+and the Python library, and the directory the Zephyr module's `cachelogdata.py` writes to). So
+`uclog tui`, `uclog gui` and the other hosts find the logdata from the device info without `-l`.
+`build/<app_hash>.logdata` stays, for `--cache-dir build`.
 
 ### Results (2026-10-23, DMA build, `uclog` with the 1452-byte limit, serial via the ST-LINK VCP)
 

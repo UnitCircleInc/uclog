@@ -63,8 +63,8 @@ pub struct LogdataArgs {
     /// Logdata file (.logdata or ELF with .logdata_cbor); repeatable
     #[arg(short = 'l', long = "logdata", value_name = "FILE")]
     pub logdata: Vec<PathBuf>,
-    /// Logdata cache directory [default: platform cache dir]
-    #[arg(long, value_name = "DIR")]
+    /// Logdata cache directory [default: $XDG_CACHE_HOME/uclog, else ~/.cache/uclog]
+    #[arg(long, value_name = "DIR", env = "UCLOG_CACHE_DIR")]
     pub cache_dir: Option<PathBuf>,
     /// Domain for remote logdata lookup
     #[arg(long, env = "UCLOG_LOGDATA_DOMAIN")]
@@ -92,8 +92,13 @@ impl LogdataArgs {
 
 pub const DEFAULT_LOGDATA_URL: &str = "https://fw.unitcircle.ca";
 
+/// `$XDG_CACHE_HOME/uclog`, else `~/.cache/uclog`, on every platform: the cache the device builds
+/// write `<app_hash>.logdata` into (the firmware Makefiles, the Zephyr module's `cachelogdata.py`).
 pub fn default_cache_dir() -> Option<PathBuf> {
-    directories::ProjectDirs::from("ca", "unitcircle", "uclog").map(|d| d.cache_dir().join("logdata"))
+    match std::env::var_os("XDG_CACHE_HOME").filter(|v| !v.is_empty()) {
+        Some(x) => Some(PathBuf::from(x).join("uclog")),
+        None => directories::BaseDirs::new().map(|d| d.home_dir().join(".cache/uclog")),
+    }
 }
 
 fn main() -> std::process::ExitCode {

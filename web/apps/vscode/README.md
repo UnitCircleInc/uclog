@@ -32,9 +32,14 @@ is the same logger as the ucLog web client, connected through `uclog-hub`, which
 Logdata is chosen by the device's `app_hash`, in this order:
 
 1. files loaded with **ucLog: Load Logdata…** (`.logdata` or an ELF with `.logdata_cbor`);
-2. the cache (a loaded file is remembered for its `app_hash`);
+2. the logdata cache shared with `uclog`, the Python library and the device builds
+   (`$UCLOG_CACHE_DIR`, else `$XDG_CACHE_HOME/uclog`, else `~/.cache/uclog`). Downloads and loaded
+   files are saved there under their `app_hash`. **ucLog: Clear Logdata Cache** empties it, after
+   asking;
 3. the logdata service, when `uclog.logdata.domain` is set (the token is set with
-   **ucLog: Set Logdata Token** and kept in VS Code's secret storage);
+   **ucLog: Set Logdata Token** and kept in VS Code's secret storage). If the service refuses the
+   token but the account allows reading without one, the logdata is read without it and the
+   extension offers to remove the token;
 4. the workspace: a `<app_hash>.logdata` file, or the ELF next to a `*.signed.bin` whose hash
    matches.
 
@@ -66,7 +71,8 @@ are refused. The default is a subfolder so that a device cannot write `.git/hook
 
 ## Data
 
-The extension keeps data only in VS Code's storage for it (the logdata cache and what the logger
-remembers: history, colours, recent hubs) and in its secret storage (the token). **ucLog: Reset
-All Data** clears both; uninstalling removes them. Nothing is installed outside the extension's
-folder.
+The extension keeps its data in VS Code's storage for it (what the logger remembers: history,
+colours, recent hubs) and in its secret storage (the token). **ucLog: Reset All Data** clears both;
+uninstalling removes them. The one exception is the shared logdata cache above, which the other
+ucLog tools use too: it is kept on reset and uninstall. Nothing is installed outside the
+extension's folder.

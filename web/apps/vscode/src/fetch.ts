@@ -6,6 +6,10 @@
  * SecretStorage never enters the webview. The webview's resolver reads the reply as a Response.
  */
 
+// The same names as @uclog/core's NO_TOKEN and TOKEN_SENT (the extension host doesn't import core).
+const NO_TOKEN = 'x-uclog-no-token';
+const TOKEN_SENT = 'x-uclog-token-sent';
+
 export interface FetchReply {
   status: number;
   headers: Record<string, string>;
@@ -29,12 +33,19 @@ export async function hostFetch(
   token: string | undefined,
   f: typeof fetch = fetch,
 ): Promise<FetchReply> {
-  const h: Record<string, string> = { ...headers };
-  if (token && !Object.keys(h).some((k) => k.toLowerCase() === 'authorization')) h.Authorization = `Bearer ${token}`;
+  const h: Record<string, string> = {};
+  let noToken = false;
+  for (const [k, v] of Object.entries(headers)) {
+    if (k.toLowerCase() === NO_TOKEN) noToken = true;
+    else h[k] = v;
+  }
+  const addToken = !!token && !noToken && !Object.keys(h).some((k) => k.toLowerCase() === 'authorization');
+  if (addToken) h.Authorization = `Bearer ${token}`;
   const r = await f(url, { headers: h, redirect: 'follow', signal: AbortSignal.timeout(30_000) });
   const out: Record<string, string> = {};
   r.headers.forEach((v, k) => {
     if (k === 'content-type' || k === 'x-request-id' || k === 'retry-after') out[k] = v;
   });
+  if (addToken) out[TOKEN_SENT] = '1';
   return { status: r.status, headers: out, body: new Uint8Array(await r.arrayBuffer()) };
 }

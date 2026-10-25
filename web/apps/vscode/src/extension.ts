@@ -13,7 +13,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { DEMO, DevicesTree, pickDevice } from './devices.ts';
 import { allowedUrl, hostFetch } from './fetch.ts';
-import { findLocalLogdata, FsError, ImageHashes, LogdataStore, NodeFs } from './files.ts';
+import { findLocalLogdata, FsError, ImageHashes, LogdataStore, NodeFs, sharedCacheDir } from './files.ts';
 import { deviceProblem, listDevices, parseHubAddress, PrivateHub, resolveHub, type Device } from './hub.ts';
 import type { ConnSummary, FromWebview, WebviewInit } from './messages.ts';
 import { LoggerPanel, type Target } from './panel.ts';
@@ -51,7 +51,7 @@ class App implements vscode.Disposable {
 
   constructor(private ctx: vscode.ExtensionContext) {
     this.out = vscode.window.createOutputChannel('ucLog', { log: true });
-    this.store = new LogdataStore(vscode.Uri.joinPath(ctx.globalStorageUri, 'logdata').fsPath);
+    this.store = new LogdataStore(sharedCacheDir(), [vscode.Uri.joinPath(ctx.globalStorageUri, 'logdata').fsPath]);
     this.status = vscode.window.createStatusBarItem('uclog.status', vscode.StatusBarAlignment.Left, 50);
     this.status.name = 'ucLog';
     this.updateStatus();
@@ -345,6 +345,8 @@ class App implements vscode.Disposable {
         return void this.connectPick();
       case 'open-settings':
         return void vscode.commands.executeCommand('workbench.action.openSettings', '@ext:unitcircle.uclog');
+      case 'token-refused':
+        return void this.tokenRefused();
       case 'open-source':
         return void this.openSource(m.file, m.line);
       case 'save':
@@ -587,6 +589,20 @@ class App implements vscode.Disposable {
     this.terminal.show(!show);
   }
 
+  /** The service refused the stored token, but read without it worked. */
+  private async tokenRefused() {
+    if (!(await this.ctx.secrets.get(TOKEN_KEY))) return;
+    const remove = 'Remove Token';
+    const a = await vscode.window.showWarningMessage(
+      'ucLog: the logdata service refused the stored token, but this account allows reading without one. Remove the stored token?',
+      remove,
+      'Keep',
+    );
+    if (a !== remove) return;
+    await this.ctx.secrets.delete(TOKEN_KEY);
+    void vscode.window.showInformationMessage('ucLog: logdata token removed.');
+  }
+
   private async setToken() {
     const t = await vscode.window.showInputBox({
       title: 'ucLog: Logdata token',
@@ -601,18 +617,23 @@ class App implements vscode.Disposable {
   }
 
   private async clearCache() {
+    const ok = await vscode.window.showWarningMessage(
+      `Remove the ${await this.store.count()} logdata files in ${this.store.dir}? uclog, the Python library and the device builds share this folder.`,
+      { modal: true },
+      'Remove',
+    );
+    if (ok !== 'Remove') return;
     const n = await this.store.clear();
     void vscode.window.showInformationMessage(`ucLog: removed ${n} cached logdata file${n === 1 ? '' : 's'}.`);
   }
 
   private async resetAll() {
     const ok = await vscode.window.showWarningMessage(
-      'Reset all ucLog data? This removes the logdata cache, the token and remembered UI state (history, colours, hubs). Settings are kept.',
+      `Reset all ucLog data? This removes the token and remembered UI state (history, colours, hubs). Settings and the shared logdata cache (${this.store.dir}) are kept.`,
       { modal: true },
       'Reset',
     );
     if (ok !== 'Reset') return;
-    await this.store.clear();
     await fsp.rm(this.ctx.globalStorageUri.fsPath, { recursive: true, force: true });
     await this.ctx.secrets.delete(TOKEN_KEY);
     for (const k of this.ctx.globalState.keys()) await this.ctx.globalState.update(k, undefined);

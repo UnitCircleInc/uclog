@@ -149,6 +149,7 @@ UcLog.host = {
   openSource: (file, line) => post({ t: 'open-source', file, line }),
   save: (name, data) => post({ t: 'save', name, data }),
   openSettings: () => post({ t: 'open-settings' }),
+  tokenRefused: () => post({ t: 'token-refused' }),
   settings: {
     load: () => init.settings,
     save: (s: Settings) => post({ t: 'settings-save', settings: s }),

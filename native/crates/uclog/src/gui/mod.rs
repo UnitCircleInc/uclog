@@ -105,8 +105,10 @@ pub fn run(a: GuiArgs) -> anyhow::Result<ExitCode> {
             } else {
                 None
             };
+            let from_keyring = crate::front::token_from_keyring(&a.logdata);
             let (backend, rx) = backend::start(cc.egui_ctx.clone(), a.device, a.logdata, a.files_dir, settings.clone());
             let mut app = GuiApp::new(settings, settings_path, backend, rx, dock);
+            app.token_from_keyring = from_keyring;
             if let Some(n) = note {
                 app.say(n);
             }

@@ -222,6 +222,10 @@ pub struct GuiApp {
     pub connect: ConnectDialog,
     pub settings_dlg: Option<SettingsDialog>,
     pub show_about: bool,
+    /// The session's token is the keyring's (so removing it there helps).
+    pub token_from_keyring: bool,
+    /// `Some(open)`: asked about removing a refused token in this run.
+    pub token_prompt: Option<bool>,
     pub status: Option<(String, Instant)>,
     pub port_counts: BTreeMap<u8, u64>,
     pub notes: VecDeque<String>,
@@ -262,6 +266,8 @@ impl GuiApp {
             connect: ConnectDialog::default(),
             settings_dlg: None,
             show_about: false,
+            token_from_keyring: true,
+            token_prompt: None,
             status: None,
             port_counts: BTreeMap::new(),
             notes: VecDeque::new(),
@@ -461,6 +467,13 @@ impl GuiApp {
                 self.say("the device is reading stdin: type a line in the Terminal");
             }
             Event::Note(n) => self.note(n),
+            Event::TokenRefused => {
+                if self.token_from_keyring && settings::keyring_token().is_some() {
+                    self.token_prompt.get_or_insert(true);
+                } else {
+                    self.say("the logdata token was refused, but the account allows reading without one: drop --logdata-token or unset UCLOG_LOGDATA_TOKEN");
+                }
+            }
             Event::Closed(r) => {
                 self.conn.busy = matches!(r, CloseReason::HubBusy);
                 self.conn.closed = Some(r.to_string());
@@ -514,6 +527,7 @@ impl GuiApp {
         super::connect::dialog(self, &ctx);
         super::settings_dlg::dialog(self, &ctx);
         self.about(&ctx);
+        self.token_dialog(&ctx);
         self.screenshots(&ctx);
         if self.quit {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -688,6 +702,33 @@ impl GuiApp {
                 ui.label(RichText::new(s).italics());
             }
         });
+    }
+
+    /// The service refused the saved token but read without it worked: offer to remove it.
+    fn token_dialog(&mut self, ctx: &egui::Context) {
+        if self.token_prompt != Some(true) {
+            return;
+        }
+        let mut close = false;
+        egui::Window::new("Logdata token refused").collapsible(false).resizable(false).show(ctx, |ui| {
+            ui.label("The logdata service refused the saved token, but this account allows reading without one.");
+            ui.label("Remove the saved token?");
+            ui.horizontal(|ui| {
+                if ui.button("Remove").clicked() {
+                    match settings::set_keyring_token(None) {
+                        Ok(()) => self.say("logdata token removed from the keyring"),
+                        Err(e) => self.say(format!("keyring: {e}")),
+                    }
+                    close = true;
+                }
+                if ui.button("Keep").clicked() {
+                    close = true;
+                }
+            });
+        });
+        if close {
+            self.token_prompt = Some(false);
+        }
     }
 
     fn about(&mut self, ctx: &egui::Context) {

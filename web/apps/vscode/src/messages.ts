@@ -47,6 +47,7 @@ export type FromWebview =
   | { t: 'settings-save'; settings: unknown }
   | { t: 'show-connect' }
   | { t: 'open-settings' }
+  | { t: 'token-refused' }
   | { t: 'open-source'; file: string; line: string }
   | { t: 'save'; name: string; data: Uint8Array }
   /** Services and pickers that answer (`reply`). */

@@ -36,6 +36,20 @@ pub fn session_config(l: &LogdataArgs, files_dir: Option<PathBuf>, s: &Settings)
     }
 }
 
+/// The logdata token comes from the keyring (not `--logdata-token` / `$UCLOG_LOGDATA_TOKEN`).
+pub fn token_from_keyring(l: &LogdataArgs) -> bool {
+    l.logdata_token.is_none()
+}
+
+/// How to stop sending a token the service refuses (`Event::TokenRefused`), by where it came from.
+pub fn stale_token_advice(l: &LogdataArgs) -> &'static str {
+    if token_from_keyring(l) {
+        "the account allows reading without a token: remove the saved token in the Settings of `uclog tui` or `uclog gui`"
+    } else {
+        "the account allows reading without a token: drop --logdata-token or unset UCLOG_LOGDATA_TOKEN"
+    }
+}
+
 /// USB filters: the command line's, else the settings', else the defaults (empty).
 pub fn usb_filters(cli: &[uclog_link::discover::UsbFilter], s: &Settings) -> Vec<uclog_link::discover::UsbFilter> {
     if !cli.is_empty() {

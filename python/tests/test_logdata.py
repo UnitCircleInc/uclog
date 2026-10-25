@@ -99,3 +99,54 @@ def test_not_logdata(tmp_path):
   p.write_bytes(cbor.dumps({'hello': 1}))
   with pytest.raises(LogDataError):
     LogData.load(p)
+
+
+def test_auth_hint():
+  from uclog.resolver import auth_hint
+  assert auth_hint(401, False).startswith('No token was sent')
+  assert auth_hint(401, True).startswith('The token was not accepted')
+  assert 'logdata:read' in auth_hint(403, True)
+  assert auth_hint(500, True) is None
+
+
+def _service(public):
+  """A logdata service that refuses any token and, when `public`, allows reading without one."""
+  import http.server
+  import threading
+  body = pathlib.Path(ROOT, 'spec', 'vectors', 'sample.logdata').read_bytes()
+
+  class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+      ok = public and 'Authorization' not in self.headers
+      self.send_response(200 if ok else 401)
+      self.send_header('Content-Length', str(len(body) if ok else 0))
+      self.end_headers()
+      if ok:
+        self.wfile.write(body)
+
+    def log_message(self, *a):
+      pass
+
+  srv = http.server.HTTPServer(('127.0.0.1', 0), H)
+  threading.Thread(target=srv.serve_forever, daemon=True).start()
+  return srv, f'http://127.0.0.1:{srv.server_port}'
+
+
+def test_refused_token_retries_without_it(tmp_path):
+  from uclog.resolver import Resolver
+  srv, url = _service(public=True)
+  try:
+    r = Resolver(cache_dir=tmp_path, domain='example.com', url=url, token='stale')
+    lds, source, notes = r.resolve(bytes(64))
+    assert lds and source.startswith('remote') and r.token_refused
+    assert 'token was refused' in notes[0]
+  finally:
+    srv.shutdown()
+  srv, url = _service(public=False)
+  try:
+    r = Resolver(cache_dir=tmp_path / 'b', domain='example.com', url=url, token='stale')
+    lds, source, notes = r.resolve(bytes(64))
+    assert not lds and not r.token_refused
+    assert 'HTTP 401' in notes[0] and 'The token was not accepted' in notes[0]
+  finally:
+    srv.shutdown()

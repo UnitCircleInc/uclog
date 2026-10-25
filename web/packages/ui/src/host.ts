@@ -33,4 +33,7 @@ export interface UcHost {
   files?: string | null;
   /** How the user changes the semihost folder (shown in the Device view). */
   filesHint?: string;
+  /** The logdata service refused the host's token, but read without it worked: offer to remove
+   * the token (instead of the element's own question). */
+  tokenRefused?(): void;
 }

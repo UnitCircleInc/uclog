@@ -120,7 +120,7 @@ export type MainToDecode =
 export type DecodeToMain =
   | { t: 'state'; state: DecodeState }
   | { t: 'device-info'; info: unknown; fields: [string, string][]; appHash: string | null }
-  | { t: 'logdata'; appHash: string; source: { kind: SourceKind; name: string } | null; targets: number[] }
+  | { t: 'logdata'; appHash: string; source: { kind: SourceKind; name: string } | null; targets: number[]; tokenRefused?: boolean }
   | { t: 'note'; text: string }
   | { t: 'logs'; rows: Row[] }
   | { t: 'reply'; id: number; ok: boolean; error?: string; value?: unknown };

@@ -68,7 +68,7 @@ export interface ClientEvents {
   'fw-done': { port?: number; error?: string };
   state: DecodeState;
   'device-info': { info: unknown; fields: [string, string][]; appHash: string | null };
-  logdata: { appHash: string; source: { kind: string; name: string } | null; targets: number[] };
+  logdata: { appHash: string; source: { kind: string; name: string } | null; targets: number[]; tokenRefused?: boolean };
   logs: Row[];
 }
 
@@ -216,7 +216,7 @@ export class Client extends EventTarget {
         this.deviceInfo = { info: m.info, fields: m.fields, appHash: m.appHash };
         return this.emit('device-info', this.deviceInfo);
       case 'logdata':
-        this.logdata = { appHash: m.appHash, source: m.source, targets: m.targets };
+        this.logdata = { appHash: m.appHash, source: m.source, targets: m.targets, tokenRefused: m.tokenRefused };
         return this.emit('logdata', this.logdata);
       case 'note':
         return this.emit('note', m.text);

@@ -403,7 +403,45 @@ describe('resolver', () => {
       })) as unknown as typeof fetch;
     const out = await new Resolver({ domain: 'd' }, null, f).resolve(hash);
     expect(out.source).toBeNull();
-    expect(out.notes[0]).toMatch(/HTTP 403: token has no access \(request id r-1\)/);
+    expect(out.notes[0]).toMatch(/HTTP 403: token has no access \(request id r-1\)\. The token is for another account/);
+  });
+
+  test('a refused token: one retry without it', async () => {
+    const seen: Record<string, string>[] = [];
+    const service = (status: number) =>
+      (async (_u: string, init: RequestInit) => {
+        const h = init.headers as Record<string, string>;
+        seen.push(h);
+        return h.Authorization ? new Response('', { status: 401 }) : new Response(SAMPLE, { status });
+      }) as unknown as typeof fetch;
+    let out = await new Resolver({ domain: 'd', token: 't' }, null, service(200)).resolve(hash);
+    expect(out.source?.kind).toBe('remote');
+    expect(out.tokenRefused).toBe(true);
+    expect(out.notes[0]).toMatch(/token was refused/);
+    expect(seen).toEqual([{ Authorization: 'Bearer t' }, {}]);
+    // Reading without a token is off too: the first error.
+    out = await new Resolver({ domain: 'd', token: 't' }, null, service(401)).resolve(hash);
+    expect(out.source).toBeNull();
+    expect(out.tokenRefused).toBeUndefined();
+    expect(out.notes[0]).toMatch(/HTTP 401\. The token was not accepted/);
+  });
+
+  test('a token added by the host fetch (VS Code): the retry asks it to leave the token out', async () => {
+    const seen: Record<string, string>[] = [];
+    const f = (async (_u: string, init: RequestInit) => {
+      const h = init.headers as Record<string, string>;
+      seen.push(h);
+      return h['x-uclog-no-token'] ? new Response(SAMPLE) : new Response('', { status: 401, headers: { 'x-uclog-token-sent': '1' } });
+    }) as unknown as typeof fetch;
+    const out = await new Resolver({ domain: 'd' }, null, f).resolve(hash);
+    expect(out.tokenRefused).toBe(true);
+    expect(seen).toEqual([{}, { 'x-uclog-no-token': '1' }]);
+  });
+
+  test('401 hint depends on whether a token was sent', async () => {
+    const f = (async () => new Response('', { status: 401 })) as unknown as typeof fetch;
+    expect((await new Resolver({ domain: 'd' }, null, f).resolve(hash)).notes[0]).toMatch(/HTTP 401\. No token was sent/);
+    expect((await new Resolver({ domain: 'd', token: 't' }, null, f).resolve(hash)).notes[0]).toMatch(/HTTP 401\. The token was not accepted/);
   });
 
   test('404 → not found', async () => {

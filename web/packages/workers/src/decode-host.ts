@@ -52,7 +52,7 @@ export class DecodeHost {
               ? [...e.info].map(([k, v]) => [typeof k === 'string' ? k : display(k), fieldText(v)])
               : [['info', display(e.info)]];
           this.post({ t: 'device-info', info: toPlain(e.info), fields, appHash: e.appHash });
-        } else if (e.t === 'logdata') this.post({ t: 'logdata', appHash: e.appHash, source: e.source, targets: e.targets });
+        } else if (e.t === 'logdata') this.post({ t: 'logdata', appHash: e.appHash, source: e.source, targets: e.targets, tokenRefused: e.tokenRefused });
         else this.post({ t: 'note', text: e.text });
         this.dirty = true;
       },

@@ -59,6 +59,9 @@ pub struct Outcome {
     pub resolved: Option<Resolved>,
     /// Problems worth showing (remote errors etc.), even when resolution succeeded later.
     pub notes: Vec<String>,
+    /// The service refused the token (401) but the logdata was read without it: the account allows
+    /// reading without a token, so the host may offer to remove the stale token.
+    pub token_refused: bool,
 }
 
 /// SHA-512 of a signed image after its 512-byte header.
@@ -102,7 +105,22 @@ pub async fn resolve(cfg: &ResolverConfig, app_hash: &[u8]) -> Outcome {
     if let Some(domain) = &cfg.domain {
         let base = cfg.url.as_deref().unwrap_or("https://fw.unitcircle.ca").trim_end_matches('/');
         let url = format!("{base}/logdata/{domain}/{hash}");
-        match fetch(&url, cfg.token.as_deref()).await {
+        let mut r = fetch(&url, cfg.token.as_deref()).await;
+        if cfg.token.is_some() && matches!(r, Err(FetchError::Http { status: 401, .. })) {
+            // The account may allow reading without a token: try once more without it.
+            let first = r;
+            r = fetch(&url, None).await;
+            match &r {
+                Ok(_) => {
+                    out.token_refused = true;
+                    out.notes.push(format!(
+                        "{url}: the logdata token was refused, but the account allows reading without a token; read without it"
+                    ));
+                }
+                Err(_) => r = first,
+            }
+        }
+        match r {
             Ok(data) => match LogData::from_cbor(&data, url.clone()) {
                 Ok(mut ld) => {
                     ld.app_hash = Some(app_hash.to_vec());
@@ -155,8 +173,8 @@ fn sibling_logdata(img: &Path) -> Option<PathBuf> {
 pub enum FetchError {
     #[error("not found")]
     NotFound,
-    #[error("HTTP {status}{}{}", .detail.as_ref().map(|d| format!(": {d}")).unwrap_or_default(), .request_id.as_ref().map(|r| format!(" (request id {r})")).unwrap_or_default())]
-    Http { status: u16, detail: Option<String>, request_id: Option<String> },
+    #[error("HTTP {status}{}{}{}", .detail.as_ref().map(|d| format!(": {d}")).unwrap_or_default(), .request_id.as_ref().map(|r| format!(" (request id {r})")).unwrap_or_default(), .hint.map(|h| format!(". {h}")).unwrap_or_default())]
+    Http { status: u16, detail: Option<String>, request_id: Option<String>, hint: Option<&'static str> },
     #[error("{0}")]
     Net(String),
 }
@@ -182,9 +200,19 @@ pub async fn fetch(url: &str, token: Option<&str>) -> Result<Vec<u8>, FetchError
         // RFC 9457 problem+json: show title/detail when present.
         let body = r.text().await.unwrap_or_default();
         let detail = problem_detail(&body).or(retry);
-        return Err(FetchError::Http { status, detail, request_id });
+        return Err(FetchError::Http { status, detail, request_id, hint: auth_hint(status, token.is_some()) });
     }
     r.bytes().await.map(|b| b.to_vec()).map_err(|e| FetchError::Net(e.to_string()))
+}
+
+/// What to do about a refused logdata request.
+pub fn auth_hint(status: u16, sent_token: bool) -> Option<&'static str> {
+    match (status, sent_token) {
+        (401, false) => Some("No token was sent: set a logdata token, or have the account allow reading without a token"),
+        (401, true) => Some("The token was not accepted (expired or revoked?): set a new logdata token"),
+        (403, _) => Some("The token is for another account than this domain, or lacks the logdata:read scope"),
+        _ => None,
+    }
 }
 
 fn problem_detail(body: &str) -> Option<String> {
@@ -214,6 +242,16 @@ mod tests {
         );
     }
 
+    #[test]
+    fn auth_hints() {
+        assert!(auth_hint(401, false).unwrap().starts_with("No token was sent"));
+        assert!(auth_hint(401, true).unwrap().starts_with("The token was not accepted"));
+        assert!(auth_hint(403, true).unwrap().contains("logdata:read"));
+        assert_eq!(auth_hint(500, true), None);
+        let e = FetchError::Http { status: 401, detail: None, request_id: Some("r".into()), hint: auth_hint(401, false) };
+        assert!(e.to_string().starts_with("HTTP 401 (request id r). No token was sent"));
+    }
+
     #[tokio::test]
     async fn cache_and_manual() {
         let d = tempfile::tempdir().unwrap();
@@ -226,5 +264,55 @@ mod tests {
         assert!(resolve(&cfg, &[8u8; 64]).await.resolved.is_none());
         let cfg = ResolverConfig { manual: vec![sample], ..cfg };
         assert!(matches!(resolve(&cfg, &[8u8; 64]).await.resolved.unwrap().source, Source::Manual(_)));
+    }
+
+    /// A service that refuses any token and allows reading without one (or, `public: false`,
+    /// refuses everything).
+    async fn service(public: bool) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let body = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../spec/vectors/sample.logdata")).unwrap();
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", l.local_addr().unwrap());
+        tokio::spawn(async move {
+            while let Ok((mut s, _)) = l.accept().await {
+                let mut buf = vec![0u8; 4096];
+                let n = s.read(&mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]).to_ascii_lowercase();
+                let reply = if req.contains("authorization:") || !public {
+                    b"HTTP/1.1 401 Unauthorized\r\ncontent-length: 0\r\nconnection: close\r\n\r\n".to_vec()
+                } else {
+                    let mut r = format!("HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: close\r\n\r\n", body.len()).into_bytes();
+                    r.extend_from_slice(&body);
+                    r
+                };
+                let _ = s.write_all(&reply).await;
+            }
+        });
+        url
+    }
+
+    #[tokio::test]
+    async fn refused_token_retries_without_it() {
+        let d = tempfile::tempdir().unwrap();
+        let cfg = |url: String, token: Option<&str>| ResolverConfig {
+            cache_dir: Some(d.path().into()),
+            domain: Some("example.com".into()),
+            token: token.map(str::to_string),
+            url: Some(url),
+            ..Default::default()
+        };
+        let o = resolve(&cfg(service(true).await, Some("stale")), &[1u8; 64]).await;
+        assert!(matches!(o.resolved.unwrap().source, Source::Remote(_)));
+        assert!(o.token_refused);
+        assert!(o.notes[0].contains("token was refused"));
+
+        // No token: nothing to retry, nothing to report.
+        let o = resolve(&cfg(service(true).await, None), &[2u8; 64]).await;
+        assert!(o.resolved.is_some() && !o.token_refused);
+
+        // Reading without a token is off: the first error, with its hint.
+        let o = resolve(&cfg(service(false).await, Some("stale")), &[3u8; 64]).await;
+        assert!(o.resolved.is_none() && !o.token_refused);
+        assert!(o.notes[0].contains("HTTP 401") && o.notes[0].contains("The token was not accepted"), "{:?}", o.notes);
     }
 }

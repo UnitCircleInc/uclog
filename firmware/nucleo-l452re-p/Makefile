@@ -1,6 +1,7 @@
 # ucLog test firmware for the NUCLEO-L452RE-P (STM32L452RE, Cortex-M4F).
 #
-#   make            build build/app.elf (with .logdata_cbor), app.bin, app.logdata
+#   make            build build/app.elf (with .logdata_cbor), app.bin, app.logdata;
+#                   copies <app_hash>.logdata to $(UCLOG_CACHE)
 #   make flash      program over the ST-LINK (STM32_Programmer_CLI)
 #   make run        flash, then `uclog term` on the ST-LINK VCP
 #   make clean
@@ -21,6 +22,8 @@ OBJDUMP := $(CROSS)objdump
 SIZE    := $(CROSS)size
 PROG    ?= $(CUBECLT)/STM32CubeProgrammer/bin/STM32_Programmer_CLI
 PYTHON  ?= python3
+# The hosts find logdata here by the device's app_hash (same default as uclog and the Python library)
+UCLOG_CACHE ?= $(or $(UCLOG_CACHE_DIR),$(XDG_CACHE_HOME:%=%/uclog),$(HOME)/.cache/uclog)
 UCLOG   ?= ../../native/target/release/uclog
 DEVICE  ?= auto
 
@@ -110,6 +113,7 @@ $(BUILD)/app.elf: $(OBJS) board/stm32l452re.ld $(UCLOG_DIR)/log.ld $(UCLOG_DIR)/
 	$(OBJCOPY) --add-section .logdata_cbor=$(BUILD)/app.logdata --set-section-flags .logdata_cbor=noload,readonly $@.tmp $@
 	@rm -f $@.tmp
 	cp $(BUILD)/app.logdata $(BUILD)/$$(cat $(BUILD)/app.hash.txt).logdata
+	@mkdir -p $(UCLOG_CACHE) && cp $(BUILD)/app.logdata $(UCLOG_CACHE)/$$(cat $(BUILD)/app.hash.txt).logdata
 	$(SIZE) $@
 
 $(BUILD)/app.bin: $(BUILD)/app.elf

@@ -126,6 +126,7 @@ export class UcLog extends LitElement {
   private off: (() => void)[] = [];
   private media = matchMedia('(prefers-color-scheme: dark)');
   private token: string | undefined;
+  private tokenAsked = false;
 
   constructor() {
     super();
@@ -413,6 +414,7 @@ export class UcLog extends LitElement {
       c.on('device-info', (d) => this.fire('uc-device-info', d)),
       c.on('logdata', (l) => {
         this.logdataText = l.source ? `${l.source.kind} ${shorten(l.source.name)}` : 'none found';
+        if (l.tokenRefused) this.tokenRefused();
       }),
       c.on('state', (s) => {
         this.errors = Object.values(s.errorCounts).reduce((a, b) => a + b, 0);
@@ -424,6 +426,18 @@ export class UcLog extends LitElement {
     this.listen(document, 'pointerdown', (e) => {
       if (this.menuOpen && !e.composedPath().includes(this.renderRoot.querySelector('.menu') as EventTarget)) this.menuOpen = false;
     });
+  }
+
+  /** The service refused the token but read without it worked: offer once to remove the saved
+   * token. A token set by the page (`token` property) is the page's to change: only the event. */
+  private tokenRefused() {
+    this.fire('uc-token-refused', {});
+    if (this.tokenAsked) return;
+    this.tokenAsked = true;
+    if (UcLog.host?.tokenRefused) return UcLog.host.tokenRefused();
+    if (this.token !== undefined || !this.settings.token) return;
+    const q = 'The logdata service refused the saved token, but this account allows reading without one. Remove the saved token?';
+    if (confirm(q)) this.settings.setToken('', false);
   }
 
   private addNote(n: string) {
