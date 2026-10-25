@@ -26,3 +26,6 @@ dist/
 # Scratch files
 /tmp/
 cmds.txt
+
+# Secrets
+.secrets
