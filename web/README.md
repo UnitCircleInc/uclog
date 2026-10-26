@@ -47,7 +47,8 @@ Code and press F5 (*Run Extension*), or install the VSIX
 The demo page's query parameters set the element's attributes, for example
 `?hub-url=ws://lab-pc:9000&theme=dark&layout=grid`, and `?connect=loopback:rate=5` connects at
 once. Web Serial, WebHID and Web Bluetooth need Chrome or Edge and a secure context (`localhost`
-counts).
+counts). On Windows, Web Bluetooth is as fast as the Bluetooth driver allows: keep it current
+(firmware/README.md, "BLE throughput with Windows 11").
 
 ## Using it
 

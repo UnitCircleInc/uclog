@@ -229,6 +229,10 @@ Tested on Windows 11 x64 (2026-10-25): the tests pass and the TUI, GUI and `term
 serial, BLE and a remote hub. Building needs rustup and the Visual Studio C++ Build Tools
 (`winget install Rustlang.Rustup`).
 
+- BLE throughput depends on the Bluetooth adapter's driver. With Intel's 2022 driver a BLE burst
+  ran at ~28 kB/s, with its 2026 driver at ~82 kB/s (firmware/README.md, "BLE throughput with
+  Windows 11"). Install the current driver from the adapter's maker; Windows Update's is often
+  years old.
 - Set the logdata domain and token in the TUI or GUI settings
   ([Logdata service settings](#logdata-service-settings)). `setx` is for command-line use and
   test machines, and reaches only windows opened afterwards.

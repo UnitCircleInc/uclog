@@ -431,6 +431,20 @@ notifications per event" were really 6-7 packets. The rate halves with the 1M PH
 half the interval: macOS limits each connection event by time, not the device. More needs a
 central that gives longer connection events (or a shorter interval).
 
+**BLE throughput with Windows 11** (2026-10-25, Intel Wireless Bluetooth, USB `8087:0026`):
+Windows negotiates what macOS does (15 ms interval, 2M PHY, 251-byte data length, ATT MTU 251),
+so the device sends the same 244-byte notifications. The rate is set by the adapter's driver,
+which decides how many packets a connection event carries:
+
+| Intel driver | Notifications per event | `burst 10000` |
+|---|---|---|
+| 22.190.0.2 (2022) | ~1.8 | 28,581 B/s (`uclog term`), 27,818 B/s (Chrome) |
+| 24.70.0.4 (2026) | ~5.1 | 82,002 B/s |
+
+So on Windows, slow BLE (~28 kB/s with the link at 15 ms and 2M) means an old Bluetooth driver:
+install the current one from the adapter's maker (Intel's Driver & Support Assistant), not the one
+Windows Update offers.
+
 Found on the way:
 - Without `HAL_MspInit()` enabling the PWR clock, the supply and voltage-scaling settings are
   ignored and the radio stays silent (the stack starts and reports advertising, but nothing is on
