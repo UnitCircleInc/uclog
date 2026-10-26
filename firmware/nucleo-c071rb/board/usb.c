@@ -165,6 +165,12 @@ static void ep_clear_vttx(uint8_t ep) {
   EPR(ep) = (EPR(ep) & USB_CHEP_REG_MASK & ~USB_CHEP_VTTX) | USB_CHEP_VTRX;
 }
 
+// One direction's data toggle back to DATA0 (CLEAR_FEATURE(ENDPOINT_HALT), SET_INTERFACE).
+static void ep_dtog_clear(uint8_t ep, bool in) {
+  uint32_t r = EPR(ep), bit = in ? USB_CHEP_DTOG_TX : USB_CHEP_DTOG_RX;
+  EPR(ep) = (r & USB_CHEP_REG_MASK) | (r & bit) | USB_CHEP_VTRX | USB_CHEP_VTTX;
+}
+
 // Endpoint type and address; both data toggles back to DATA0; both directions disabled.
 static void ep_open(uint8_t ep, uint32_t type) {
   uint32_t r = EPR(ep);
@@ -204,6 +210,7 @@ static fn_t fns[2] = {
 };
 
 static volatile bool configured;
+static uint8_t halted_in, halted_out; // bit n: endpoint n is halted (SET_FEATURE(ENDPOINT_HALT))
 static uint8_t line_coding[7] = {0x40, 0x42, 0x0F, 0x00, 0, 0, 8}; // 1000000 8N1
 
 static void fn_reset(fn_t *f) {
@@ -235,7 +242,7 @@ static void fn_rx_take(fn_t *f) {
     f->rx_count += n - skip;
   }
   f->rx_held = false;
-  ep_stat_rx(f->ep, USB_EP_RX_VALID);
+  if (!(halted_out & (1u << f->ep))) ep_stat_rx(f->ep, USB_EP_RX_VALID);
 }
 
 // Up to `max` bytes from the start of the ring, across its wrap, without consuming them. A packet
@@ -252,6 +259,7 @@ static size_t cb_copy(const cb_t *cb, uint8_t *dst, size_t max) {
 
 static void fn_tx_next(fn_t *f) {
   if (f->inflight || f->zlp_inflight || f->paused || !configured || f->tx_cb == NULL) return;
+  if (halted_in & (1u << f->ep)) return;
   uint8_t b[PKT];
   uint8_t *data = f->hid ? b + 1 : b;
   size_t room = f->hid ? PKT - 1 : PKT, n;
@@ -370,7 +378,50 @@ static size_t string_desc(uint8_t i, uint8_t *b) {
   return 2 + 2 * n;
 }
 
+static fn_t *fn_for(uint8_t ep) {
+  for (int i = 0; i < 2; i++) {
+    if (fns[i].ep == ep) return &fns[i];
+  }
+  return NULL;
+}
+
+// Endpoint addresses in the configuration descriptor (0x81-0x84 IN, 0x02 and 0x04 OUT).
+static bool ep_exists(uint8_t a) {
+  uint8_t ep = a & 0x7F;
+  return (a & 0x80) ? ep >= 1 && ep <= 4 : ep == 2 || ep == 4;
+}
+
+// SET_FEATURE / CLEAR_FEATURE(ENDPOINT_HALT). Clearing a halt (even one not set) resets the data
+// toggle to DATA0, as the host does; an IN packet armed before the halt is sent after it.
+static void ep_halt(uint8_t a, bool halt) {
+  uint8_t ep = a & 0x7F, bit = (uint8_t)(1u << ep);
+  fn_t *f = fn_for(ep);
+  if (a & 0x80) {
+    bool was = halted_in & bit;
+    if (halt) {
+      halted_in |= bit;
+      ep_stat_tx(ep, USB_EP_TX_STALL);
+      return;
+    }
+    halted_in &= (uint8_t)~bit;
+    ep_dtog_clear(ep, true);
+    if (was) ep_stat_tx(ep, f && (f->inflight || f->zlp_inflight) ? USB_EP_TX_VALID : USB_EP_TX_NAK);
+    if (f) fn_tx_next(f);
+  } else {
+    bool was = halted_out & bit;
+    if (halt) {
+      halted_out |= bit;
+      ep_stat_rx(ep, USB_EP_RX_STALL);
+      return;
+    }
+    halted_out &= (uint8_t)~bit;
+    ep_dtog_clear(ep, false);
+    if (was) ep_stat_rx(ep, f && f->rx_held ? USB_EP_RX_NAK : USB_EP_RX_VALID);
+  }
+}
+
 static void configure(void) {
+  halted_in = halted_out = 0;
   ep_open(1, USB_EP_INTERRUPT);
   tx_set(1, PMA_EP1_TX, 0);
   ep_stat_tx(1, USB_EP_TX_NAK);
@@ -424,16 +475,31 @@ static void on_setup(const setup_t *s) {
     case 8: // GET_CONFIGURATION
       two[0] = configured;
       return ctl_send(two, 1, s->length);
-    case 0: // GET_STATUS
+    case 0: // GET_STATUS: an endpoint's halt bit
       two[0] = two[1] = 0;
+      if (recipient == 2) {
+        uint8_t a = (uint8_t)s->index, bit = (uint8_t)(1u << (a & 0x7F));
+        if ((a & 0x7F) != 0 && !ep_exists(a)) return ctl_stall();
+        two[0] = ((a & 0x80) ? halted_in : halted_out) & bit ? 1 : 0;
+      }
       return ctl_send(two, 2, s->length);
     case 10: // GET_INTERFACE
       two[0] = 0;
       return ctl_send(two, 1, s->length);
-    case 1:  // CLEAR_FEATURE
-    case 3:  // SET_FEATURE
-    case 11: // SET_INTERFACE
+    case 1: // CLEAR_FEATURE
+    case 3: // SET_FEATURE
+      // ENDPOINT_HALT only (no remote wakeup); endpoint 0's halt is a no-op.
+      if (recipient != 2 || s->value != 0) return ctl_stall();
+      if ((s->index & 0x7F) == 0) return ctl_status_in();
+      if (!configured || !ep_exists((uint8_t)s->index)) return ctl_stall();
+      ep_halt((uint8_t)s->index, s->req == 3);
       return ctl_status_in();
+    case 11: { // SET_INTERFACE: alternate setting 0 only; its endpoints back to DATA0, not halted
+      static const uint8_t eps[4][2] = {{0x81}, {0x82, 0x02}, {0x83}, {0x84, 0x04}};
+      if (!configured || iface > 3 || s->value != 0) return ctl_stall();
+      for (int i = 0; i < 2 && eps[iface][i]; i++) ep_halt(eps[iface][i], false);
+      return ctl_status_in();
+    }
     }
     return ctl_stall();
   }
@@ -536,6 +602,7 @@ static void bus_reset(void) {
   ep_stat_rx(0, USB_EP_RX_VALID);
   ep_stat_tx(0, USB_EP_TX_NAK);
   memset(&ctl, 0, sizeof(ctl));
+  halted_in = halted_out = 0;
   for (int i = 0; i < 2; i++) fn_reset(&fns[i]);
   USB_DRD_FS->DADDR = USB_DADDR_EF;
 }
@@ -658,7 +725,7 @@ void usb_tx_abort(usb_fn_t fn) {
   if (f->inflight == 0 && !f->zlp_inflight) return;
   bool paused = f->paused;
   f->paused = true; // fn_tx_done() must not arm the next packet
-  ep_stat_tx(f->ep, USB_EP_TX_NAK);
+  if (!(halted_in & (1u << f->ep))) ep_stat_tx(f->ep, USB_EP_TX_NAK);
   if (EPR(f->ep) & USB_CHEP_VTTX) { // it went out after all
     ep_clear_vttx(f->ep);
     fn_tx_done(f);

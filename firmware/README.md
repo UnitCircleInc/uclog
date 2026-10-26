@@ -227,6 +227,12 @@ reached the port-5 handler and reset the board (`FATAL tx message too long 1448`
     there is room (USB flow control).
   - HID `GET_REPORT` (the fallback when interrupt reads fail) returns an empty report; `SET_REPORT`
     output reports are accepted like interrupt OUT ones.
+  - Endpoint halt: `SET_FEATURE(ENDPOINT_HALT)` stalls the endpoint, `GET_STATUS` reports it, and
+    `CLEAR_FEATURE(ENDPOINT_HALT)` and `SET_INTERFACE` (alternate setting 0) set its data toggle
+    back to DATA0. An IN packet armed before the halt is sent after it. Without the toggle reset,
+    the first OUT packet after a host cleared a halt was dropped as a duplicate (a lost command).
+    Checked on macOS with libusb on the CDC endpoints: halts, clears and `SET_INTERFACE` during
+    5000-log bursts, with no loss.
 - LED LD1 on PA5.
 - 24 KiB of RAM: `LOG_TX_BUF_SIZE=4096`, `SH_BUF_SIZE=512`, `SH_BIG_FILE=1200`, a 2 KiB stack. The
   image is about 55 KiB of flash and 20 KiB of static RAM.
