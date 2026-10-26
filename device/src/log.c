@@ -1,9 +1,9 @@
 // © 2025 Unit Circle Inc.
 // SPDX-License-Identifier: Apache-2.0
 //
-// ucLog device side: log encoding (lib/log.c) and the frame server (lib/logserver.c) from
-// github.com/UnitCircleInc/uclog, without Zephyr. COBS, CBOR and the ring buffer are the
-// ucComm implementations (github.com/UnitCircleInc/ucComm).
+// ucLog device side: log encoding and the frame server, for any port (log_port.h): a bare-metal
+// board, or Zephyr (ports/zephyr). COBS, CBOR and the ring buffer are the ucComm implementations
+// (github.com/UnitCircleInc/ucComm).
 //
 // TX: frames are COBS-encoded on the stack and copied into the tx_cb ring buffer, which the port
 // drains (DMA on the STM32L4 board). While the host is absent (nothing received for 2 s) the
@@ -12,7 +12,8 @@
 // the backlog. An empty port-62 frame from the host asks for the device info again (F7).
 //
 // RX: log_poll() reads the port's RX ring (DMA on the STM32L4 board), splits it into frames and
-// dispatches them to the port handlers, or to a waiting log_rx().
+// dispatches them to the port handlers, or to a waiting log_rx(). On a threaded port log_poll()
+// runs on the port's thread and log_rx() blocks its caller until the reply is dispatched.
 
 #include "log.h"
 
@@ -22,6 +23,20 @@
 #include "cbor.h"
 #include "cobs.h"
 
+#if defined(__ZEPHYR__)
+#include <zephyr/linker/section_tags.h>
+#define LOG_NOINIT __noinit
+#endif
+#if !defined(LOG_NOINIT)
+#define LOG_NOINIT __attribute__((section(".noinit")))
+#endif
+
+#if defined(LOG_SAVE) && LOG_SAVE
+#define LOG_KEEP LOG_NOINIT // kept across a reset
+#else
+#define LOG_KEEP
+#endif
+
 #define DEVICE_INFO_PORT (62)
 #define PULSE_MS (500)   // send something at least this often while the host is present
 #define HOST_TIMEOUT_MS (2000)
@@ -30,11 +45,17 @@
 _Static_assert(COBS_ENC_SIZE(LOG_MAX_PACKET_SIZE + 1) + 2 == LOG_MAX_FRAME_SIZE, "frame size");
 _Static_assert(LOG_MAX_LOG_SIZE >= 16 && LOG_MAX_LOG_SIZE <= 250, "LOG_MAX_LOG_SIZE");
 
-// Filled in after linking by tools/apphash.py (SHA-512 of the image with this field zeroed).
+#if defined(LOG_SIGNED_IMAGE) && LOG_SIGNED_IMAGE
+// SHA-512 of the signed image after its 512-byte header, from the image header (sbl).
+const uint8_t *sbl_app_hash(void);
+#define app_hash (sbl_app_hash())
+#else
+// Filled in after linking by tools/hash.py (SHA-512 of the image with this field zeroed).
 static const __attribute__((used, section(".apphash"))) uint8_t app_hash[LOG_APP_HASH_SIZE];
+#endif
 
-static cb_t tx_cb;
-static uint8_t tx_buf[LOG_TX_BUF_SIZE];
+static LOG_KEEP cb_t tx_cb;
+static LOG_KEEP uint8_t tx_buf[LOG_TX_BUF_SIZE];
 
 #define MAX_DEVICE_INFO_SIZE 192
 static uint8_t device_info_tx_buf[COBS_ENC_SIZE(MAX_DEVICE_INFO_SIZE) + 2];
@@ -60,8 +81,22 @@ static struct {
   int wait_port;
   uint8_t *wait_data;
   size_t wait_cap, wait_n;
-  bool wait_done;
+  volatile bool wait_done;
 } s;
+
+// ---------------------------------------------------------------------------------------------
+// Threads: defaults for a single-threaded port (log_port.h)
+
+__attribute__((weak)) bool log_port_is_poller(void) {
+  return true;
+}
+__attribute__((weak)) void log_port_yield(void) {}
+__attribute__((weak)) void log_port_rx_begin(void) {}
+__attribute__((weak)) void log_port_rx_end(void) {}
+__attribute__((weak)) void log_port_rx_wait(void) {
+  log_poll();
+}
+__attribute__((weak)) void log_port_rx_wake(void) {}
 
 // ---------------------------------------------------------------------------------------------
 // TX
@@ -292,20 +327,70 @@ const uint8_t *log_app_hash(size_t *n) {
   return app_hash;
 }
 
+#if defined(LOG_SAVE) && LOG_SAVE
+
+// The log ring and the app hash of the image that wrote it survive a reset. What was left in the
+// ring is copied out at start-up, unless the image changed or the ring looks corrupt.
+static LOG_NOINIT uint8_t ring_app_hash[LOG_APP_HASH_SIZE];
+static uint8_t saved_log[LOG_TX_BUF_SIZE];
+static size_t saved_log_n;
+static uint8_t saved_app_hash[LOG_APP_HASH_SIZE];
+
+const uint8_t *log_saved_log(size_t *n) {
+  *n = saved_log_n;
+  return saved_log;
+}
+
+const uint8_t *log_saved_app_hash(size_t *n) {
+  *n = LOG_APP_HASH_SIZE;
+  return saved_app_hash;
+}
+
+static void log_save_init(void) {
+  saved_log_n = 0;
+  bool valid = tx_cb.b == tx_buf && tx_cb.n == sizeof(tx_buf) && tx_cb.read < tx_cb.n &&
+               tx_cb.write < tx_cb.n && memcmp(ring_app_hash, app_hash, LOG_APP_HASH_SIZE) == 0;
+  if (valid) {
+    if (cb_read_avail(&tx_cb) == 0) cb_skip(&tx_cb, 1); // empty: take the whole ring
+    while (saved_log_n < sizeof(saved_log) && cb_peek_avail(&tx_cb) > 0) {
+      size_t n = cb_peek_avail(&tx_cb);
+      if (n > sizeof(saved_log) - saved_log_n) n = sizeof(saved_log) - saved_log_n;
+      memcpy(saved_log + saved_log_n, cb_peek(&tx_cb), n);
+      saved_log_n += n;
+      cb_skip(&tx_cb, n);
+    }
+    memcpy(saved_app_hash, ring_app_hash, LOG_APP_HASH_SIZE);
+  }
+  memcpy(ring_app_hash, app_hash, LOG_APP_HASH_SIZE);
+}
+
+#else
+
+static void log_save_init(void) {}
+
+#endif
+
 void log_pre_init(void) {
+  log_save_init();
   memset(&s, 0, sizeof(s));
   s.wait_port = -1;
   cb_init(&tx_cb, tx_buf, sizeof(tx_buf));
   LOG_INFO("log-pre-init");
 }
 
-void log_init(const char *board, const char *image_type) {
+void uclog_init(const char *board, const char *image_type) {
   fill_device_info(board, image_type);
   log_port_init(&tx_cb);
   log_port_tx_pause(true); // until a host shows up
   s.rx_mark = log_port_rx_mark();
   s.started = true;
 }
+
+#if !defined(__ZEPHYR__)
+void log_init(const char *board, const char *image_type) {
+  uclog_init(board, image_type);
+}
+#endif
 
 // ---------------------------------------------------------------------------------------------
 // Liveness
@@ -330,6 +415,7 @@ void log_tick(uint32_t now) {
   if (s.host && now - s.last_rx_ms > HOST_TIMEOUT_MS) {
     s.host = false;
     log_port_tx_pause(true);
+    log_port_rx_wake(); // a waiting log_rx() gives up
   }
   uint32_t mark = log_port_rx_mark();
   if (mark != s.rx_mark) {
@@ -384,6 +470,7 @@ static void dispatch(uint8_t *p, size_t n) {
     memcpy(s.wait_data, p + 1, m);
     s.wait_n = n - 1;
     s.wait_done = true;
+    log_port_rx_wake();
   } else if (s.handlers[port] != NULL) {
     s.in_dispatch = true;
     s.handlers[port](p + 1, n - 1, s.contexts[port]);
@@ -435,6 +522,10 @@ static bool rx_step(void) {
 }
 
 void log_poll(void) {
+  if (!log_port_is_poller()) {
+    log_port_yield(); // the port's thread polls; let it run
+    return;
+  }
   if (s.in_dispatch || !s.started) return; // from a handler: the frame buffer is in use
   if (log_port_rx_check() != 0) {
     s.rx_uart_errors++;
@@ -460,17 +551,21 @@ void log_notify(uint8_t port, log_cb_t *cb, void *ctx) {
 
 size_t log_rx(uint8_t port, uint8_t *data, size_t n) {
   if (port > 63) LOG_FATAL("invalid port %d", port);
-  if (s.in_dispatch || s.wait_port >= 0) {
+  // The poller cannot wait for a reply it would have to dispatch itself.
+  if (log_port_is_poller() && (s.in_dispatch || s.wait_port >= 0)) {
     LOG_ERROR("log_rx(%d) called from a handler or nested", port);
     return 0;
   }
+  log_port_rx_begin();
+  uint32_t key = log_port_lock();
   s.wait_data = data;
   s.wait_cap = n;
   s.wait_done = false;
   s.wait_port = port;
+  log_port_unlock(key);
   size_t r = 0;
   while (true) {
-    log_poll();
+    log_port_rx_wait();
     if (s.wait_done) {
       r = s.wait_n;
       break;
@@ -480,6 +575,9 @@ size_t log_rx(uint8_t port, uint8_t *data, size_t n) {
       break;
     }
   }
+  key = log_port_lock();
   s.wait_port = -1;
+  log_port_unlock(key);
+  log_port_rx_end();
   return r;
 }

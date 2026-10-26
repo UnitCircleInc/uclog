@@ -42,7 +42,7 @@ SECTIONS
   } > FLASH
   .fini_array : { KEEP(*(.fini_array*)) } > FLASH
 
-  /* SHA-512 of the image with this field zeroed (tools/apphash.py). */
+  /* SHA-512 of the image with this field zeroed (device/tools/hash.py). */
   .apphash :
   {
     . = ALIGN(4);

@@ -1,4 +1,9 @@
 #! /usr/bin/env python3
+# © 2025 Unit Circle Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# The app hash: SHA-512 of a signed image after its 512-byte header, or of the whole unsigned
+# image (-f, with the .apphash field still zero). Writes the digest to OUTPUT and prints it in hex.
 
 import argparse
 import hashlib
@@ -19,6 +24,7 @@ def hash(args):
 
     with open(args.output, 'wb') as f:
         f.write(h)
+    print(h.hex())
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Image Hash')

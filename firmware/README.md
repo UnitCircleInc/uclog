@@ -1,21 +1,25 @@
 # Firmware
 
-A bare-metal ucLog device library and a test firmware for exercising the hosts on real hardware.
+Test firmware for exercising the hosts on real hardware, built on the device library in
+[`../device`](../device/README.md) (bare metal, and Zephyr).
 
 | Directory | Contents |
 |---|---|
-| [`uclog/`](uclog/) | Device library: `log.h`, `log.c`, `log.ld`, plus `tools/logdata.py` and `tools/apphash.py` |
+| [`../device/`](../device/README.md) | The device library: `include/log.h`, `src/log.c`, the semihost client and newlib syscalls, the Zephyr port and drivers, `tools/logdata.py` and `tools/hash.py` |
 | [`uccomm/`](uccomm/) | COBS, CBOR, CRC-32C and the ring buffer (`cb`), copied unchanged from [UnitCircleInc/ucComm](https://github.com/UnitCircleInc/ucComm) `src/` (commit 8bc8e3b) |
-| [`app/`](app/) | The test app every board builds: commands, the selftests, semihost (`syscalls.c`) |
+| [`app/`](app/) | The test app every board builds: commands, the selftests |
 | [`nucleo-l452re-p/`](nucleo-l452re-p/) | Test firmware for the NUCLEO-L452RE-P (STM32L452RE, Cortex-M4F, hard-float): UART |
 | [`nucleo-c071rb/`](nucleo-c071rb/) | Test firmware for the NUCLEO-C071RB (STM32C071RB, Cortex-M0+): UART, USB CDC-ACM and USB HID at once |
 | [`stm32wba55g-dk1/`](stm32wba55g-dk1/) | Test firmware for the STM32WBA55G-DK1 (STM32WBA55CG, Cortex-M33): UART and BLE at once |
+| [`zephyr/`](zephyr/) | The same test app on Zephyr 4.x (NUCLEO-L452RE-P through `ucuart_z`) |
 
-## Device library (`uclog/`)
+## Device library (`../device/`)
 
-This is the core of `include/log.h`, `lib/log.c`, `lib/logserver.c`, `lib/log.ld` and
-`lib/log.cmake` from [UnitCircleInc/uclog](https://github.com/UnitCircleInc/uclog), with Zephyr
-removed. App signatures and FW update are not included.
+The library began here as the core of the Zephyr library in
+[UnitCircleInc/uclog](https://github.com/UnitCircleInc/uclog) (`include/log.h`, `lib/log.c`,
+`lib/logserver.c`), with Zephyr removed. Since plan 08 task 4 it is the one library for both, in
+`../device` with a Zephyr port; the boards here build `../device/src/log.c`. App signatures and FW
+update are not included.
 
 - **Logging API** (unchanged): `LOG_DEBUG/INFO/WARN/ERROR/FATAL`, `LOG_MEM_*`, `{enum:name}%d` and
   `{sym}%p`.
@@ -60,7 +64,7 @@ removed. App signatures and FW update are not included.
 - **Fatal**: `LOG_FATAL` switches the port to polled TX with interrupts off and flushes the whole
   ring. It then executes `bkpt` if a debugger is attached, or resets.
 
-### Differences from the Zephyr version
+### Differences from the Zephyr library before `device-v4`
 
 - `log_rx` returns 0 when the host goes away (instead of waiting forever), or when it is called
   from a handler.
@@ -70,7 +74,7 @@ removed. App signatures and FW update are not included.
   Zephyr version copied 16 bytes.
 - When the host is absent, logs are buffered rather than sent.
 
-### Logdata (`tools/logdata.py`)
+### Logdata (`../device/tools/logdata.py`)
 
 `tools/logdata.py` produces the `.logdata` CBOR (spec §6.1) from an ELF file. It needs only the
 Python standard library: it reads ELF sections itself and reads DWARF through
@@ -91,8 +95,8 @@ Both boards build the same app; a board supplies `board.h` (`board_init`, the LE
 shrink the buffers with `-D`: `LOG_TX_BUF_SIZE` (the log ring), `SH_BUF_SIZE` (the largest semihost
 request or reply) and `SH_BIG_FILE` (the selftest's multi-call file).
 
-**Semihost**: `sh/syscalls.c` is the Unit Circle newlib syscalls file, with Zephyr removed.
-Changes, marked "uclog-clientv2":
+**Semihost**: `../device/src/syscalls.c` (newlib's syscalls) on `../device/src/semihost.c` (the
+requests), from the Unit Circle newlib syscalls file. Changes, marked "uclog-clientv2":
 - Calls that need a reply fail at once with `EIO` when no host is connected. Otherwise the request
   would reach a later host as a stale request; for example, `setvbuf()` calls `_fstat` at boot.
   `_write` (no reply) still buffers.
@@ -105,8 +109,8 @@ Changes, marked "uclog-clientv2":
   "a tty".
 
 **Files**: logs come from `src/main.c`, `src/drivers/sensor.c`, `src/sh/*.c` (the app, built with
-`-ffile-prefix-map=../app/=src/`), `board/*.c` and `../uclog/log.c`, so file names can be checked in
-the decoded output.
+`-ffile-prefix-map=../app/=src/`), `board/*.c` and the library as `uclog/src/log.c`, so file names
+can be checked in the decoded output.
 
 **Commands**: these work on port 61 (`uclog term`) and port 0 (`uclog term --port 0`). Port 5
 echoes every frame back and logs its size and CRC-32C. Port 5 is unassigned in the spec and is
@@ -115,7 +119,7 @@ used only by this test firmware.
 | Command | What it exercises |
 |---|---|
 | `test` | One log of every kind: int32/uint32/int64/uint64, float/double, flags and widths, strings (escapes, UTF-8, truncation), pointer, `{sym}` (function, variable, unknown), `{enum}` (enum, typedef enum, unknown value), 14 arguments, `LOG_MEM`, all levels. It also runs at boot |
-| `sh` | Semihost through `syscalls.c` (printf/stderr with no-reply WRITE, `fopen`/`fgets`/`fstat`, `mkdir`, `gettimeofday`), plus a file round trip of one maximum WRITE (1438 bytes; 507 on the C071) and one of several (4000 bytes; 1200 on the C071), checked with CRC-32C. It also sends raw requests: the time ops, a WRITE with a reply, and the expected errors (`EACCES` sandbox escape, `EBADF` for close and write, `ENOSYS` for LSEEK and an unknown op, `EINVAL` for a malformed request, the 48-byte FSTAT error) |
+| `sh` | Semihost through `syscalls.c` (on Zephyr the semihost file system at `/host`; printf/stderr with no-reply WRITE, `fopen`/`fgets`/`fstat`, `mkdir`, `gettimeofday`), plus a file round trip of one maximum WRITE (1438 bytes; 507 on the C071) and one of several (4000 bytes; 1200 on the C071), checked with CRC-32C. It also sends raw requests: the time ops, a WRITE with a reply, and the expected errors (`EACCES` sandbox escape, `EBADF` for close and write, `ENOSYS` for LSEEK and an unknown op, `EINVAL` for a malformed request, the 48-byte FSTAT error) |
 | `input` | Semihost READ on stdin |
 | `burst [n]` | Throughput. It waits for buffer room, so nothing is dropped. The reply gives bytes, bytes per log and B/s, timed until the last byte has left the log ring. Over BLE (STM32WBA55G-DK1) that is when the BLE stack has it, so bursts under 10,000 logs are flagged "short burst" (`BURST_MIN_LOGS`; see "BLE throughput with a Mac") |
 | `big [n]` | One port-61 frame of `n` bytes (default 1443, which is 1452 on the wire) |
@@ -179,7 +183,7 @@ The toolchain and build steps are the same for every board.
 
 The build also copies `<app_hash>.logdata` into the hosts' logdata cache, `UCLOG_CACHE` (default
 `$UCLOG_CACHE_DIR`, else `$XDG_CACHE_HOME/uclog`, else `~/.cache/uclog`: the same rule as `uclog`
-and the Python library, and the directory the Zephyr module's `cachelogdata.py` writes to). So
+and the Python library, and the directory `../device/tools/cachelogdata.py` writes to). So
 `uclog tui`, `uclog gui` and the other hosts find the logdata from the device info without `-l`.
 `build/<app_hash>.logdata` stays, for `--cache-dir build`.
 
@@ -507,3 +511,40 @@ Found on the way:
 
 **Not tested**: Linux and Windows hosts, bonding/encryption (none: the characteristic is open),
 low power (the firmware never sleeps beyond WFI).
+
+## Zephyr test firmware (`zephyr/`)
+
+The same test app (`app/`) on Zephyr 4.x, with `../device` as a Zephyr module: the Zephyr port,
+`ucuart_z` on the board's UART, and semihost as a file system (`CONFIG_UC_SYSCALLS`, files under
+`/host`). `zephyr/src/board.c` maps the app's board interface onto Zephyr (LED alias `led0`,
+`hwinfo` for the UID); `boards/<board>.overlay` picks the link. NUCLEO-L452RE-P only for now.
+
+```sh
+# ZEPHYR_BASE set (a west workspace with Zephyr 4.x and hal_stm32); ucComm checked out somewhere.
+west build -b nucleo_l452re/stm32l452xx/p -d firmware/zephyr/build firmware/zephyr -- \
+    -DZEPHYR_EXTRA_MODULES="$PWD/device;/path/to/ucComm"
+STM32_Programmer_CLI -c port=SWD -w firmware/zephyr/build/zephyr/zephyr.bin 0x08000000 -v -rst
+# The VS Code hardware test reads <app_hash>.logdata from firmware/zephyr/build:
+cp firmware/zephyr/build/zephyr/zephyr.logdata \
+   firmware/zephyr/build/$(xxd -p -c 64 firmware/zephyr/build/zephyr/zephyr.hash).logdata
+UCLOG_TEST_FIRMWARE=zephyr UCLOG_TEST_DEVICE=serial:/dev/cu.usbmodem… \
+    npx playwright test -c apps/vscode/playwright.config.ts hw          # in web/
+```
+
+Differences from the bare-metal boards:
+- The port starts the library (`main()` skips `log_pre_init()`/`log_init()`), and the log thread
+  runs `log_poll()`: in the app's main loop it just sleeps for 1 ms.
+- USART2 needs DMA with a **circular** RX channel (`boards/*.overlay`). The STM32L4 USART has no
+  FIFO: interrupt-driven RX lost bytes at 1 Mbaud, and so did Zephyr's default DMA, between its
+  256-byte buffers (host frames of 400 bytes all arrived short; with 1024-byte buffers, about 1 in
+  3; with circular DMA, none in 60 frames of 1443 bytes).
+- The selftest writes its text file with `open()`/`write()`/`read()`: with `CONFIG_POSIX_API`,
+  Zephyr's `fdopen()` returns a zvfs object, which picolibc's `fopen()` then uses as a `FILE`
+  (a usage fault). `isatty(1)` is `uclog_sh_isatty(1)`: Zephyr's POSIX layer has none.
+
+### Results (2026-10-26, Zephyr 4.3, macOS)
+
+`web/e2e/hw.spec.ts` (Chrome through the hub: device info, ELF logdata, `test`, `burst 5000`) and
+the VS Code `hw` test (workspace logdata, `test`, `burst 5000`, `sh` with its files in
+`uclog-files`) pass. `burst 5000`: 95,000 bytes in 950 ms = 100,000 B/s (the UART at 1 Mbaud, as
+bare metal). Port-5 echo of 60 frames of 48 and of 1443 bytes: all returned intact.

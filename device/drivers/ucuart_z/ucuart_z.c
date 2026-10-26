@@ -27,10 +27,9 @@
 #define RX_TEMP_BUF_LEN (256)
 #define NUM_RX_BUFS     (3)
 
-// uclog sends ping packets at this rate
-#define UCLOG_PING_RATE_MS 500
-// ping_timeout_timer will expire if no packets received in this time
-#define PING_TIMEOUT_MS    (UCLOG_PING_RATE_MS * 2)
+// The host is gone after this long without RX (spec/protocol.md §2.3). log.c pauses TX then;
+// this driver only uses it to let the UART suspend (power management).
+#define PING_TIMEOUT_MS    2000
 
 struct ucuart_config {
     const struct device *uart;
@@ -41,7 +40,8 @@ struct ucuart_config {
 
 struct ucuart_data {
     atomic_t tx_active;
-    atomic_t host_ready;
+    atomic_t tx_paused;  // log.c: the host is absent
+    atomic_t host_ready; // RX in the last PING_TIMEOUT_MS (power management)
     cb_t *tx_cb;
 #ifdef CONFIG_UART_ASYNC_API
     uint8_t rx_temp_buf[NUM_RX_BUFS][RX_TEMP_BUF_LEN];
@@ -82,11 +82,14 @@ static void uart_event_handler(const struct device *dev, struct uart_event *evt,
     const struct ucuart_config *config = ZEPHYR_DEVICE_MEMBER(data->dev, config);
     switch (evt->type) {
     case UART_TX_DONE: {
-        cb_skip(data->tx_cb, evt->data.tx.len);
+        // A prefix (the device info) is not in tx_cb: skip only what was sent from tx_cb.
+        if (evt->data.tx.buf == cb_peek(data->tx_cb)) {
+            cb_skip(data->tx_cb, evt->data.tx.len);
+        }
 
         // If there is more data then send it now
         size_t n = cb_peek_avail(data->tx_cb);
-        if (n > 0 && atomic_get(&data->host_ready)) {
+        if (n > 0 && !atomic_get(&data->tx_paused)) {
             int ret = uart_tx(dev, cb_peek(data->tx_cb), n, SYS_FOREVER_US);
             if (ret != 0) {
                 LOG_ERROR("uart_tx() failed, ret %d", ret);
@@ -112,8 +115,9 @@ static void uart_event_handler(const struct device *dev, struct uart_event *evt,
         }
         cb_write(config->rx_cb, p, n);
 
+#ifdef CONFIG_PM_DEVICE_RUNTIME // the timer only lets the UART suspend; this runs in the RX ISR
         k_timer_start(&data->ping_timeout_timer, K_MSEC(PING_TIMEOUT_MS), K_NO_WAIT);
-
+#endif
         atomic_set(&data->host_ready, true);
 
         k_event_post(&data->event, UCUART_EVT_RX);
@@ -151,13 +155,15 @@ static void uart_isr(const struct device *uart_dev, void *user_data)
             // New data to read
             size_t space_avail = cb_space_avail(config->rx_cb);
             if (space_avail > 0) {
-                int n = uart_fifo_read(uart_dev, cb_space(config->rx_cb), space_avail);
+                int n = uart_fifo_read(uart_dev, (uint8_t *)cb_space(config->rx_cb), space_avail);
                 if (n < 0) {
                     LOG_FATAL("uart_fifo_read returned %d", n);
                 } else if (n > 0) {
                     cb_commit(config->rx_cb, n);
 
+#ifdef CONFIG_PM_DEVICE_RUNTIME
                     k_timer_start(&data->ping_timeout_timer, K_MSEC(PING_TIMEOUT_MS), K_NO_WAIT);
+#endif
 
                     atomic_set(&data->host_ready, true);
 
@@ -185,7 +191,7 @@ static void uart_isr(const struct device *uart_dev, void *user_data)
                     data->prefix_index += n_sent;
                 }
             } else {
-                size_t n = cb_peek_avail(data->tx_cb);
+                size_t n = atomic_get(&data->tx_paused) ? 0 : cb_peek_avail(data->tx_cb);
                 if (n > 0) {
                     int n_sent = uart_fifo_fill(uart_dev, cb_peek(data->tx_cb), n);
                     if (n_sent < 0) {
@@ -210,7 +216,7 @@ static int tx_schedule(const struct device *dev, const uint8_t* prefix, size_t p
 
     // LOG_INFO("ucuart_tx_schedule %d %p", data->tx_active, data->tx_cb);
 
-    if (data->tx_cb && atomic_get(&data->host_ready)) {
+    if (data->tx_cb && !atomic_get(&data->tx_paused)) {
         bool got = atomic_cas(&data->tx_active, false, true);
         if (got) {
             size_t n = cb_peek_avail(data->tx_cb);
@@ -334,10 +340,43 @@ static uint32_t wait_event(const struct device *dev, uint32_t mask, bool reset, 
     return r;
 }
 
+static void tx_pause(const struct device *dev, bool pause)
+{
+    struct ucuart_data *data = ZEPHYR_DEVICE_MEMBER(dev, data);
+    atomic_set(&data->tx_paused, pause);
+}
+
+static bool tx_idle(const struct device *dev)
+{
+    struct ucuart_data *data = ZEPHYR_DEVICE_MEMBER(dev, data);
+    return !atomic_get(&data->tx_active);
+}
+
+// LOG_FATAL: interrupts are off from here on. Send what is buffered by polling (log.c calls this
+// again after each frame it adds). A transfer that was in progress is sent again from its start.
 static int panic(const struct device *dev)
 {
-    (void)dev;
-    // TODO Need to call interrupt handler like USB driver does
+    const struct ucuart_config *config = ZEPHYR_DEVICE_MEMBER(dev, config);
+    struct ucuart_data *data = ZEPHYR_DEVICE_MEMBER(dev, data);
+
+    if (atomic_get(&data->tx_active)) {
+#if defined(CONFIG_UART_ASYNC_API)
+        (void)uart_tx_abort(config->uart);
+#else
+        uart_irq_tx_disable(config->uart);
+#endif
+        atomic_set(&data->tx_active, false);
+    }
+    data->prefix_len = 0U;
+    data->prefix_index = 0U;
+    while (data->tx_cb != NULL && cb_peek_avail(data->tx_cb) > 0) {
+        size_t n = cb_peek_avail(data->tx_cb);
+        const uint8_t *p = cb_peek(data->tx_cb);
+        for (size_t i = 0; i < n; i++) {
+            uart_poll_out(config->uart, p[i]);
+        }
+        cb_skip(data->tx_cb, n);
+    }
     return 0;
 }
 
@@ -353,6 +392,8 @@ static const struct ucuart_driver_api ucuart_api = {
     .rx_skip = rx_skip,
     .wait_event = wait_event,
     .panic = panic,
+    .tx_pause = tx_pause,
+    .tx_idle = tx_idle,
 };
 
 void ping_timeout(struct k_timer *timer)

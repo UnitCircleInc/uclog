@@ -4,10 +4,6 @@ cmake_minimum_required(VERSION 3.20.0)
 
 
 
-# TODO This can go in modules.yml when I convert to module
-# See: https://docs.zephyrproject.org/latest/build/snippets/writing.html#where-snippets-are-located
-set(SNIPPET_ROOT ../lib ${SNIPPET_ROOT} CACHE STRING "" FORCE)
-
 # west build -S uclog-target1
 # Or we can force
 # See: https://docs.zephyrproject.org/latest/build/snippets/using.html#application-required-snippets

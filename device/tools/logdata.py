@@ -7,7 +7,7 @@ Derived from scripts/logdata.py in github.com/UnitCircleInc/uclog:
 - format strings come from the ELF's `.logdata` section (start symbol `_slogstr`);
 - enums, typedef'd enums, functions and variables come from `<objdump> -Wi` (DWARF).
 
-Usage: logdata.py [--objdump arm-none-eabi-objdump] [--dump] ELF -o OUT.logdata
+Usage: logdata.py [--objdump arm-none-eabi-objdump] [--dump] ELF -o OUT.logdata  (--ofile: as -o)
 """
 
 import argparse
@@ -279,7 +279,7 @@ def cbor(v):
 def main():
   ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
   ap.add_argument('elf')
-  ap.add_argument('-o', '--output')
+  ap.add_argument('-o', '--output', '--ofile')
   ap.add_argument('--objdump', default='arm-none-eabi-objdump')
   ap.add_argument('--dump', action='store_true', help='print the format table')
   a = ap.parse_args()

@@ -266,9 +266,13 @@ static void run_command(int port, char *c) {
 }
 
 int main(void) {
+#if !defined(__ZEPHYR__) // on Zephyr the ucLog port starts the log (device/ports/zephyr/port.c)
   log_pre_init();
+#endif
   board_init();
+#if !defined(__ZEPHYR__)
   log_init(BOARD_NAME, "app");
+#endif
   static char outbuf[128];
   setvbuf(stdout, outbuf, _IOLBF, sizeof(outbuf));
 
@@ -311,6 +315,8 @@ int main(void) {
                (unsigned long)heartbeat, (unsigned long)(now / 1000), (unsigned long)(now % 1000), t,
                sensor_state());
     }
+#if !defined(__ZEPHYR__) // on Zephyr log_poll() above sleeps while the log thread runs
     __asm volatile("wfi"); // SysTick or the UART wakes us
+#endif
   }
 }

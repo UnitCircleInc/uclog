@@ -35,7 +35,7 @@ WPAN     := $(STM32CUBE_WBA)/Middlewares/ST/STM32_WPAN
 # from ST's smallest BLE peripheral example; it is for the NUCLEO-WBA55CG, the same chip.
 WBA_EX   := $(STM32CUBE_WBA)/Projects/NUCLEO-WBA55CG/Applications/BLE/BLE_p2pServer_Simplest
 
-UCLOG_DIR  := ../uclog
+DEVICE_DIR := ../../device
 UCCOMM_DIR := ../uccomm
 APP_DIR    := ../app
 BUILD      := build
@@ -44,12 +44,13 @@ BUILD      := build
 # app (../app) is shown as src/ (-ffile-prefix-map below).
 SRCS := $(APP_DIR)/main.c \
         $(APP_DIR)/drivers/sensor.c \
-        $(APP_DIR)/sh/syscalls.c \
+        $(DEVICE_DIR)/src/syscalls.c \
+        $(DEVICE_DIR)/src/semihost.c \
         $(APP_DIR)/sh/semihost_test.c \
         board/board.c \
         board/ble.c \
         board/uart.c \
-        $(UCLOG_DIR)/log.c \
+        $(DEVICE_DIR)/src/log.c \
         $(UCCOMM_DIR)/cb.c \
         $(UCCOMM_DIR)/cobs.c \
         $(UCCOMM_DIR)/cbor.c \
@@ -72,7 +73,7 @@ DEFS   := -DSTM32WBA55xx -DUSE_HAL_DRIVER -DUSE_FULL_LL_DRIVER -DBLE_LL -DPHY_40
           -DBLE_STACK_PERIPHERAL_ONLY -DBURST_MIN_LOGS=10000
 # board/ first: its skel_ble.h stands in for the example's application header (app_conf.h is the
 # example's own; ble.c overrides its MBLOCK margin).
-INCS   := -I$(APP_DIR) -Iboard -I$(UCLOG_DIR) -I$(UCCOMM_DIR) \
+INCS   := -I$(APP_DIR) -Iboard -I$(DEVICE_DIR)/include -I$(UCCOMM_DIR) \
           -I$(WBA_EX)/Core/Inc -I$(WBA_EX)/STM32_WPAN/App -I$(WBA_EX)/STM32_WPAN/Target \
           -I$(WBA_EX)/System/Modules \
           -I$(STM32CUBE_WBA)/Drivers/CMSIS/Include -I$(WBA_DEV)/Include -I$(WBA_HAL)/Inc \
@@ -83,11 +84,11 @@ INCS   := -I$(APP_DIR) -Iboard -I$(UCLOG_DIR) -I$(UCCOMM_DIR) \
           -I$(WPAN)/link_layer/ll_cmd_lib/src/shrd_utils/inc -I$(WPAN)/link_layer/ll_sys/inc
 CFLAGS := $(CPU) -std=gnu11 -Os -g3 -Wall -Wextra -Wno-override-init \
           -Wno-unused-parameter -ffunction-sections -fdata-sections \
-          -fno-eliminate-unused-debug-types -ffile-prefix-map=$(APP_DIR)/=src/ \
+          -fno-eliminate-unused-debug-types -ffile-prefix-map=$(APP_DIR)/=src/ -ffile-prefix-map=$(DEVICE_DIR)/=uclog/ \
           $(DEFS) $(INCS) -MMD -MP
 # ST's files: their warnings are not ours.
 CUBE_CFLAGS := $(filter-out -Wall -Wextra -Wno-override-init -Wno-unused-parameter,$(CFLAGS)) -w
-LDFLAGS := $(CPU) -Tboard/stm32wba55cg.ld -L$(UCLOG_DIR) -Wl,--gc-sections -Wl,-Map=$(BUILD)/app.map \
+LDFLAGS := $(CPU) -Tboard/stm32wba55cg.ld -L$(DEVICE_DIR)/ports/baremetal -Wl,--gc-sections -Wl,-Map=$(BUILD)/app.map \
            --specs=nano.specs --specs=nosys.specs -u _printf_float -Wl,--no-warn-rwx-segments \
            -Wl,--no-warn-execstack
 LDLIBS := -Wl,--start-group $(LIBS) -lm -Wl,--end-group
@@ -111,7 +112,7 @@ $(BUILD)/obj/app/%.o: $(APP_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/obj/uclog/%.o: $(UCLOG_DIR)/%.c
+$(BUILD)/obj/device/%.o: $(DEVICE_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -133,13 +134,13 @@ $(BUILD)/obj/cube/%.o: %.s
 # 1. link (the .apphash field is zero)
 # 2. app_hash = SHA-512 of that image; write it into .apphash
 # 3. logdata from the ELF; embed it as .logdata_cbor; save <app_hash>.logdata too
-$(BUILD)/app.elf: $(OBJS) board/stm32wba55cg.ld $(UCLOG_DIR)/log.ld $(UCLOG_DIR)/tools/logdata.py \
-             $(UCLOG_DIR)/tools/apphash.py
+$(BUILD)/app.elf: $(OBJS) board/stm32wba55cg.ld $(DEVICE_DIR)/ports/baremetal/log.ld $(DEVICE_DIR)/tools/logdata.py \
+             $(DEVICE_DIR)/tools/hash.py
 	$(CC) $(LDFLAGS) $(OBJS) $(LDLIBS) -o $@.tmp
 	$(OBJCOPY) -O binary $@.tmp $(BUILD)/app.unhashed.bin
-	$(PYTHON) $(UCLOG_DIR)/tools/apphash.py $(BUILD)/app.unhashed.bin -o $(BUILD)/app.hash > $(BUILD)/app.hash.txt
+	$(PYTHON) $(DEVICE_DIR)/tools/hash.py -f -i $(BUILD)/app.unhashed.bin -o $(BUILD)/app.hash > $(BUILD)/app.hash.txt
 	$(OBJCOPY) --update-section .apphash=$(BUILD)/app.hash $@.tmp
-	$(PYTHON) $(UCLOG_DIR)/tools/logdata.py --objdump $(OBJDUMP) $@.tmp -o $(BUILD)/app.logdata
+	$(PYTHON) $(DEVICE_DIR)/tools/logdata.py --objdump $(OBJDUMP) $@.tmp -o $(BUILD)/app.logdata
 	$(OBJCOPY) --add-section .logdata_cbor=$(BUILD)/app.logdata --set-section-flags .logdata_cbor=noload,readonly $@.tmp $@
 	@rm -f $@.tmp
 	cp $(BUILD)/app.logdata $(BUILD)/$$(cat $(BUILD)/app.hash.txt).logdata

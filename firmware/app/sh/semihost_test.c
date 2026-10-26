@@ -11,8 +11,17 @@
 
 #include "crc32c.h"
 #include "log.h"
+#include "semihost.h"
 
 #define SH_PORT 63
+
+// The host's files: the working directory on bare metal (syscalls.c), the semihost file system on
+// Zephyr (device/ports/zephyr/semihost_fs.c).
+#if defined(__ZEPHYR__)
+#define SH_FILE(name_) CONFIG_UC_SYSCALLS_MOUNT "/" name_
+#else
+#define SH_FILE(name_) name_
+#endif
 
 enum sh_op {
   SH_SYSTEM = 0,
@@ -97,7 +106,7 @@ static void big_file(size_t n) {
   static uint8_t out[SH_BIG_FILE], in[SH_BIG_FILE];
   for (size_t i = 0; i < n; i++) out[i] = (uint8_t)(i * 7 + 1);
   uint32_t crc = crc32c_update(CRC32C_INIT, out, n);
-  int fd = open("uclog-big.bin", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  int fd = open(SH_FILE("uclog-big.bin"), O_WRONLY | O_CREAT | O_TRUNC, 0644);
   if (fd < 0) {
     LOG_WARN("open(w) failed: errno %d (does the host have a files directory?)", errno);
     return;
@@ -105,7 +114,7 @@ static void big_file(size_t n) {
   ssize_t w = 0, k;
   while ((size_t)w < n && (k = write(fd, out + w, n - (size_t)w)) > 0) w += k; // short writes
   close(fd);
-  fd = open("uclog-big.bin", O_RDONLY);
+  fd = open(SH_FILE("uclog-big.bin"), O_RDONLY);
   if (fd < 0) {
     LOG_ERROR("open(r) failed: errno %d", errno);
     return;
@@ -159,16 +168,45 @@ void sh_selftest(void) {
   printf("hello from printf: %d %s %.3f\n", 42, "semihost", 3.14159);
   fflush(stdout);
   fprintf(stderr, "this line went to stderr\n");
+#if defined(__ZEPHYR__) // Zephyr's POSIX layer has no isatty()
+  LOG_INFO("isatty(1) = %d", uclog_sh_isatty(1));
+#else
   LOG_INFO("isatty(1) = %d", isatty(1));
+#endif
 
   // Files (sandboxed to the host's files directory).
-  FILE *fp = fopen("uclog-test.txt", "w");
+#if defined(__ZEPHYR__)
+  // Zephyr 4.x with CONFIG_POSIX_API: its fdopen() returns a zvfs object, not a picolibc FILE, so
+  // fopen() cannot be used on any file system. The same through open()/write()/read().
+  int fd = open(SH_FILE("uclog-test.txt"), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd < 0) {
+    LOG_WARN("open(w) failed: errno %d (does the host have a files directory?)", errno);
+  } else {
+    char text[64];
+    int tn = snprintf(text, sizeof(text), "written by %s at %ld\n", "nucleo", (long)t);
+    if (write(fd, text, (size_t)tn) != tn) LOG_ERROR("write failed: errno %d", errno);
+    close(fd);
+    fd = open(SH_FILE("uclog-test.txt"), O_RDONLY);
+    char line[64] = "";
+    if (fd >= 0) {
+      struct stat st = {0};
+      fstat(fd, &st);
+      ssize_t k = read(fd, line, sizeof(line) - 1);
+      line[k > 0 ? k : 0] = 0;
+      close(fd);
+      LOG_INFO("read back %ld bytes (mode %lo): \"%s\"", (long)st.st_size, (unsigned long)st.st_mode, line);
+    } else {
+      LOG_ERROR("open(r) failed: errno %d", errno);
+    }
+  }
+#else
+  FILE *fp = fopen(SH_FILE("uclog-test.txt"), "w");
   if (fp == NULL) {
     LOG_WARN("fopen(w) failed: errno %d (does the host have a files directory?)", errno);
   } else {
     fprintf(fp, "written by %s at %ld\n", "nucleo", (long)t); // newlib-nano: no %lld
     fclose(fp);
-    fp = fopen("uclog-test.txt", "r");
+    fp = fopen(SH_FILE("uclog-test.txt"), "r");
     char line[64] = "";
     if (fp != NULL) {
       struct stat st;
@@ -180,9 +218,10 @@ void sh_selftest(void) {
       LOG_ERROR("fopen(r) failed: errno %d", errno);
     }
   }
+#endif
   big_file(SH_BUF_SIZE - 5); // one maximum WRITE
   big_file(SH_BIG_FILE);     // several WRITEs and READs
-  r = mkdir("uclog-dir", 0755);
+  r = mkdir(SH_FILE("uclog-dir"), 0755);
   LOG_INFO("mkdir: %d errno %d", r, r < 0 ? errno : 0);
 
   // WRITE with a reply (bit 31 clear): syscalls.c never asks for one.

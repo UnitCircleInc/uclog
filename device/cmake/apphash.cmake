@@ -23,7 +23,7 @@ function(zephyr_hash_tasks)
   set_property(GLOBAL PROPERTY extra_post_build_commands COMMAND
     echo "Adding apphash to ${output}.elf")
   set_property(GLOBAL APPEND PROPERTY extra_post_build_commands COMMAND
-    ${UCLOG_ROOT_DIR}/scripts/hash.py -f -i ${output}.bin -o ${output}.hash)
+    ${PYTHON_EXECUTABLE} ${UCLOG_ROOT_DIR}/tools/hash.py -f -i ${output}.bin -o ${output}.hash)
   set_property(GLOBAL APPEND PROPERTY extra_post_build_commands COMMAND
     ${CMAKE_OBJCOPY} --update-section .apphash=${output}.hash ${output}.elf ${output}.elf)
   set_property(GLOBAL APPEND PROPERTY extra_post_build_commands COMMAND

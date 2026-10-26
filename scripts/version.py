@@ -43,8 +43,8 @@ PACKAGE_JSON = [
   'web/packages/workers/package.json',
   'web/apps/vscode/package.json',
 ]
-# The device library's header (device/include/log.h after plan 08 task 4).
-DEVICE_HEADER = 'firmware/uclog/log.h'
+# The device library's header.
+DEVICE_HEADER = 'device/include/log.h'
 
 SOLOVER = re.compile(r'(0|[1-9][0-9]*)(?:-(alpha|beta|rc)([1-9])|\+(hotfix)([1-9]))?')
 PEP440_PRE = {'alpha': 'a', 'beta': 'b', 'rc': 'rc'}

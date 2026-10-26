@@ -8,7 +8,9 @@ config UCUART
 	select EVENTS
 	select NRFX_PPI
 	select PINCTRL
-	select NRFX_TIMER4
+	select NRFX_TIMER4 # nrfx 3 (Zephyr 3.7)
+	select NRFX_TIMER  # nrfx 4 (Zephyr 4.x)
+	select NRFX_GPPI   # nrfx 4
 	help
 	  Unit Circle UART
 

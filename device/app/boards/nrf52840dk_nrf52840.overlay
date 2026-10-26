@@ -1,0 +1,7 @@
+/* ucLog on UARTE0 (the J-Link virtual COM port) at 1 Mbaud, through the Unit Circle ucuart driver
+ * (nRF only; TIMER4 counts received bytes). Build-tested only. */
+
+&uart0 {
+	compatible = "unitcircle,ucuart";
+	current-speed = <1000000>;
+};

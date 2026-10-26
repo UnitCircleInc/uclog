@@ -42,9 +42,9 @@ function(zephyr_sbl_tasks)
   set_property(GLOBAL APPEND PROPERTY extra_post_build_commands COMMAND
     echo "Signing ${output}.elf CERT $ENV{SBL_NEB_CERT}")
   set_property(GLOBAL APPEND PROPERTY extra_post_build_commands COMMAND
-    ${UCLOG_ROOT_DIR}/scripts/sbl.py sign --key $ENV{SBL_NEB} --code ${output}.hex --cert ${UCLOG_ROOT_DIR}/$ENV{SBL_NEB_CERT} ${output}.signed.hex)
+    ${PYTHON_EXECUTABLE} ${UCLOG_ROOT_DIR}/tools/sbl.py sign --key $ENV{SBL_NEB} --code ${output}.hex --cert ${UCLOG_ROOT_DIR}/$ENV{SBL_NEB_CERT} ${output}.signed.hex)
   set_property(GLOBAL APPEND PROPERTY extra_post_build_commands COMMAND
-    ${UCLOG_ROOT_DIR}/scripts/sbl.py sign --key $ENV{SBL_NEB} --code ${output}.bin --cert ${UCLOG_ROOT_DIR}/$ENV{SBL_NEB_CERT} ${output}.signed.bin)
+    ${PYTHON_EXECUTABLE} ${UCLOG_ROOT_DIR}/tools/sbl.py sign --key $ENV{SBL_NEB} --code ${output}.bin --cert ${UCLOG_ROOT_DIR}/$ENV{SBL_NEB_CERT} ${output}.signed.bin)
   set_property(GLOBAL APPEND PROPERTY extra_post_build_byproducts ${byproducts})
 endfunction()
 

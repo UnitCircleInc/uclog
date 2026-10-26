@@ -4,7 +4,7 @@ build:
   settings:
   #  board_root: .
     dts_root: .
-    snippet_root: lib
+    snippet_root: .
   depends:
     - uccomm
 #runners:

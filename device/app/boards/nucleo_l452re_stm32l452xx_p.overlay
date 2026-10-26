@@ -1,0 +1,16 @@
+/* ucLog on the ST-LINK virtual COM port (USART2, PA2/PA3) at 1 Mbaud, through ucuart_z. */
+
+/ {
+	chosen {
+		uclog,link = &uclog0;
+	};
+};
+
+&usart2 {
+	current-speed = <1000000>;
+
+	uclog0: uclog {
+		compatible = "staric,ucuart_z";
+		current-speed = <1000000>;
+	};
+};

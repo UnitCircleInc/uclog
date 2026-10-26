@@ -41,7 +41,7 @@ else
   C0_LL     := $(STM32CUBE_C0)/Drivers/STM32C0xx_HAL_Driver/Inc
 endif
 
-UCLOG_DIR  := ../uclog
+DEVICE_DIR := ../../device
 UCCOMM_DIR := ../uccomm
 APP_DIR    := ../app
 BUILD      := build
@@ -50,13 +50,14 @@ BUILD      := build
 # app (../app) is shown as src/ (-ffile-prefix-map below).
 SRCS := $(APP_DIR)/main.c \
         $(APP_DIR)/drivers/sensor.c \
-        $(APP_DIR)/sh/syscalls.c \
+        $(DEVICE_DIR)/src/syscalls.c \
+        $(DEVICE_DIR)/src/semihost.c \
         $(APP_DIR)/sh/semihost_test.c \
         board/board.c \
         board/startup.c \
         board/uart.c \
         board/usb.c \
-        $(UCLOG_DIR)/log.c \
+        $(DEVICE_DIR)/src/log.c \
         $(UCCOMM_DIR)/cb.c \
         $(UCCOMM_DIR)/cobs.c \
         $(UCCOMM_DIR)/cbor.c \
@@ -68,10 +69,10 @@ RAM_OPTS := -DLOG_TX_BUF_SIZE=4096 -DSH_BUF_SIZE=512 -DSH_BIG_FILE=1200
 CPU    := -mcpu=cortex-m0plus -mthumb -mfloat-abi=soft -mfp16-format=ieee
 CFLAGS := $(CPU) -std=gnu11 -Os -g3 -Wall -Wextra -Wno-override-init \
           -Wno-unused-parameter -ffunction-sections -fdata-sections \
-          -fno-eliminate-unused-debug-types -ffile-prefix-map=$(APP_DIR)/=src/ \
-          -DSTM32C071xx $(RAM_OPTS) -I$(APP_DIR) -Iboard -I$(UCLOG_DIR) -I$(UCCOMM_DIR) \
+          -fno-eliminate-unused-debug-types -ffile-prefix-map=$(APP_DIR)/=src/ -ffile-prefix-map=$(DEVICE_DIR)/=uclog/ \
+          -DSTM32C071xx $(RAM_OPTS) -I$(APP_DIR) -Iboard -I$(DEVICE_DIR)/include -I$(UCCOMM_DIR) \
           -I$(CMSIS_CORE) -I$(C0_DEVICE) -I$(C0_LL) -MMD -MP
-LDFLAGS := $(CPU) -Tboard/stm32c071rb.ld -L$(UCLOG_DIR) -Wl,--gc-sections -Wl,-Map=$(BUILD)/app.map \
+LDFLAGS := $(CPU) -Tboard/stm32c071rb.ld -L$(DEVICE_DIR)/ports/baremetal -Wl,--gc-sections -Wl,-Map=$(BUILD)/app.map \
            --specs=nano.specs --specs=nosys.specs -u _printf_float -Wl,--no-warn-rwx-segments
 LDLIBS := -lm
 
@@ -93,7 +94,7 @@ $(BUILD)/obj/app/%.o: $(APP_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/obj/uclog/%.o: $(UCLOG_DIR)/%.c
+$(BUILD)/obj/device/%.o: $(DEVICE_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -108,13 +109,13 @@ $(BUILD)/obj/cube/system_stm32c0xx.o: $(C0_SYSTEM)
 # 1. link (the .apphash field is zero)
 # 2. app_hash = SHA-512 of that image; write it into .apphash
 # 3. logdata from the ELF; embed it as .logdata_cbor; save <app_hash>.logdata too
-$(BUILD)/app.elf: $(OBJS) board/stm32c071rb.ld $(UCLOG_DIR)/log.ld $(UCLOG_DIR)/tools/logdata.py \
-             $(UCLOG_DIR)/tools/apphash.py
+$(BUILD)/app.elf: $(OBJS) board/stm32c071rb.ld $(DEVICE_DIR)/ports/baremetal/log.ld $(DEVICE_DIR)/tools/logdata.py \
+             $(DEVICE_DIR)/tools/hash.py
 	$(CC) $(LDFLAGS) $(OBJS) $(LDLIBS) -o $@.tmp
 	$(OBJCOPY) -O binary $@.tmp $(BUILD)/app.unhashed.bin
-	$(PYTHON) $(UCLOG_DIR)/tools/apphash.py $(BUILD)/app.unhashed.bin -o $(BUILD)/app.hash > $(BUILD)/app.hash.txt
+	$(PYTHON) $(DEVICE_DIR)/tools/hash.py -f -i $(BUILD)/app.unhashed.bin -o $(BUILD)/app.hash > $(BUILD)/app.hash.txt
 	$(OBJCOPY) --update-section .apphash=$(BUILD)/app.hash $@.tmp
-	$(PYTHON) $(UCLOG_DIR)/tools/logdata.py --objdump $(OBJDUMP) $@.tmp -o $(BUILD)/app.logdata
+	$(PYTHON) $(DEVICE_DIR)/tools/logdata.py --objdump $(OBJDUMP) $@.tmp -o $(BUILD)/app.logdata
 	$(OBJCOPY) --add-section .logdata_cbor=$(BUILD)/app.logdata --set-section-flags .logdata_cbor=noload,readonly $@.tmp $@
 	@rm -f $@.tmp
 	cp $(BUILD)/app.logdata $(BUILD)/$$(cat $(BUILD)/app.hash.txt).logdata

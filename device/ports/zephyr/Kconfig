@@ -1,0 +1,109 @@
+# © 2025 Unit Circle Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+menu "Unit Circle"
+
+config UC_LOG
+	bool "Use UC logging framework"
+	select UCCOMM
+	depends on UCUART || UCUSB || UCUART_Z
+	help
+	  The ucLog device library on the link chosen as uclog,link in the devicetree (or else
+	  zephyr,console), which must be a ucuart, ucuart_z or ucusb device.
+
+if UC_LOG
+
+config UC_LOG_SAVE
+	bool "On startup copy log buffer to saved log buffer"
+	default n
+	help
+	  Keep the log ring across a reset (in .noinit); log_saved_log() returns what was left in
+	  it.
+
+config UC_LOG_BUF_SIZE
+	int "UC size of buffer"
+	default 8192
+	help
+	  The log ring (LOG_TX_BUF_SIZE): logs wait here until a host takes them.
+
+config UC_LOG_STACK_SIZE
+	int "UC log thread stack size"
+	default 2048
+	help
+	  The log thread runs log_poll() (frames from the host, port handlers) and log_tick().
+
+config UC_LOG_THREAD_PRIORITY
+	int "UC log thread priority (cooperative)"
+	default 10
+
+config UC_LOG_SERVER
+	bool "Deprecated: no effect"
+	help
+	  Since device-v4 the host link (frames from the host, log_rx, log_notify) is always on:
+	  host presence needs it (spec/protocol.md §2.3).
+
+config UC_LOG_SERVER_PORTS
+	int "Deprecated: no effect"
+	default 64
+	help
+	  Every port (0-63) has a handler slot since device-v4.
+
+config UC_SYSCALLS
+	bool "Semihost: stdio and files over ucLog (port 63)"
+	default n
+	select FILE_SYSTEM
+	help
+	  stdout and stdin go to the host's semihost console, and the host's files appear as a
+	  Zephyr file system mounted at UC_SYSCALLS_MOUNT (fs_open(), and open()/fopen() with the
+	  POSIX file API). Without it stdout and printk are logged line by line.
+
+if UC_SYSCALLS
+
+config UC_SYSCALLS_BUF_SIZE
+	int "Largest semihost request or reply"
+	default 1443
+	range 64 1443
+
+config UC_SYSCALLS_MOUNT
+	string "Mount point of the host's files"
+	default "/host"
+
+config UC_SYSCALLS_MAX_FILES
+	int "Host files open at once"
+	default 8
+
+endif
+
+config UC_SHELL
+	bool "Enable support for shell over UC log"
+	default n
+	depends on !SHELL_BACKENDS
+
+if UC_SHELL
+
+config UC_SHELL_PROMPT
+	string "UC log shell prompt"
+	default "uclog$~ "
+	help
+	  Needs to end with "~ " to allow flushing of buffered text.
+
+config UC_SHELL_STACK_SIZE
+	int "UC log shell stack size"
+	default 512
+
+backend = UC
+backend-str = UC
+source "subsys/logging/Kconfig.template.log_format_config"
+
+endif
+
+endif
+
+config UC_SIGNED_IMAGE
+	bool "Enable support for UC signed images"
+	default n
+	help
+	  The app hash comes from the signed-image header (sbl_app_hash()), and the image is
+	  signed after the build (cmake/signature.cmake, tools/sbl.py).
+
+endmenu

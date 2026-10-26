@@ -45,8 +45,10 @@ if __name__ == '__main__':
     else:
         app_hash = hash(args.bin)
 
-    user_dir = os.path.expanduser("~")
-    cache_dir = os.path.join(user_dir, ".cache", "uclog")
+    # The hosts' cache directory: $UCLOG_CACHE_DIR, else $XDG_CACHE_HOME/uclog, else ~/.cache/uclog
+    cache_dir = (os.environ.get("UCLOG_CACHE_DIR")
+                 or (os.path.join(os.environ["XDG_CACHE_HOME"], "uclog") if os.environ.get("XDG_CACHE_HOME") else None)
+                 or os.path.join(os.path.expanduser("~"), ".cache", "uclog"))
     if not os.path.exists(cache_dir):
         os.makedirs(cache_dir)
     shutil.copy(args.logdata, os.path.join(cache_dir, app_hash.hex() + ".logdata"))

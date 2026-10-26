@@ -18,7 +18,14 @@
 #include <hal/nrf_uarte.h>
 #include <hal/nrf_gpio.h>
 #include <nrfx_timer.h>
+// nrfx 4 (Zephyr 4.x) replaced nrfx_ppi with gppi and gave nrfx_timer_t a control block.
+#if NRFX_RELEASE_VER_MAJOR >= 4
+#include <helpers/nrfx_gppi.h>
+#define UCUART_TIMER NRFX_TIMER_INSTANCE(NRF_TIMER4)
+#else
 #include <nrfx_ppi.h>
+#define UCUART_TIMER NRFX_TIMER_INSTANCE(4)
+#endif
 
 #include "ucpinctrl.h"
 
@@ -35,19 +42,23 @@ struct ucuart_config {
   const struct pinctrl_dev_config *pcfg;
   void (*irq_config)(const struct device *dev);
   cb_t* rx_cb;
-
-  nrfx_timer_t      timer;
 };
 
 struct ucuart_data {
   atomic_t tx_active;
+  atomic_t tx_paused; // log.c: the host is absent
   atomic_t rx_active;
   cb_t* tx_cb;
   uint32_t last_error;
 
   struct k_event event;
   size_t n; // current number of bytes being sent
+  nrfx_timer_t timer; // TIMER4 counts received bytes (RXDRDY through PPI)
+#if NRFX_RELEASE_VER_MAJOR >= 4
+  nrfx_gppi_handle_t ppi;
+#else
   nrf_ppi_channel_t ppi;
+#endif
 };
 
 typedef enum {
@@ -100,7 +111,7 @@ static void uart_handler(const struct device* dev) {
     cb_skip(data->tx_cb, data->n);
 
     // If there is more data then send it now
-    size_t n = cb_peek_avail(data->tx_cb);
+    size_t n = atomic_get(&data->tx_paused) ? 0 : cb_peek_avail(data->tx_cb);
     if (n > 0) {
       nrf_uarte_tx_buffer_set(config->regs, cb_peek(data->tx_cb), n);
       data->n = n;
@@ -144,7 +155,7 @@ static int tx_schedule(const struct device *dev, const uint8_t* prefix, size_t p
   const struct ucuart_config * config = ZEPHYR_DEVICE_MEMBER(dev, config);
   struct ucuart_data * data = ZEPHYR_DEVICE_MEMBER(dev, data);
 
-  if (data->tx_cb) {
+  if (data->tx_cb && !atomic_get(&data->tx_paused)) {
     bool got = atomic_cas(&data->tx_active, false, true);
     if (got) {
       nrf_uarte_event_clear(config->regs, NRF_UARTE_EVENT_ENDTX);
@@ -265,14 +276,34 @@ static uint32_t wait_event(const struct device *dev, uint32_t mask, bool reset, 
   (void) reset;
   uint32_t r =  k_event_wait(&data->event, mask, 0, timeout);
   if (r != 0) k_event_clear(&data->event, r);
-  size_t w = nrfx_timer_capture(&config->timer, 0) % RX_BUF_LEN;
+  size_t w = nrfx_timer_capture(&data->timer, 0) % RX_BUF_LEN;
   config->rx_cb->write = w;
   return r;
 }
 
+static void tx_pause(const struct device *dev, bool pause) {
+  struct ucuart_data * data = ZEPHYR_DEVICE_MEMBER(dev, data);
+  atomic_set(&data->tx_paused, pause);
+}
+
+static bool tx_idle(const struct device *dev) {
+  struct ucuart_data * data = ZEPHYR_DEVICE_MEMBER(dev, data);
+  return !atomic_get(&data->tx_active);
+}
+
+// LOG_FATAL: interrupts are off from here on. Run the interrupt handler by polling until what is
+// buffered has been sent (log.c calls this again after each frame it adds).
 static int panic(const struct device *dev) {
-  (void) dev;
-  // TODO Need to call interrupt handler like USB driver does
+  struct ucuart_data * data = ZEPHYR_DEVICE_MEMBER(dev, data);
+  if (data->tx_cb == NULL) return 0;
+  atomic_set(&data->tx_paused, false);
+  for (uint32_t i = 0; i < 10000000U; i++) {
+    if (!atomic_get(&data->tx_active)) {
+      if (cb_peek_avail(data->tx_cb) == 0) break;
+      tx_schedule(dev, NULL, 0);
+    }
+    uart_handler(dev);
+  }
   return 0;
 }
 
@@ -294,6 +325,8 @@ static const struct ucuart_driver_api ucuart_api = {
   .rx_skip = rx_skip,
   .wait_event = wait_event,
   .panic = panic,
+  .tx_pause = tx_pause,
+  .tx_idle = tx_idle,
 };
 
 static void timer_handler(nrf_timer_event_t event_type, void *p_context) { }
@@ -338,25 +371,33 @@ static int ucuart_init(const struct device *dev) {
   config->irq_config(dev);
 
   nrfx_timer_config_t tmr_config = NRFX_TIMER_DEFAULT_CONFIG(
-                NRF_TIMER_BASE_FREQUENCY_GET(config->timer.p_reg));
+                NRF_TIMER_BASE_FREQUENCY_GET(data->timer.p_reg));
 
   tmr_config.mode = NRF_TIMER_MODE_COUNTER;
   tmr_config.bit_width = NRF_TIMER_BIT_WIDTH_32;
-  err = nrfx_timer_init(&config->timer, &tmr_config, timer_handler);
+  uint32_t eep = nrf_uarte_event_address_get(config->regs, NRF_UARTE_EVENT_RXDRDY);
+#if NRFX_RELEASE_VER_MAJOR >= 4
+  if (nrfx_timer_init(&data->timer, &tmr_config, timer_handler) != 0) return -EIO;
+  nrfx_timer_enable(&data->timer);
+  nrfx_timer_clear(&data->timer);
+  uint32_t tep = nrfx_timer_task_address_get(&data->timer, NRF_TIMER_TASK_COUNT);
+  if (nrfx_gppi_conn_alloc(eep, tep, &data->ppi) != 0) return -EIO;
+  nrfx_gppi_conn_enable(data->ppi);
+#else
+  err = nrfx_timer_init(&data->timer, &tmr_config, timer_handler);
   if (err != NRFX_SUCCESS) {
     return -EIO;
   }
-  nrfx_timer_enable(&config->timer);
-  nrfx_timer_clear(&config->timer);
+  nrfx_timer_enable(&data->timer);
+  nrfx_timer_clear(&data->timer);
 
   err = nrfx_ppi_channel_alloc(&data->ppi);
   if (err != NRFX_SUCCESS) {
     return -EIO;
   }
 
-  err = nrfx_ppi_channel_assign(data->ppi,
-            nrf_uarte_event_address_get(config->regs, NRF_UARTE_EVENT_RXDRDY),
-            nrfx_timer_task_address_get(&config->timer, NRF_TIMER_TASK_COUNT));
+  err = nrfx_ppi_channel_assign(data->ppi, eep,
+            nrfx_timer_task_address_get(&data->timer, NRF_TIMER_TASK_COUNT));
   if (err != NRFX_SUCCESS) {
     return -EIO;
   }
@@ -364,6 +405,7 @@ static int ucuart_init(const struct device *dev) {
   if (err != NRFX_SUCCESS) {
     return -EIO;
   }
+#endif
 
   nrf_uarte_enable(config->regs);
 
@@ -373,8 +415,7 @@ static int ucuart_init(const struct device *dev) {
   return 0;
 }
 
-// TODO Timer should be configurable from device tree.
-#define CONFIG_UCUART_0_TIMER 4
+// TODO Timer should be configurable from device tree (UCUART_TIMER above).
 
 #define IRQ_CONFIG(i)                                               \
 static void irq_config##i(const struct device *dev) {               \
@@ -398,7 +439,6 @@ static void irq_config##i(const struct device *dev) {               \
     .pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(i),                      \
     .irq_config = irq_config##i,                                    \
     .rx_cb = &ucuart_rx_cb##i,                                      \
-    .timer = NRFX_TIMER_INSTANCE(CONFIG_UCUART_##i##_TIMER),\
   };                                                                \
                                                                     \
   static struct ucuart_data data##i = {                             \
@@ -407,6 +447,7 @@ static void irq_config##i(const struct device *dev) {               \
     .tx_cb = NULL,                                                  \
     .last_error = 0,                                                \
     .n = 0U,                                                        \
+    .timer = UCUART_TIMER,                                          \
   };                                                                \
                                                                     \
   DEVICE_DT_INST_DEFINE(i, ucuart_init, PM_DEVICE_DT_INST_GET(i), &data##i, &config##i, \

@@ -19,8 +19,6 @@
 #include <log.h>
 
 #include "cb.h"
-#include "cobs.h"
-#include "cbor.h"
 
 #include "ucuart.h"
 
@@ -44,22 +42,6 @@
 
 #define DT_DRV_COMPAT unitcircle_ucusb
 
-#define APP_HASH_SIZE 64
-#ifdef CONFIG_SIGNED_IMAGE
-#include "lib/uc/sbl.h"
-#else
-#if CONFIG_UC_LOG_SAVE_ENABLED
-extern const uint8_t app_hash__[APP_HASH_SIZE];
-#else
-const __attribute__((section(".apphash"))) uint8_t app_hash__[APP_HASH_SIZE];
-#endif
-#endif
-
-#define DEVICE_INFO_UCLOG_PORT (62)
-
-#define MAX_LOG_TX_SIZE (256u)
-static uint8_t device_info_tx_buf[COBS_ENC_SIZE(MAX_LOG_TX_SIZE)+2];
-static size_t device_info_len;
 
 // Need to be packed
 typedef struct __attribute__ ((packed)) {
@@ -406,7 +388,6 @@ typedef struct __attribute__ ((packed)) {
 } line_coding_t;
 
 static atomic_t host_ready = false;
-static atomic_t received_packet = false;
 static line_coding_t line_coding;
 
 static uint8_t request_data[NRF_USBD_COMMON_EPSIZE];
@@ -416,6 +397,7 @@ static nrf_usbd_common_setup_t pending_req;
 static bool panic_mode = false;
 static bool panic_timed_out = false;
 static atomic_t tx_active = false;
+static atomic_t tx_paused = false; // log.c: the host is absent
 static size_t tx_n;
 static uint8_t rx_temp_buf[NRF_USBD_COMMON_EPSIZE];
 static uint8_t rx_buf[1000];
@@ -423,12 +405,6 @@ static cb_t rx_cb = CB_INIT(rx_buf);
 static cb_t* tx_cb = NULL;
 struct k_event event;
 
-// uclog sends ping packets at this rate
-#define UCLOG_PING_RATE_MS 500
-// ping_timeout_timer will expire if no packets received in this time
-#define PING_TIMEOUT_MS (UCLOG_PING_RATE_MS * 2)
-
-struct k_timer ping_timeout_timer;
 
 static struct onoff_manager *hfxo_mgr;
 static struct onoff_client hfxo_cli;
@@ -474,7 +450,6 @@ static void usb_dc_power_event_handler(nrfx_power_usb_evt_t event) {
     case NRFX_POWER_USB_EVT_REMOVED:
       nrf_usbd_common_disable();
       atomic_set(&host_ready, false);
-      atomic_set(&received_packet, false);
       atomic_set(&tx_active, false);
       if (hfxo_stop() < 0) LOG_FATAL("hfxo_stop");
       break;
@@ -605,16 +580,6 @@ static void handle_device_setup(nrf_usbd_common_setup_t* req, const void* data) 
   }
 }
 
-static void send_device_info(void) {
-  // Send device info to host so it can use hash to validate log parsing
-  atomic_set(&tx_active, true);
-
-  LOG_INFO("Sending device info");
-  tx_n = 0; // not peeking from tx_cb for this transfer
-  NRF_USBD_COMMON_TRANSFER_IN(tx, device_info_tx_buf, device_info_len, 0);
-  nrfx_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN2, &tx);
-  if (e != NRFX_SUCCESS) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
-}
 
 static void handle_class_setup(nrf_usbd_common_setup_t* req, const void* data) {
   if ((req->bmRequestType & 0x1f) == 1) {
@@ -641,15 +606,7 @@ static void handle_class_setup(nrf_usbd_common_setup_t* req, const void* data) {
         bool ready = req->wValue == 3;
         nrf_usbd_common_setup_clear();  // no data to receive/send so finish
 
-        if (ready) {
-          if(atomic_get(&received_packet)) {
-            send_device_info();
-          }
-        } else {
-          // Port closed by uclog. reset received_packet
-          atomic_set(&received_packet, false);
-        }
-        atomic_set(&host_ready, ready);
+        atomic_set(&host_ready, ready); // the port is open
         break;
       default:
         LOG_ERROR("unhandled class req: %u", req->bRequest);
@@ -684,18 +641,18 @@ int usb_set_tx_cb(const struct device *dev, cb_t* cb) {
 
 int usb_tx_schedule(const struct device *dev, const uint8_t* prefix, size_t pn) {
   (void) dev;
-  if (tx_cb && atomic_get(&host_ready) && atomic_get(&received_packet)) {
+  if (tx_cb && atomic_get(&host_ready) && !atomic_get(&tx_paused)) {
     bool got = atomic_cas(&tx_active, false, true);
     if (got) {
       size_t n = cb_peek_avail(tx_cb);
-      // if ((prefix != NULL) && (pn > 0)) {
-      //   tx_n = 0;
-      //   NRF_USBD_COMMON_TRANSFER_IN(tx, prefix, pn, 0);
-      //   nrfx_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN2, &tx);
-      //   if (e != NRFX_SUCCESS) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
-      // }
-      // else 
-      if (n > 0) {
+      if ((prefix != NULL) && (pn > 0)) {
+        // The device info: not in tx_cb, so tx_n = 0 and the transfer-done handler skips nothing.
+        tx_n = 0;
+        NRF_USBD_COMMON_TRANSFER_IN(tx, prefix, pn, 0);
+        nrfx_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN2, &tx);
+        if (e != NRFX_SUCCESS) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
+      }
+      else if (n > 0) {
         tx_n = n;
         NRF_USBD_COMMON_TRANSFER_IN(tx, cb_peek(tx_cb), n, 0);
         nrfx_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN2, &tx);
@@ -784,7 +741,6 @@ static void usbd_event_handler(nrf_usbd_common_evt_t const *const p_event) {
       nrf_usbd_common_ep_enable(NRF_USBD_COMMON_EPIN0);
       nrf_usbd_common_ep_enable(NRF_USBD_COMMON_EPOUT0);
       atomic_set(&host_ready, false);
-      atomic_set(&received_packet, false);
       atomic_set(&tx_active, false);
       break;
     case NRF_USBD_COMMON_EVT_SETUP: {
@@ -870,20 +826,12 @@ static void usbd_event_handler(nrf_usbd_common_evt_t const *const p_event) {
           // LOG_INFO("received: %zu", n);
           cb_write(&rx_cb, rx_temp_buf, n);
           k_event_post(&event, UCUART_EVT_RX);
-
-          k_timer_start(&ping_timeout_timer, K_MSEC(PING_TIMEOUT_MS), K_NO_WAIT);
-
-          // Mark as host ready if we've received something
-          bool changed = atomic_cas(&received_packet, false, true);
-          if (changed && atomic_get(&host_ready)) {
-            send_device_info();
-          }
         }
       }
       else if (p_event->data.eptransfer.ep == NRF_USBD_COMMON_EPIN2) {
         if (p_event->data.eptransfer.status == NRF_USBD_COMMON_EP_OK) {
           if (tx_cb == NULL) {
-            // No tx buffer set yet. We can get here via send_device_info() xfer
+            // No tx buffer set yet
             atomic_set(&tx_active, false);
           } else {
             if (cb_peek_avail(tx_cb) < tx_n) {
@@ -893,7 +841,7 @@ static void usbd_event_handler(nrf_usbd_common_evt_t const *const p_event) {
               cb_skip(tx_cb, tx_n);
             }
             size_t n = cb_peek_avail(tx_cb);
-            bool ready = atomic_get(&host_ready);
+            bool ready = atomic_get(&host_ready) && !atomic_get(&tx_paused);
             if ((n > 0) && ready) {
               atomic_set(&tx_active, true);
               tx_n = n;
@@ -967,10 +915,14 @@ static int usb_panic(const struct device* dev) {
   return 0;
 }
 
-static int usb_is_host_ready(const struct device* dev, bool* ready) {
+static void usb_tx_pause(const struct device* dev, bool pause) {
   ARG_UNUSED(dev);
-  *ready = (atomic_get(&host_ready) == true) && (atomic_get(&received_packet) == true);
-  return 0;
+  atomic_set(&tx_paused, pause);
+}
+
+static bool usb_tx_idle(const struct device* dev) {
+  ARG_UNUSED(dev);
+  return !atomic_get(&tx_active);
 }
 
 static const struct ucuart_driver_api ucusb_api = {
@@ -985,7 +937,8 @@ static const struct ucuart_driver_api ucusb_api = {
   .rx_skip = usb_rx_skip,
   .wait_event = usb_wait_event,
   .panic = usb_panic,
-  .is_host_ready = usb_is_host_ready,
+  .tx_pause = usb_tx_pause,
+  .tx_idle = usb_tx_idle,
 };
 
 
@@ -1004,64 +957,15 @@ static void fill_serial_number(void) {
   }
 }
 
-static void fill_device_info(void) {
-  size_t port_offset = sizeof(device_info_tx_buf) - (size_t)MAX_LOG_TX_SIZE;
 
-  // Encode port number
-  uint8_t port = DEVICE_INFO_UCLOG_PORT;
-  device_info_tx_buf[port_offset] = (port << 2) | 3;
-
-  // Encode CBOR
-  size_t cbor_offset = port_offset + 1;
-  uint8_t *cbor_output = &device_info_tx_buf[cbor_offset];
-
-  cbor_stream_t cbor_stream;
-  cbor_init(&cbor_stream, cbor_output, MAX_LOG_TX_SIZE);
-
-#ifdef CONFIG_SIGNED_IMAGE
-  const uint8_t *app_hash__ = sbl_app_hash();
-#endif
-
-  cbor_error_t err = cbor_pack(&cbor_stream,
-    "{"
-        ".app_hash:b,"
-        ".board:s"
-    "}",
-        app_hash__, APP_HASH_SIZE,
-        CONFIG_BOARD
-    );
-  if (err != CBOR_ERROR_NONE) {
-    LOG_FATAL("CBOR pack error: {enum:cbor_error_t}%d", err);
-  }
-
-  size_t cbor_len = cbor_read_avail(&cbor_stream);
-
-  // Encode COBS
-  size_t cobs_len = cobs_enc(&device_info_tx_buf[1],
-      &device_info_tx_buf[port_offset],
-      cbor_len + 1);
-
-  // Frame
-  device_info_tx_buf[0] = '\0';
-  device_info_tx_buf[cobs_len+1] = '\0';
-
-  device_info_len = cobs_len + 2;
-}
-
-void ping_timeout(struct k_timer *timer) {
-  atomic_set(&received_packet, false);
-  LOG_WARN("Ping timeout expired: Host disconnected");
-}
 
 static int usb_init(const struct device *arg) {
   nrfx_err_t err;
   LOG_INFO("usb_init");
 
   k_event_init(&event);
-  k_timer_init(&ping_timeout_timer, ping_timeout, NULL);
 
   fill_serial_number();
-  fill_device_info();
 
   hfxo_mgr = z_nrf_clock_control_get_onoff(CLOCK_CONTROL_NRF_SUBSYS_HF);
 

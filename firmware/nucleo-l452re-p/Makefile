@@ -30,7 +30,7 @@ DEVICE  ?= auto
 STM32CUBE_L4 ?= $(HOME)/STM32Cube/Repository/STM32Cube_FW_L4_V1.18.2
 CMSIS_DEV := $(STM32CUBE_L4)/Drivers/CMSIS/Device/ST/STM32L4xx
 
-UCLOG_DIR  := ../uclog
+DEVICE_DIR := ../../device
 UCCOMM_DIR := ../uccomm
 APP_DIR    := ../app
 BUILD      := build
@@ -39,13 +39,14 @@ BUILD      := build
 # app (../app) is shown as src/ (-ffile-prefix-map below).
 SRCS := $(APP_DIR)/main.c \
         $(APP_DIR)/drivers/sensor.c \
-        $(APP_DIR)/sh/syscalls.c \
+        $(DEVICE_DIR)/src/syscalls.c \
+        $(DEVICE_DIR)/src/semihost.c \
         $(APP_DIR)/sh/semihost_test.c \
         board/board.c \
         board/dma.c \
         board/gpio.c \
         board/uart.c \
-        $(UCLOG_DIR)/log.c \
+        $(DEVICE_DIR)/src/log.c \
         $(UCCOMM_DIR)/cb.c \
         $(UCCOMM_DIR)/cobs.c \
         $(UCCOMM_DIR)/cbor.c \
@@ -57,11 +58,11 @@ CPU    := -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mfp16-form
 CFLAGS := $(CPU) -std=gnu11 -Os -g3 -Wall -Wextra -Wno-override-init \
           -Wno-unused-parameter -ffunction-sections -fdata-sections \
           -fno-eliminate-unused-debug-types \
-          -ffile-prefix-map=$(APP_DIR)/=src/ \
-          -DSTM32L452xx -I$(APP_DIR) -Iboard -I$(UCLOG_DIR) -I$(UCCOMM_DIR) \
+          -ffile-prefix-map=$(APP_DIR)/=src/ -ffile-prefix-map=$(DEVICE_DIR)/=uclog/ \
+          -DSTM32L452xx -I$(APP_DIR) -Iboard -I$(DEVICE_DIR)/include -I$(UCCOMM_DIR) \
           -I$(STM32CUBE_L4)/Drivers/CMSIS/Include -I$(CMSIS_DEV)/Include \
           -I$(STM32CUBE_L4)/Drivers/STM32L4xx_HAL_Driver/Inc -MMD -MP
-LDFLAGS := $(CPU) -Tboard/stm32l452re.ld -L$(UCLOG_DIR) -Wl,--gc-sections -Wl,-Map=$(BUILD)/app.map \
+LDFLAGS := $(CPU) -Tboard/stm32l452re.ld -L$(DEVICE_DIR)/ports/baremetal -Wl,--gc-sections -Wl,-Map=$(BUILD)/app.map \
            --specs=nano.specs --specs=nosys.specs -u _printf_float -Wl,--no-warn-rwx-segments
 LDLIBS := -lm
 
@@ -84,7 +85,7 @@ $(BUILD)/obj/app/%.o: $(APP_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/obj/uclog/%.o: $(UCLOG_DIR)/%.c
+$(BUILD)/obj/device/%.o: $(DEVICE_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -103,13 +104,13 @@ $(BUILD)/obj/cube/%.o: $(CMSIS_DEV)/Source/Templates/gcc/%.s
 # 1. link (the .apphash field is zero)
 # 2. app_hash = SHA-512 of that image; write it into .apphash
 # 3. logdata from the ELF; embed it as .logdata_cbor; save <app_hash>.logdata too
-$(BUILD)/app.elf: $(OBJS) board/stm32l452re.ld $(UCLOG_DIR)/log.ld $(UCLOG_DIR)/tools/logdata.py \
-             $(UCLOG_DIR)/tools/apphash.py
+$(BUILD)/app.elf: $(OBJS) board/stm32l452re.ld $(DEVICE_DIR)/ports/baremetal/log.ld $(DEVICE_DIR)/tools/logdata.py \
+             $(DEVICE_DIR)/tools/hash.py
 	$(CC) $(LDFLAGS) $(OBJS) $(LDLIBS) -o $@.tmp
 	$(OBJCOPY) -O binary $@.tmp $(BUILD)/app.unhashed.bin
-	$(PYTHON) $(UCLOG_DIR)/tools/apphash.py $(BUILD)/app.unhashed.bin -o $(BUILD)/app.hash > $(BUILD)/app.hash.txt
+	$(PYTHON) $(DEVICE_DIR)/tools/hash.py -f -i $(BUILD)/app.unhashed.bin -o $(BUILD)/app.hash > $(BUILD)/app.hash.txt
 	$(OBJCOPY) --update-section .apphash=$(BUILD)/app.hash $@.tmp
-	$(PYTHON) $(UCLOG_DIR)/tools/logdata.py --objdump $(OBJDUMP) $@.tmp -o $(BUILD)/app.logdata
+	$(PYTHON) $(DEVICE_DIR)/tools/logdata.py --objdump $(OBJDUMP) $@.tmp -o $(BUILD)/app.logdata
 	$(OBJCOPY) --add-section .logdata_cbor=$(BUILD)/app.logdata --set-section-flags .logdata_cbor=noload,readonly $@.tmp $@
 	@rm -f $@.tmp
 	cp $(BUILD)/app.logdata $(BUILD)/$$(cat $(BUILD)/app.hash.txt).logdata

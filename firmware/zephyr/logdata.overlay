@@ -1,0 +1,10 @@
+/* The non-loaded region the log format strings are placed in (log.ld). Its address gives the
+ * target digit: (address >> 20) & 0xF = 0, as on the bare-metal boards. */
+/ {
+	logdata: memory@f0000000 {
+		compatible = "zephyr,memory-region";
+		reg = <0xf0000000 0x100000>;
+		status = "okay";
+		zephyr,memory-region = "LOGDATA";
+	};
+};

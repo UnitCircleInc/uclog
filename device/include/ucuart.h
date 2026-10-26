@@ -33,6 +33,8 @@ typedef uint32_t (*ucuart_wait_event_t)(const struct device *dev, uint32_t mask,
 typedef int (*ucuart_panic_t)(const struct device *dev);
 
 typedef int (*ucuart_is_host_ready_t)(const struct device *dev, bool *ready);
+typedef void (*ucuart_tx_pause_t)(const struct device *dev, bool pause);
+typedef bool (*ucuart_tx_idle_t)(const struct device *dev);
 
 enum ucuart_event_e {
   UCUART_EVT_RX = 1,
@@ -61,7 +63,9 @@ __subsystem struct ucuart_driver_api {
 
   ucuart_panic_t panic;
 
-  ucuart_is_host_ready_t is_host_ready;
+  ucuart_is_host_ready_t is_host_ready; // unused since device-v4: host presence is log.c's
+  ucuart_tx_pause_t tx_pause;           // optional: without it TX never pauses
+  ucuart_tx_idle_t tx_idle;             // optional: without it TX counts as idle when tx_cb is empty
 };
 
 // @endcond
@@ -222,7 +226,30 @@ static inline int z_impl_ucuart_is_host_ready(const struct device *dev,
   return api->is_host_ready(dev, ready);
 }
 
+/**
+ * @brief Stop (or resume) draining the TX buffer. While paused a transfer in progress completes,
+ * but no new one starts; ucuart_tx_schedule() with a prefix still sends the prefix after
+ * ucuart_tx_pause(dev, false). Used by log.c when the host goes away (spec/protocol.md §2.3).
+ */
+static inline void ucuart_tx_pause(const struct device *dev, bool pause) {
+  const struct ucuart_driver_api *api =
+    (const struct ucuart_driver_api *)ZEPHYR_DEVICE_MEMBER(dev, api);
+  if (api->tx_pause != NULL) api->tx_pause(dev, pause);
+}
+
+/** @brief No TX transfer is in progress. */
+static inline bool ucuart_tx_idle(const struct device *dev, const cb_t *tx_cb) {
+  const struct ucuart_driver_api *api =
+    (const struct ucuart_driver_api *)ZEPHYR_DEVICE_MEMBER(dev, api);
+  if (api->tx_idle != NULL) return api->tx_idle(dev);
+  return tx_cb == NULL || cb_read_avail(tx_cb) == 0;
+}
+
+#if __has_include(<zephyr/syscalls/ucuart.h>)
+#include <zephyr/syscalls/ucuart.h>
+#else
 #include <syscalls/ucuart.h>
+#endif
 
 #ifdef __cplusplus
 }

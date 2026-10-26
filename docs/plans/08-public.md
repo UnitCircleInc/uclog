@@ -125,14 +125,48 @@ sorts after it). Postfixes compare alphanumerically: `1-beta1 < 1 < 1+hotfix1 < 
 
 ```
 device/            the device library (one log.c): include/, src/, ports/{zephyr,baremetal}/,
-                   zephyr drivers (ucuart, ucuart_z, ucusb), Kconfig, CMakeLists.txt, uclog.mk,
-                   cmake/ (apphash, signature), tools/ (logdata.py, apphash.py), examples/
-firmware/          test firmware for the hosts (boards + app), built against device/
+                   drivers/ (ucuart, ucuart_z, ucusb), dts/, snippets/, Kconfig, CMakeLists.txt,
+                   zephyr/module.yml, cmake/ (log, apphash, signature), tools/ (logdata.py,
+                   hash.py, …), app/ (Zephyr sample); uclog.mk and examples/ to come (tasks 5, 13)
+firmware/          test firmware for the hosts (boards + app, and zephyr/), built against device/
 native/ python/ web/ spec/    as now
 website/           the documentation site (Zensical): zensical.toml, docs/, overrides/
 docs/plans/        design plans (not published)
 zephyr/module.yml  points into device/
 ```
+
+### 2.5 One device library (task 4; decided 2026-10-26)
+
+The bare-metal library in this repository is the base. It already implements the spec (F1–F7,
+host presence, the RX rules). The Zephyr pieces are ported onto it.
+
+- **Core** `device/src/log.c` + `device/include/log.h`: framing, logs, device info (with
+  `uclog_version`), host presence (2 s without RX, 0.5 s pulses, device info on return), the RX
+  rules, `log_tx`/`log_rx`/`log_notify`. The Zephyr options that are not Zephyr-specific move here:
+  the saved log across a reset (`UC_LOG_SAVE`) and the signed-image app hash (`UC_SIGNED_IMAGE`,
+  `sbl_app_hash()`). The C++ `typechar` templates come from the Zephyr header.
+- **Port interface** `device/include/log_port.h` (`log_port_*`, as in `firmware/uclog/log.h`
+  today), plus weak hooks for how `log_rx` waits: a polled port runs `log_poll()`, a threaded port
+  blocks the caller until the dispatcher has the reply.
+- **Bare metal**: the board implements `log_port_*`; the main loop calls `log_poll()` and a 1 kHz
+  tick calls `log_tick()` (unchanged).
+- **Zephyr** `device/ports/zephyr/`: `log_port_*` over the `ucuart` driver API; a log thread runs
+  `log_poll()`/`log_tick()` (woken by RX, else every 10 ms); `SYS_INIT` start-up as before; the
+  `LOG_ERR`… mapping (`CONFIG_LOG_CUSTOM_HEADER`), printk/stdout hooks, the shell backend
+  (`UC_SHELL`). Zephyr 3.7 (NCS 2.9) and 4.x.
+- **Host presence is the core's**. The `ucuart` API gains `tx_pause`, `tx_idle` and `rx_mark`; the
+  drivers stop gating TX on their own `host_ready` timers. `ucuart_z` keeps its timer for power
+  management only (at 2 s); `ucusb` keeps its DTR gating. The nRF drivers (`ucuart`, `ucusb`) are
+  build-tested only (no nRF hardware here); `ucuart_z` is tested on the NUCLEO boards.
+- **Semihost** `device/src/syscalls.c` (issue #2): the syscalls from `firmware/app/sh/syscalls.c`,
+  for newlib and picolibc; Zephyr `CONFIG_UC_SYSCALLS`.
+- **Tools** `device/tools/` (was `scripts/`): `logdata.py` is the standard-library version from
+  `firmware/uclog/tools` (accepts `--ofile` too); `hash.py`, `cachelogdata.py` (the hosts' cache
+  directory rules), `sbl.py` and its modules. CMake helpers and linker fragments in `device/cmake/`.
+- **Test firmware** builds `device/`; `firmware/uclog/` is removed. A Zephyr build of the same test
+  app (`firmware/zephyr/`, NUCLEO-L452RE-P over `ucuart_z`) runs the hardware tests.
+- **Dropped**: `UC_FAULT` (no source), `lib/logserver.c` and `lib/junk.c` (folded into the core and
+  the Zephyr port).
 
 ## 3. The site (uclog.unitcircle.ca)
 
@@ -257,7 +291,7 @@ render their tables from that JSON, so they can be regenerated per release. Boar
 | 1 | Versions (§2.2a, starting at 4): the tag → manifest mapping and its CI check (Cargo, `pyproject.toml`, `package.json` files, VSIX), `UCLOG_DEVICE_VERSION` and its place in the device info, the compatibility table. **Done 2026-10-26**: `scripts/version.py` (`show`, `check TAG`, `set N [--device]`, `map N`) with tests; CI runs `show` and the tests (`spec.yml`) and `check` on a release tag (`release.yml`, before the builds). The tree is at `4-alpha1` (Cargo/npm/VSIX `4.0.0-alpha.1`, PyPI `4a1`); the native binaries show the SoloVer form (`uclog 4-alpha1`, `UCLOG_VERSION` from `build.rs`). `UCLOG_DEVICE_VERSION` in `firmware/uclog/log.h` (moves to `device/` in task 4) is sent as `uclog_version` in the device info (protocol.md §5.2). The table is `spec/compatibility.md`: device `v1`–`v3` are not supported by v4 hosts (their raw app hash on port 63 collides with semihost) | S |
 | 2 | Add a `LICENSE` file to the device repository now (Apache-2.0, as its headers say); check the third-party notices (ST HAL/CMSIS are not redistributed: the test firmware points at STM32Cube packages). **Done 2026-10-26** (device repo `0970e82`): no third-party code needs a notice; `ucuart_z.c` is StarIC's contribution under Apache-2.0 | S |
 | 3 | Import the device repository with its history under `device/` (`git subtree add`, or `git filter-repo --to-subdirectory-filter`), and retire `scripts/uclog.py` and the other legacy host scripts (D27). Import `main`, not `v3`: it has StarIC's STM32N6 changes after `v3` (PR #3: the device-info CBOR packet in place of the raw hash, `apphash.cmake` and log caching compatible with the STM32 signing tool, the `ucuart_z` driver on the Zephyr UART API, `cb.c`/`cbor.c` removed in favour of ucComm). **Done 2026-10-26**: `git subtree add --prefix=device` of `main` at `0970e82` (no squash, so `v1`–`v3` are the device repository's own commits; the tags were fetched). Retired `scripts/uclog.py`, `uccon.py` and `cobs.py` (only `uclog.py` used it); the build-time tools stay, listed in `device/scripts/README.md`. Later device-repository commits come in with `git subtree pull --prefix=device` until the repository is pushed (task 19) | S |
-| 4 | One `log.c`: merge the bare-metal library (`firmware/uclog`) with the Zephyr one. Port interface; the Zephyr `ucuart`/`ucuart_z`/`ucusb` drivers move to it; apply `spec/firmware-changes.md` (F1–F7) to the Zephyr side; the test boards build `device/`. Keep the post-`v3` changes (task 3) and reconcile their device-info packet with F7. **Fixes device issue #2 "Fix support for semihosting"**: the Zephyr side has no port-63 semihost client, only stdout/printk hooks into logs (`lib/log.c`, TODOs: stdin not hooked, a possible picolibc conflict). Move `firmware/app/sh/syscalls.c` into the library and hook it into Zephyr's libc (picolibc and newlib) for stdin/stdout and files. Goal (confirmed 2026-10-26): the device library reaches functional parity with this repository's target code (`firmware/uclog`, `firmware/app/sh`); after that the test firmware here uses `device/` and keeps no copy. Close the issue when parity is reached | L |
+| 4 | One `log.c`: merge the bare-metal library (`firmware/uclog`) with the Zephyr one. Port interface; the Zephyr `ucuart`/`ucuart_z`/`ucusb` drivers move to it; apply `spec/firmware-changes.md` (F1–F7) to the Zephyr side; the test boards build `device/`. Keep the post-`v3` changes (task 3) and reconcile their device-info packet with F7. **Fixes device issue #2 "Fix support for semihosting"**: the Zephyr side has no port-63 semihost client, only stdout/printk hooks into logs (`lib/log.c`, TODOs: stdin not hooked, a possible picolibc conflict). Move `firmware/app/sh/syscalls.c` into the library and hook it into Zephyr's libc (picolibc and newlib) for stdin/stdout and files. Goal (confirmed 2026-10-26): the device library reaches functional parity with this repository's target code (`firmware/uclog`, `firmware/app/sh`); after that the test firmware here uses `device/` and keeps no copy. Close the issue when parity is reached. **Done 2026-10-26** (§2.5): one `device/src/log.c` (the bare-metal library, so F1–F7 hold on Zephyr too) with `log_port.h` and thread hooks; the Zephyr port `device/ports/zephyr/` (log thread, `SYS_INIT`, `LOG_*` mapping, shell, `UC_LOG_SAVE`, `UC_SIGNED_IMAGE`; `log_init` is `uclog_init` on Zephyr, whose logging has a `log_init`); host presence moved out of `ucuart`/`ucuart_z`/`ucusb` (`tx_pause`, `tx_idle`; `ucusb` no longer builds its own device info); semihost as `device/src/semihost.c` + `syscalls.c` (newlib) + `ports/zephyr/semihost_fs.c` (a Zephyr file system at `/host`, stdout/stdin hooks); `UC_FAULT` dropped. Fixed on the way: `ucuart_z` skipped log bytes after each device-info prefix (async TX), did not select `EVENTS`, and had a `const` error; `ucusb` did not select `HWINFO`; `ucuart` builds with nrfx 4 (Zephyr 4.x). The boards here build `device/` (`firmware/uclog/` is gone) and pass the hardware tests (L452: Chrome and VS Code; C071: UART, CDC, HID). `firmware/zephyr/` runs the test app on Zephyr 4.3 on the L452 through `ucuart_z` and passes both hardware tests, semihost included (it needs circular RX DMA: firmware/README.md). Build-tested: Zephyr 3.7 (NCS 2.9) and 4.3, nRF52840 with `ucuart`, `ucusb` and `ucuart_z`, with `UC_SYSCALLS`, `UC_LOG_SAVE` and `UC_SHELL`. Not tested: the nRF drivers on hardware, `UC_SIGNED_IMAGE` (needs the sbl library), `UC_LOG_SAVE` across a real reset. Issue #2 stays open until this is pushed | L |
 | 5 | Build integrations: `zephyr/module.yml` at the root, `device/CMakeLists.txt` usable outside Zephyr, `device/uclog.mk` for Makefiles; ucComm pinned for each | M |
 | 6 | Device CI: build the examples and the test firmware (arm-none-eabi, a Zephyr board in the Zephyr SDK container); a host build of the encoder run against `spec/vectors` | M |
 | 7 | Device-only mirror `UnitCircleInc/uclog-device` (§2.3): the `subtree split` job, its README, the `uclog-device-N.tar.gz` release archive, and its `vN` tags (`v1`–`v3` from the old history, then from `device-vN`) | S |

@@ -8,6 +8,7 @@ config UCUSB
 	select EVENTS
 	select NRF_USBD_COMMON
 	select NRFX_POWER
+	select HWINFO # the USB serial number
 	help
 	  Unit Circle USB Serial
 
