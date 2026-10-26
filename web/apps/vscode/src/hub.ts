@@ -47,6 +47,8 @@ export interface Device {
   serial: string;
   description: string;
   busy: boolean | null;
+  /** This window's private hub for the device is running (kept after a disconnect). */
+  hubRunning?: boolean;
 }
 
 export interface ListOptions {

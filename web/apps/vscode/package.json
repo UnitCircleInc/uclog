@@ -35,7 +35,8 @@
       { "command": "uclog.refreshDevices", "title": "Refresh", "category": "ucLog", "icon": "$(refresh)" },
       { "command": "uclog.scanBle", "title": "Scan for Bluetooth Devices", "category": "ucLog", "icon": "$(bluetooth)" },
       { "command": "uclog.addHub", "title": "Enter Hub Address…", "category": "ucLog", "icon": "$(add)" },
-      { "command": "uclog.connectDevice", "title": "Connect", "category": "ucLog", "icon": "$(plug)" }
+      { "command": "uclog.connectDevice", "title": "Connect", "category": "ucLog", "icon": "$(plug)" },
+      { "command": "uclog.stopHub", "title": "Stop Hub", "category": "ucLog", "icon": "$(debug-stop)" }
     ],
     "viewsContainers": {
       "activitybar": [{ "id": "uclog", "title": "ucLog", "icon": "media/uclog.svg" }]
@@ -57,10 +58,12 @@
         { "command": "uclog.disconnect", "when": "view == uclog.devices && uclog.connected", "group": "navigation@4" }
       ],
       "view/item/context": [
-        { "command": "uclog.connectDevice", "when": "view == uclog.devices && viewItem == device", "group": "inline" }
+        { "command": "uclog.connectDevice", "when": "view == uclog.devices && viewItem =~ /^device/", "group": "inline@1" },
+        { "command": "uclog.stopHub", "when": "view == uclog.devices && viewItem == device-hub", "group": "inline@2" }
       ],
       "commandPalette": [
         { "command": "uclog.connectDevice", "when": "false" },
+        { "command": "uclog.stopHub", "when": "uclog.hubsRunning" },
         { "command": "uclog.disconnect", "when": "uclog.connected" }
       ]
     },

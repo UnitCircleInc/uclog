@@ -24,7 +24,7 @@ export function deviceLabel(d: Device): string {
 }
 
 export function deviceDetail(d: Device): string {
-  return [KIND[d.kind] ?? d.kind, d.serial, d.description].filter(Boolean).join(' · ');
+  return [KIND[d.kind] ?? d.kind, d.serial, d.hubRunning ? 'hub running' : d.description].filter(Boolean).join(' · ');
 }
 
 export class DevicesTree implements vscode.TreeDataProvider<Device> {
@@ -48,10 +48,12 @@ export class DevicesTree implements vscode.TreeDataProvider<Device> {
   getTreeItem(d: Device): vscode.TreeItem {
     const item = new vscode.TreeItem(deviceLabel(d), vscode.TreeItemCollapsibleState.None);
     const on = this.connected === d.uri;
-    item.description = [KIND[d.kind] ?? d.kind, d.serial, on ? 'connected' : d.busy ? 'busy' : ''].filter(Boolean).join(' · ');
-    item.tooltip = new vscode.MarkdownString(`**${deviceLabel(d)}**\n\n\`${d.uri}\`\n\n${d.description}${d.busy ? '\n\nIn use by another client.' : ''}`);
+    const state = on ? 'connected' : d.busy ? 'busy' : d.hubRunning ? 'hub running' : '';
+    item.description = [KIND[d.kind] ?? d.kind, d.serial, state].filter(Boolean).join(' · ');
+    const why = d.busy ? '\n\nIn use by another client.' : d.hubRunning ? '\n\nThe hub is still connected and buffering logs (`uclog.keepHubRunning`).' : '';
+    item.tooltip = new vscode.MarkdownString(`**${deviceLabel(d)}**\n\n\`${d.uri}\`\n\n${d.description}${why}`);
     item.iconPath = new vscode.ThemeIcon(on ? 'pass-filled' : (ICONS[d.kind] ?? 'device-desktop'));
-    item.contextValue = 'device';
+    item.contextValue = d.hubRunning ? 'device-hub' : 'device';
     item.command = { command: 'uclog.connectDevice', title: 'Connect', arguments: [d] };
     return item;
   }
@@ -78,8 +80,8 @@ export async function pickDevice(
   const build = () => {
     const items: PickItem[] = devices.map((d) => ({
       label: `$(${ICONS[d.kind] ?? 'device-desktop'}) ${deviceLabel(d)}`,
-      description: [KIND[d.kind] ?? d.kind, d.serial, d.busy ? 'busy' : ''].filter(Boolean).join(' · '),
-      detail: `${d.uri}${d.description ? ` — ${d.description}` : ''}`,
+      description: [KIND[d.kind] ?? d.kind, d.serial, d.busy ? 'busy' : d.hubRunning ? 'hub running' : ''].filter(Boolean).join(' · '),
+      detail: `${d.uri} — ${d.hubRunning ? 'reconnects through the running hub, with the logs it kept' : d.description}`.replace(/ — $/, ''),
       device: d,
     }));
     const recent = recentHubs.filter((u) => !devices.some((d) => d.uri === u));
@@ -115,7 +117,9 @@ export async function pickDevice(
         qp.placeholder = 'Scanning for Bluetooth devices…';
         try {
           const found = await scanBle();
-          devices = [...devices.filter((d) => d.kind !== 'ble'), ...found];
+          // A device held by a running hub isn't advertising, so the scan can't see it: keep it.
+          const held = devices.filter((d) => d.kind === 'ble' && d.hubRunning);
+          devices = [...devices.filter((d) => d.kind !== 'ble'), ...held, ...found.filter((f) => !held.some((h) => h.uri === f.uri))];
           qp.placeholder = found.length ? 'Choose a device or hub' : 'No Bluetooth devices found';
         } catch (e) {
           qp.placeholder = (e as Error).message;

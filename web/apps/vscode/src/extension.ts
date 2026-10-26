@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 import { promises as fsp } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { DEMO, DevicesTree, pickDevice } from './devices.ts';
+import { DEMO, deviceLabel, DevicesTree, pickDevice } from './devices.ts';
 import { allowedUrl, hostFetch } from './fetch.ts';
 import { findLocalLogdata, FsError, ImageHashes, LogdataStore, NodeFs, sharedCacheDir } from './files.ts';
 import { deviceProblem, listDevices, parseHubAddress, PrivateHub, resolveHub, type Device } from './hub.ts';
@@ -34,7 +34,7 @@ interface UiState {
 
 class App implements vscode.Disposable {
   private out: vscode.LogOutputChannel;
-  private hubs = new Map<string, { hub: Promise<PrivateHub>; port?: number; stopping?: Promise<void> }>();
+  private hubs = new Map<string, { hub: Promise<PrivateHub>; device: Device; port?: number; stopping?: Promise<void> }>();
   private panel: LoggerPanel | null = null;
   private tree = new DevicesTree();
   private status: vscode.StatusBarItem;
@@ -61,6 +61,7 @@ class App implements vscode.Disposable {
     reg('uclog.open', () => this.ensurePanel());
     reg('uclog.connect', () => this.connectPick());
     reg('uclog.connectDevice', (d: Device) => this.connectTo(d));
+    reg('uclog.stopHub', (d?: Device) => this.stopHubCommand(d));
     reg('uclog.disconnect', () => this.panel?.disconnect());
     reg('uclog.loadLogdata', () => this.loadLogdata());
     reg('uclog.flashFirmware', () => this.flashFirmware());
@@ -99,7 +100,8 @@ class App implements vscode.Disposable {
   }
 
   /** The private hub for a local device: started once, shared by reconnects. */
-  private async ensureHub(uri: string): Promise<PrivateHub> {
+  private async ensureHub(device: Device): Promise<PrivateHub> {
+    const uri = device.uri;
     let e = this.hubs.get(uri);
     if (e?.stopping) await e.stopping;
     e = this.hubs.get(uri);
@@ -123,15 +125,19 @@ class App implements vscode.Disposable {
       usbFilters: this.cfg().get<string[]>('usbFilters', []),
       log,
     });
-    const entry: { hub: Promise<PrivateHub>; port?: number } = { hub };
+    const entry: { hub: Promise<PrivateHub>; device: Device; port?: number } = { hub, device };
     this.hubs.set(uri, entry);
     try {
       const h = await hub;
       entry.port = h.port;
       this.out.info(`hub for ${uri} listening on 127.0.0.1:${h.port}`);
+      this.hubsChanged();
       h.onExit((code) => {
         this.out.info(`hub for ${uri} exited (${code})`);
-        if (this.hubs.get(uri)?.hub === hub) this.hubs.delete(uri);
+        if (this.hubs.get(uri)?.hub === hub) {
+          this.hubs.delete(uri);
+          this.hubsChanged();
+        }
       });
       return h;
     } catch (err) {
@@ -143,11 +149,43 @@ class App implements vscode.Disposable {
 
   private releaseHub(uri: string) {
     if (this.cfg().get<boolean>('keepHubRunning', true)) return;
+    void this.stopHub(uri);
+  }
+
+  private stopHub(uri: string): Promise<void> {
     const e = this.hubs.get(uri);
-    if (!e || e.stopping) return;
-    e.stopping = e.hub.then((h) => h.stop()).catch(() => {}).finally(() => {
+    if (!e) return Promise.resolve();
+    e.stopping ??= e.hub.then((h) => h.stop()).catch(() => {}).finally(() => {
       if (this.hubs.get(uri) === e) this.hubs.delete(uri);
+      this.hubsChanged();
     });
+    return e.stopping;
+  }
+
+  /** `uclog.hubsRunning` (the Stop Hub command) and the Devices view. */
+  private hubsChanged() {
+    const n = [...this.hubs.values()].filter((e) => !e.stopping && e.device.kind !== 'loopback').length;
+    void vscode.commands.executeCommand('setContext', 'uclog.hubsRunning', n > 0);
+    void this.refresh();
+  }
+
+  /** Stop a kept private hub, freeing its device for other hosts (a BLE device starts advertising
+   * again). From the Devices view (`d`), or the Command Palette (pick one). */
+  private async stopHubCommand(d?: Device) {
+    let uri = d?.uri;
+    if (!uri) {
+      const running = [...this.hubs.entries()].filter(([, e]) => !e.stopping && e.device.kind !== 'loopback');
+      if (!running.length) return void vscode.window.showInformationMessage('ucLog: no hubs running.');
+      const pick = running.length === 1 ? { uri: running[0][0] } : await vscode.window.showQuickPick(
+        running.map(([u, e]) => ({ label: deviceLabel(e.device), description: u, uri: u })),
+        { title: 'ucLog: Stop Hub', placeHolder: 'The device is freed for other hosts' },
+      );
+      if (!pick) return;
+      uri = pick.uri;
+    }
+    if (this.device?.uri === uri && this.conn.link !== 'idle') this.panel?.disconnect();
+    await this.stopHub(uri);
+    this.out.info(`hub for ${uri} stopped`);
   }
 
   private async stopHubs() {
@@ -171,10 +209,13 @@ class App implements vscode.Disposable {
       description: d.kind === 'loopback' ? 'simulated device' : `${d.name || d.uri}`,
       resolve: async (progress) => {
         progress('starting uclog-hub…');
-        const h = await this.ensureHub(d.uri);
+        const h = await this.ensureHub(d);
         return { host: '127.0.0.1', port: h.port };
       },
-      released: () => this.releaseHub(d.uri),
+      released: () => {
+        this.releaseHub(d.uri);
+        void this.refresh(); // a kept hub shows as "hub running"
+      },
     };
   }
 
@@ -188,7 +229,7 @@ class App implements vscode.Disposable {
     notes.forEach((n) => this.out.warn(n));
     // Our private hubs are in this machine's registry: list the device, not its hub.
     const mine = this.privatePorts();
-    return devices.filter((d) => {
+    const out = devices.filter((d) => {
       if (d.kind !== 'hub') return true;
       try {
         const a = parseHubAddress(d.uri);
@@ -197,6 +238,16 @@ class App implements vscode.Disposable {
         return true;
       }
     });
+    // A device whose private hub is still running (keepHubRunning) is listed even when the list
+    // can't see it: a BLE device connected to the hub stops advertising. Connecting reuses the hub.
+    for (const [uri, e] of this.hubs) {
+      if (e.stopping || e.device.kind === 'loopback') continue;
+      const i = out.findIndex((d) => d.uri === uri);
+      const kept = { ...(i >= 0 ? out[i] : e.device), busy: false, hubRunning: true };
+      if (i >= 0) out[i] = kept;
+      else out.push(kept);
+    }
+    return out;
   }
 
   private async refresh() {
