@@ -188,6 +188,16 @@ class App implements vscode.Disposable {
     this.out.info(`hub for ${uri} stopped`);
   }
 
+  /** Stop the kept hubs of other devices before connecting to `uri`. Interfaces of one board
+   * (ST-LINK UART, USB CDC, HID, BLE) can be separate devices here, and a board serves one at a
+   * time: it moves to another only after 2 s without a host on the one in use, and a kept hub
+   * pulses its device forever (firmware/README.md). */
+  private async stopOtherHubs(uri: string) {
+    const others = [...this.hubs.keys()].filter((u) => u !== uri);
+    await Promise.all(others.map((u) => this.stopHub(u)));
+    if (others.length) this.out.info(`stopped kept hubs: ${others.join(', ')}`);
+  }
+
   private async stopHubs() {
     const all = [...this.hubs.values()];
     this.hubs.clear();
@@ -208,6 +218,7 @@ class App implements vscode.Disposable {
     return {
       description: d.kind === 'loopback' ? 'simulated device' : `${d.name || d.uri}`,
       resolve: async (progress) => {
+        await this.stopOtherHubs(d.uri);
         progress('starting uclog-hub…');
         const h = await this.ensureHub(d);
         return { host: '127.0.0.1', port: h.port };

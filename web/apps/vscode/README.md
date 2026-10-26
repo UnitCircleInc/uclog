@@ -11,7 +11,9 @@ is the same logger as the ucLog web client, connected through `uclog-hub`, which
 - A local device is opened by a **private hub** on 127.0.0.1, started for it. Another program can
   then use the device only through that hub. With `uclog.keepHubRunning` (on by default) the hub
   keeps running after you disconnect or close the logger, so logs keep buffering; reopening the
-  logger shows them. Hubs stop when the window closes.
+  logger shows them. Connecting to another device stops the kept hub: a board's ST-LINK UART,
+  USB CDC and HID are listed as separate devices, but the board serves one at a time and would
+  stay on the link the kept hub keeps talking on. Hubs stop when the window closes.
 - A **remote hub** is reached over TCP. Its operator may have to accept the connection first
   ("waiting for hub approval"). A hub that already has a client says "hub busy".
 - The **Devices** view (ucLog in the activity bar) lists the same devices; click one to connect.

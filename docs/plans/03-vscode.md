@@ -166,7 +166,10 @@ above:
 - **Click-through** opens the source in the editor group beside the logger. A partial path
   picks the workspace file whose path ends with it; several matches give a quick pick.
 - **`keepHubRunning`:** reopening the logger reconnects to a hub kept running, so its backlog
-  appears. When the setting is off, the hub stops when the link closes.
+  appears. When the setting is off, the hub stops when the link closes. Connecting to another
+  device stops the kept hubs first: one board can be several devices (ST-LINK UART, CDC, HID),
+  and it serves one link at a time, moving only after 2 s of host silence on the one in use, which
+  a kept hub's pulses never give it.
 - **Extra commands:** Open Device Terminal, Show Hub Output, Refresh, Scan for Bluetooth Devices,
   Enter Hub Address….
 - **Tests:**

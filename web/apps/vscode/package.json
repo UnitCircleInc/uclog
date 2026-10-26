@@ -79,7 +79,7 @@
         "uclog.keepHubRunning": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Keep the private hub running after disconnecting or closing the logger, so logs keep buffering (the hub's backlog is shown on reconnect). Hubs stop when the window closes."
+          "markdownDescription": "Keep the private hub running after disconnecting or closing the logger, so logs keep buffering (the hub's backlog is shown on reconnect). Connecting to another device stops it: interfaces of one board (ST-LINK UART, USB CDC, HID) are separate devices, and the board serves one at a time. Hubs stop when the window closes."
         },
         "uclog.baud": {
           "type": "number",
