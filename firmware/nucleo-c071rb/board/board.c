@@ -191,6 +191,9 @@ static void links_tick(uint32_t now) {
 void SysTick_Handler(void) {
   ms = ms + 1;
   links_tick(ms);
+  bool en = disable_irq();
+  usb_tx_tick();
+  enable_irq(en);
   log_tick(ms);
 }
 

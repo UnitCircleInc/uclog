@@ -132,12 +132,15 @@ static void log_selftest(void) {
   sensor_dump();
 }
 
-// Bursts shorter than this also time the port's own buffering, past the log ring: a BLE stack
-// queues tens of kB of notifications, so the reported rate is too high (unset: no such buffering).
+// Over BLE, bursts shorter than this also time the stack's buffering, past the log ring: it queues
+// tens of kB of notifications, so the reported rate is too high (unset: the board has no BLE).
 #if defined(BURST_MIN_LOGS) && BURST_MIN_LOGS > 0
 #define STR_(x) #x
 #define STR(x) STR_(x)
-#define BURST_SHORT(n) ((n) < BURST_MIN_LOGS ? " (short burst: the rate includes buffering; use burst " STR(BURST_MIN_LOGS) " or more)" : "")
+#define BURST_SHORT(n)                                                                           \
+  ((n) < BURST_MIN_LOGS && strcmp(board_link(), "ble") == 0                                      \
+       ? " (short burst: the rate includes buffering; use burst " STR(BURST_MIN_LOGS) " or more)" \
+       : "")
 #else
 #define BURST_SHORT(n) ""
 #endif

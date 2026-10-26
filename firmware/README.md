@@ -117,7 +117,7 @@ used only by this test firmware.
 | `test` | One log of every kind: int32/uint32/int64/uint64, float/double, flags and widths, strings (escapes, UTF-8, truncation), pointer, `{sym}` (function, variable, unknown), `{enum}` (enum, typedef enum, unknown value), 14 arguments, `LOG_MEM`, all levels. It also runs at boot |
 | `sh` | Semihost through `syscalls.c` (printf/stderr with no-reply WRITE, `fopen`/`fgets`/`fstat`, `mkdir`, `gettimeofday`), plus a file round trip of one maximum WRITE (1438 bytes; 507 on the C071) and one of several (4000 bytes; 1200 on the C071), checked with CRC-32C. It also sends raw requests: the time ops, a WRITE with a reply, and the expected errors (`EACCES` sandbox escape, `EBADF` for close and write, `ENOSYS` for LSEEK and an unknown op, `EINVAL` for a malformed request, the 48-byte FSTAT error) |
 | `input` | Semihost READ on stdin |
-| `burst [n]` | Throughput. It waits for buffer room, so nothing is dropped. The reply gives bytes, bytes per log and B/s, timed until the last byte has left the log ring. On the STM32WBA55G-DK1 that is when the BLE stack has it, so bursts under 10,000 logs are flagged "short burst" (`BURST_MIN_LOGS`; see "BLE throughput with a Mac") |
+| `burst [n]` | Throughput. It waits for buffer room, so nothing is dropped. The reply gives bytes, bytes per log and B/s, timed until the last byte has left the log ring. Over BLE (STM32WBA55G-DK1) that is when the BLE stack has it, so bursts under 10,000 logs are flagged "short burst" (`BURST_MIN_LOGS`; see "BLE throughput with a Mac") |
 | `big [n]` | One port-61 frame of `n` bytes (default 1443, which is 1452 on the wire) |
 | `info`, `stats` | Resends the device info; shows the link counters |
 | `link` | The link in use: `uart`, `cdc` or `hid` |
@@ -329,13 +329,30 @@ counts from SysTick, and a delay in the TX-complete interrupt.
     Throughput rose 10–16%: 63-byte frames 604 kB/s, 1,000-byte frames 452 kB/s, `burst`
     362 kB/s.
 
-  Neither change was kept.
-- Ways to get closer to 1 MB/s (plan 07 task 36):
-  - copy words straight from the ring into the packet memory, without the stack buffer;
-  - a double-buffered bulk IN endpoint, so a second packet is armed while the CPU is busy. It
-    needs its own CHEP register, since double buffering is one direction only;
-  - encode with only the ring locked, not all interrupts;
-  - a faster COBS encoder.
+  The delay was removed; the word copies are now in (below).
+- Changes (2026-10-26, plan 07 task 36), measured with `burst 20000` over CDC:
+
+  | Change | Rate |
+  |---|---|
+  | Before | 332,000 B/s |
+  | Packets copied into the packet memory as words, from a word-aligned buffer | 362,000 B/s |
+  | A partial packet waits for the next 1 ms tick (or until 64 bytes are ready) | 415,000 B/s |
+  | `log.c`: a COBS encoder that keeps the block's code pointer and length in registers; arguments stored with inline byte stores instead of a `memcpy()` call each | 464,500 B/s |
+
+  - Profiling (SysTick counts, removed again) showed the TX interrupt firing 19,467 times for
+    380,000 bytes: the CPU made logs more slowly than USB took them, so each packet left with
+    the one ~19-byte log made since the last. Waiting for a full packet, or at most until the
+    next millisecond, cut that to ~6,300 interrupts, from 21% of the CPU to 6%. A lone log still
+    goes out at once (the tick leaves a partial packet allowed); in a burst, the last bytes wait
+    at most 1 ms.
+  - What is left is the CPU making logs: ~1,800 cycles each (argument packing, COBS, the ring
+    copy, scheduling), against ~140 for the interrupt. For logs, a double-buffered bulk IN
+    endpoint would not help (USB is idle, waiting for data), and encoding without all
+    interrupts off would shorten interrupt latency, not raise throughput. Neither was done.
+    Large port frames are different: interrupts stay off for a whole 1,000-byte encode
+    (845 µs), and a second packet buffer could keep USB busy meanwhile (not measured).
+  - The instruction cache was already on (`FLASH_ACR_ICEN` is set at reset).
+  - HID (63,000 B/s) and the UARTs (100,000 B/s) are at their limits, unchanged.
 - The UART links don't have this problem: there DMA drains the ring, not the CPU, and 1 Mbaud
   (100,000 B/s) is far below these costs.
 
@@ -455,8 +472,9 @@ well beyond that show the link (2026-10-26, Chrome's Web Bluetooth on macOS, whi
 | 10000 | 190,000 | 69,040-73,929 B/s (5 runs) |
 | 20000 | 380,000 | 70,110 B/s |
 
-So the WBA55 firmware is built with `BURST_MIN_LOGS=10000`, and a shorter burst's reply ends with
-"(short burst: the rate includes buffering; use burst 10000 or more)". The UART and USB boards
+So the WBA55 firmware is built with `BURST_MIN_LOGS=10000`, and over BLE a shorter burst's reply
+ends with "(short burst: the rate includes buffering; use burst 10000 or more)". Not over its UART,
+where 2,000 logs already give the line rate. The UART and USB boards
 have no such buffering after the ring (their ports hold at most a DMA transfer or a 64-byte
 packet), so they don't warn.
 

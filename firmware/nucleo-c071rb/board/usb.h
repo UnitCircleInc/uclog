@@ -37,6 +37,8 @@ uint32_t usb_rx_count(usb_fn_t fn);
 void usb_tx_attach(usb_fn_t fn, cb_t *tx_cb);
 void usb_tx_schedule(usb_fn_t fn, const uint8_t *prefix, size_t n);
 void usb_tx_pause(usb_fn_t fn, bool pause);
+// Every millisecond: send what is waiting even if it does not fill a packet.
+void usb_tx_tick(void);
 bool usb_tx_idle(usb_fn_t fn);
 // Take back a packet the host never collected (it stays in the ring); the function is idle after.
 void usb_tx_abort(usb_fn_t fn);

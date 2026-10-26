@@ -79,12 +79,28 @@ static void tx_buffer(const uint8_t *b, size_t n) {
   if (s.host && s.started) log_port_tx_schedule(NULL, 0);
 }
 
-// `00 COBS(payload) 00` into `out` (COBS_ENC_SIZE(n) + 2 bytes); returns the frame length.
-static size_t frame(uint8_t *out, const uint8_t *payload, size_t n) {
+// `00 COBS(payload) 00` into `out` (COBS_ENC_SIZE(n) + 2 bytes); returns the frame length. The same
+// output as ucComm's cobs_enc() with the delimiters added, but the current block's code byte is a
+// pointer and its length a register, not read back from memory for every byte.
+static size_t frame(uint8_t *out, const uint8_t *in, size_t n) {
+  const uint8_t *end = in + n;
+  uint8_t *code = out + 1, *o = out + 2;
+  uint8_t c = 1;
   out[0] = 0;
-  size_t e = cobs_enc(out + 1, payload, n);
-  out[1 + e] = 0;
-  return e + 2;
+  while (in < end) {
+    uint8_t v = *in++;
+    if (v != 0) {
+      *o++ = v;
+      if (++c < 255) continue;
+      if (in == end) break; // a full block at the end needs no empty block after it
+    }
+    *code = c;
+    code = o++;
+    c = 1;
+  }
+  *code = c;
+  *o++ = 0;
+  return (size_t)(o - out);
 }
 
 void log_tx(uint8_t port, const uint8_t *data, size_t n) {
@@ -122,12 +138,24 @@ bool log_tx_flushed(void) {
 // ---------------------------------------------------------------------------------------------
 // Logging
 
+// Little-endian stores at any alignment, inline: memcpy() is a call per argument on a Cortex-M0+.
+static inline void put32(uint8_t *b, uint32_t v) {
+  b[0] = (uint8_t)v;
+  b[1] = (uint8_t)(v >> 8);
+  b[2] = (uint8_t)(v >> 16);
+  b[3] = (uint8_t)(v >> 24);
+}
+
+static inline void put64(uint8_t *b, uint64_t v) {
+  put32(b, (uint32_t)v);
+  put32(b + 4, (uint32_t)(v >> 32));
+}
+
 // The format string's address with the frame type in its low two bits (they are always zero:
 // the strings are 4-byte aligned).
 static void put_addr(uint8_t *b, const void *p, uint8_t type) {
   uint32_t a = (uint32_t)(uintptr_t)p;
-  a = (a & ~3u) | type;
-  memcpy(b, &a, 4);
+  put32(b, (a & ~3u) | type);
 }
 
 static void tx_log(const uint8_t *payload, size_t n) {
@@ -153,28 +181,32 @@ void log_logn_(const char *kinds, const char *prefix, ...) {
     case '0': {
       unsigned int v = va_arg(ap, unsigned int);
       if (n + 4 > sizeof(b)) goto done;
-      memcpy(b + n, &v, 4);
+      put32(b + n, v);
       n += 4;
       break;
     }
     case '1': {
       unsigned long long v = va_arg(ap, unsigned long long);
       if (n + 8 > sizeof(b)) goto done;
-      memcpy(b + n, &v, 8);
+      put64(b + n, v);
       n += 8;
       break;
     }
     case '2': {
       double v = va_arg(ap, double);
+      uint64_t u;
+      memcpy(&u, &v, 8); // between locals: no call
       if (n + 8 > sizeof(b)) goto done;
-      memcpy(b + n, &v, 8);
+      put64(b + n, u);
       n += 8;
       break;
     }
     case '3': { // long double is a double on ARM EABI; sent as one
       double v = (double)va_arg(ap, long double);
+      uint64_t u;
+      memcpy(&u, &v, 8);
       if (n + 8 > sizeof(b)) goto done;
-      memcpy(b + n, &v, 8);
+      put64(b + n, u);
       n += 8;
       break;
     }
@@ -192,9 +224,8 @@ void log_logn_(const char *kinds, const char *prefix, ...) {
     }
     default: { // '5' pointer
       const void *p = va_arg(ap, const void *);
-      uint32_t v = (uint32_t)(uintptr_t)p;
       if (n + 4 > sizeof(b)) goto done;
-      memcpy(b + n, &v, 4);
+      put32(b + n, (uint32_t)(uintptr_t)p);
       n += 4;
       break;
     }
