@@ -22,14 +22,14 @@ the hub binaries this phase signs.
 | # | Task | From | Size |
 |---|---|---|---|
 | 1 | Create the GitHub repository and push. Check that `native.yml`, `python.yml`, `spec.yml` and `web.yml` pass (the native and Python ones on Linux, Windows and macOS; `web.yml` includes the VS Code tests under xvfb); they have never run (no remote yet) | 06 §9, 03 §8 | S |
-| 2 | Repository secrets for signing (§3): Apple Developer ID certificate + notarisation API key, Windows code-signing certificate | 01 §9.10 | S |
+| 2 | Repository secrets for signing (§3): Apple Developer ID certificate + notarisation API key, Windows code-signing certificate. **Apple ready 2026-10-26**: Developer ID Application certificate (team 6CQYR849L3) exported as .p12 and an App Store Connect API key (Developer role), both in 1Password; the key is also the `uclog-notary` notarytool profile on the dev Mac. Windows: Azure Artifact Signing still to set up (identity validation takes days). Secrets go into GitHub once the repository exists (task 1) | 01 §9.10 | S |
 | 3 | A dry run of `release.yml` (`workflow_dispatch`): every target builds, checksums, draft GitHub release, wheels artifact, VSIX artifact. Check that the `macos-13` (Intel), `ubuntu-22.04-arm` and `windows-11-arm` runners are available to this repository (the ARM ones may not be for a private repository); otherwise build macOS x64 on `macos-14` (cross) and Linux arm64 with `cross`. Until there is a remote: `.github/act-release.sh` runs the Linux and macOS rows locally with act (no Windows, no release job) | 01 §9.10, 03 §8 | S |
 
 ## 3. Packaging and signing
 
 | # | Task | From | Size |
 |---|---|---|---|
-| 4 | macOS: codesign (hardened runtime) and notarise `uclog` and `uclog-hub`, arm64 and x64. Check that the embedded `Info.plist` still lets BLE work after signing | 01 §9.10 | M |
+| 4 | macOS: codesign (hardened runtime) and notarise `uclog` and `uclog-hub`, arm64 and x64. Check that the embedded `Info.plist` still lets BLE work after signing. **Local test 2026-10-26 (arm64)**: `codesign --force --options runtime --timestamp`, no entitlements, then `ditto -c -k` and `notarytool submit --wait` were Accepted with no issues. A quarantined copy is "Notarized Developer ID" to Gatekeeper, and `uclog list --ble-scan 5` found the WBA55. A bare binary can't be stapled, so Gatekeeper checks online. Both binaries get the identifier `ca.unitcircle.uclog` from the shared Info.plist; give `uclog-hub` its own (`--identifier` or a second plist) | 01 §9.10 | M |
 | 5 | macOS GUI: a `ucLog.app` bundle in a `.dmg`, signed, notarised and stapled, alongside the plain binary | 04 §6 | M |
 | 6 | Windows: sign `uclog.exe` and `uclog-hub.exe` (x64, arm64). Optional MSI | 01 §9.10, 04 §6 | M |
 | 7 | Linux: an AppImage for the GUI; the tarball keeps `70-uclog.rules` | 04 §6 | M |
@@ -52,26 +52,26 @@ the hub binaries this phase signs.
 
 | # | Task | From | Size |
 |---|---|---|---|
-| 15 | GUI on Linux (X11 and Wayland; file dialogs through xdg-desktop-portal), Windows x64/arm64, and Pi 4/5 (glow on GLES 3.0) | 04 §8, §9 | M |
-| 16 | TUI manual matrix: Windows Terminal, conhost, macOS Terminal/iTerm2, Linux, over SSH | 05 §8 | S |
-| 17 | Python library on Linux and Windows (CI, then one hardware run each), including the hub exiting when the script dies on Windows | 06 §9 | S |
-| 18 | Hub on Linux and Windows: `flock` on the serial device, the registry and runtime directories, and the console approval prompt | 01 §3, §7 | S |
+| 15 | GUI on Linux (X11 and Wayland; file dialogs through xdg-desktop-portal), Windows x64/arm64, and Pi 4/5 (glow on GLES 3.0) **Done for now 2026-10-26**: covered in part by the Windows 11 and WSL2 (Ubuntu) runs of 2026-10-25/26 (native build and tests, TUI, GUI, hub, BLE, the VS Code extension and Chrome with the three boards); a full retest follows the next round of feature changes | 04 §8, §9 | M |
+| 16 | TUI manual matrix: Windows Terminal, conhost, macOS Terminal/iTerm2, Linux, over SSH **Done for now 2026-10-26**: covered in part by the Windows 11 and WSL2 (Ubuntu) runs of 2026-10-25/26 (native build and tests, TUI, GUI, hub, BLE, the VS Code extension and Chrome with the three boards); a full retest follows the next round of feature changes | 05 §8 | S |
+| 17 | Python library on Linux and Windows (CI, then one hardware run each), including the hub exiting when the script dies on Windows **Done for now 2026-10-26**: covered in part by the Windows 11 and WSL2 (Ubuntu) runs of 2026-10-25/26 (native build and tests, TUI, GUI, hub, BLE, the VS Code extension and Chrome with the three boards); a full retest follows the next round of feature changes | 06 §9 | S |
+| 18 | Hub on Linux and Windows: `flock` on the serial device, the registry and runtime directories, and the console approval prompt **Done for now 2026-10-26**: covered in part by the Windows 11 and WSL2 (Ubuntu) runs of 2026-10-25/26 (native build and tests, TUI, GUI, hub, BLE, the VS Code extension and Chrome with the three boards); a full retest follows the next round of feature changes | 01 §3, §7 | S |
 
 ## 6. Devices and hardware
 
 | # | Task | From | Size |
 |---|---|---|---|
-| 19 | HID devices on Windows and Linux, including the Windows interrupt-read check (issue 7). Add `--hid-poll` (`get_input_report` fallback) only if that check fails; the C071 test firmware answers `GET_REPORT` with an empty report, so it needs a real fallback first. ✅ macOS: the NUCLEO-C071RB test firmware's HID, through the hub, directly and in VS Code | 01 §3, §10 | M |
-| 20 | BLE devices (btleplug, maximum chunk size) on macOS, Linux and Windows. ✅ macOS: the STM32WBA55G-DK1 test firmware, through the hub, directly and in VS Code (~72 kB/s: macOS uses a 15 ms interval and limits each connection event's length). Measure throughput with Linux and Windows centrals | 01 §10 | M |
+| 19 | HID devices on Windows and Linux, including the Windows interrupt-read check (issue 7). Add `--hid-poll` (`get_input_report` fallback) only if that check fails; the C071 test firmware answers `GET_REPORT` with an empty report, so it needs a real fallback first. ✅ macOS: the NUCLEO-C071RB test firmware's HID, through the hub, directly and in VS Code **Done for now 2026-10-26**: covered in part by the Windows 11 and WSL2 (Ubuntu) runs of 2026-10-25/26 (native build and tests, TUI, GUI, hub, BLE, the VS Code extension and Chrome with the three boards); a full retest follows the next round of feature changes | 01 §3, §10 | M |
+| 20 | BLE devices (btleplug, maximum chunk size) on macOS, Linux and Windows. ✅ macOS: the STM32WBA55G-DK1 test firmware, through the hub, directly and in VS Code (~72 kB/s: macOS uses a 15 ms interval and limits each connection event's length). Measure throughput with Linux and Windows centrals **Done for now 2026-10-26**: covered in part by the Windows 11 and WSL2 (Ubuntu) runs of 2026-10-25/26 (native build and tests, TUI, GUI, hub, BLE, the VS Code extension and Chrome with the three boards); a full retest follows the next round of feature changes | 01 §10 | M |
 | 21 | UDP devices | 01 §10 | S |
 | 22 | Serial adapters other than the STLINK VCP: FTDI, and CDC-ACM on Windows and Linux. ✅ macOS: CDC-ACM (`2FE3:0100`, the NUCLEO-C071RB test firmware) | 01 §10 | S |
 | 23 | FW update (ports 59 and 3) on hardware, including cancel and the port-3 fallback | Phase 1 | S |
 | 24 | Unplug/replug during a session; device UART power-down and wake (no pulses for over 2 s, then traffic) | 01 §10 | S |
 | 25 | mDNS hub discovery from a second machine (`uclog list`, Connect dialogs, Python) | 06 §9 | S |
 | 26 | Hub soak: 1 h at the maximum log rate with an intermittently stalled client; memory stays bounded by `--backlog` | 01 §10 | S |
-| 27 | GUI and TUI against each device kind and through a hub (the manual matrix of 04 §7 task 12) | 04 §7 | M |
-| 27a | Web: Web Serial, WebHID and Web Bluetooth with real devices (the Serial and HID choosers cannot be automated: Chrome's DevTools `DeviceAccess` covers only Bluetooth, and seeded permissions are ignored); Chrome and Edge on Windows, macOS and Linux. The NUCLEO-C071RB test firmware offers UART, CDC and HID at once. ✅ Web Bluetooth, Chrome on macOS: `web/e2e/ble.spec.ts` with the STM32WBA55G-DK1 test firmware | 02 §10 | M |
-| 27b | VS Code: the extension on Windows and Linux (private hubs, serial, HID, BLE scan), over Remote-SSH and WSL (`extensionKind` ui: USB stays local), and semihost file calls from a real device. *Load Logdata…* and *Browse…* use native dialogs, so they are checked by hand | 03 §8 | M |
+| 27 | GUI and TUI against each device kind and through a hub (the manual matrix of 04 §7 task 12) **Done for now 2026-10-26**: covered in part by the Windows 11 and WSL2 (Ubuntu) runs of 2026-10-25/26 (native build and tests, TUI, GUI, hub, BLE, the VS Code extension and Chrome with the three boards); a full retest follows the next round of feature changes | 04 §7 | M |
+| 27a | Web: Web Serial, WebHID and Web Bluetooth with real devices (the Serial and HID choosers cannot be automated: Chrome's DevTools `DeviceAccess` covers only Bluetooth, and seeded permissions are ignored); Chrome and Edge on Windows, macOS and Linux. The NUCLEO-C071RB test firmware offers UART, CDC and HID at once. ✅ Web Bluetooth, Chrome on macOS: `web/e2e/ble.spec.ts` with the STM32WBA55G-DK1 test firmware **Done for now 2026-10-26**: covered in part by the Windows 11 and WSL2 (Ubuntu) runs of 2026-10-25/26 (native build and tests, TUI, GUI, hub, BLE, the VS Code extension and Chrome with the three boards); a full retest follows the next round of feature changes | 02 §10 | M |
+| 27b | VS Code: the extension on Windows and Linux (private hubs, serial, HID, BLE scan), over Remote-SSH and WSL (`extensionKind` ui: USB stays local), and semihost file calls from a real device. *Load Logdata…* and *Browse…* use native dialogs, so they are checked by hand **Done for now 2026-10-26**: covered in part by the Windows 11 and WSL2 (Ubuntu) runs of 2026-10-25/26 (native build and tests, TUI, GUI, hub, BLE, the VS Code extension and Chrome with the three boards); a full retest follows the next round of feature changes | 03 §8 | M |
 
 ## 7. Remaining features
 
