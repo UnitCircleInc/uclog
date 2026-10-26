@@ -27,9 +27,13 @@ direnv allow
 ```
 
 Homebrew's `rustup` is keg-only, so without direnv `cargo` is not found unless
-`$(brew --prefix rustup)/bin` is on `PATH`. Other platforms: install the stable toolchain with
-[rustup](https://rustup.rs); `.envrc` is not needed there (Linux also needs the packages under
-[Platforms](#platforms)).
+`$(brew --prefix rustup)/bin` is on `PATH`. `.envrc` also loads a git-ignored `.secrets` if there
+is one (for example `export UCLOG_LOGDATA_TOKEN=…` for testing; see
+[Logdata service settings](#logdata-service-settings)).
+
+Other platforms: install the stable toolchain with [rustup](https://rustup.rs); `.envrc` is not
+needed there. Linux also needs the packages under [Platforms](#platforms). On Windows, don't use
+direnv ([Windows](#windows)).
 
 ## Build and test
 
@@ -51,6 +55,35 @@ uclog fw-update -d auto build/zephyr/zephyr.signed.bin
 ```
 
 `-v` logs info, `-vv` adds a hex trace of every byte sent and received (`uclog::wire`).
+
+## Logdata service settings
+
+For everyday use, set the logdata service in the **TUI or GUI settings**: the domain and, if it
+isn't fw.unitcircle.ca, the URL. They are saved in `settings.json` and used by every `uclog`
+command. The token is entered there too and kept in the OS keyring (macOS Keychain, Windows
+Credential Manager, Linux Secret Service), not in a file. The VS Code extension has its own
+settings (`uclog.logdata.*`, and **ucLog: Set Logdata Token**).
+
+Environment variables are for the **command line and automated testing** (scripts, CI, pytest).
+The Python library reads the same `UCLOG_LOGDATA_*` and `UCLOG_CACHE_DIR`:
+
+| Variable | Same as |
+|---|---|
+| `UCLOG_LOGDATA_DOMAIN` | `--logdata-domain` |
+| `UCLOG_LOGDATA_TOKEN` | `--logdata-token` |
+| `UCLOG_LOGDATA_URL` | `--logdata-url` |
+| `UCLOG_CACHE_DIR` | `--cache-dir` (default `$XDG_CACHE_HOME/uclog`, else `~/.cache/uclog`) |
+| `UCLOG_DEVICE` | `-d` |
+
+Which wins: the command line, then the environment, then the settings; the keyring token is used
+only when neither gives one.
+
+- macOS, Linux: `export UCLOG_LOGDATA_DOMAIN=example.com` in the shell, the CI job or a
+  git-ignored `.secrets` that `.envrc` loads.
+- Windows: `$env:UCLOG_LOGDATA_DOMAIN = "example.com"` for the current PowerShell, or
+  `setx UCLOG_LOGDATA_DOMAIN example.com` to keep it for your account (it reaches only windows
+  opened afterwards). `setx` stores a token in plain text in the registry; on a desktop, use the
+  keyring through the settings instead.
 
 ## GUI
 
@@ -196,13 +229,15 @@ Tested on Windows 11 x64 (2026-10-25): the tests pass and the TUI, GUI and `term
 serial, BLE and a remote hub. Building needs rustup and the Visual Studio C++ Build Tools
 (`winget install Rustlang.Rustup`).
 
-- Settings from `setx` (for example `setx UCLOG_LOGDATA_DOMAIN example.com`) reach only windows
-  opened afterwards. The logdata domain can also be set in the TUI or GUI settings.
+- Set the logdata domain and token in the TUI or GUI settings
+  ([Logdata service settings](#logdata-service-settings)). `setx` is for command-line use and
+  test machines, and reaches only windows opened afterwards.
 - The logdata cache is `%USERPROFILE%\.cache\uclog`, as on the other platforms.
-- direnv (optional; `.envrc` adds nothing on Windows except `.secrets`) runs `.envrc` with the
-  first `bash` on `PATH`. If that is not a full bash (STM32CubeCLT's `make\bin\bash` is not), set
-  `bash_path = "C:\\Program Files\\Git\\bin\\bash.exe"` in
-  `%USERPROFILE%\.config\direnv\direnv.toml`.
+- direnv is not recommended on Windows; `.envrc` adds nothing there except `.secrets`. It runs
+  `.envrc` with the first `bash` on `PATH`, and STM32CubeCLT's `make\bin\bash` can't run it. With
+  Git's bash it runs, but it replaces `Path` with a Unix-style `PATH` (`/c/Users/…`), after which
+  that PowerShell can no longer find programs, direnv included. Use the settings or `setx`
+  instead.
 - The semihost sandbox is not tested against Windows symlinks, junctions and `\\?\` paths yet (plan
   07 task 34).
 
@@ -214,7 +249,8 @@ Tested on WSL2 with Ubuntu 22.04 (2026-10-25). Install the Linux packages above 
   another machine) and connect to it by address: `uclog tui -d tcp://192.168.1.20:9000`. WSL's
   network translation blocks mDNS, so `.local` names and hub discovery don't work from WSL.
 - There is no keyring: WSL has no D-Bus session bus, so the TUI and GUI skip the keyring and
-  can't save a token. Use `--logdata-token` or `UCLOG_LOGDATA_TOKEN`.
+  can't save a token. Set the domain in the settings, and the token with `--logdata-token` or
+  `export UCLOG_LOGDATA_TOKEN=…`.
 - The GUI runs through WSLg. Install `adwaita-icon-theme-full` for mouse cursors. On Ubuntu
   22.04 `adwaita-icon-theme` has only the theme's name. Without a theme winit warns on every
   cursor change; `uclog` hides that warning unless `-v` is given.
