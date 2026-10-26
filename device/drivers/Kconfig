@@ -1,0 +1,8 @@
+# © 2025 Unit Circle Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+menu "UC Drivers"
+rsource "ucuart/Kconfig"
+rsource "ucuart_z/Kconfig"
+rsource "ucusb/Kconfig"
+endmenu

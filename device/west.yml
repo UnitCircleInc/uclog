@@ -1,0 +1,37 @@
+# © 2025 Unit Circle Inc
+
+manifest:
+  defaults:
+    revision: main
+
+  self:
+    path: newlog
+    west-commands: scripts/west-commands.yml
+
+  remotes:
+    - name: ncs
+      url-base: https://github.com/nrfconnect
+    - name: uci
+      url-base: https://github.com/UnitCircleInc
+
+  projects:
+    - name: nrf
+      remote: ncs
+      repo-path: sdk-nrf
+      revision: v2.9.0
+      import: true
+      import:
+        name-allowlist:
+          - zephyr
+          - nrfxlib
+          - cmock
+          - cmsis
+          - hal_nordic
+          - segger
+          - tinycrypt
+
+    - name: uccomm
+      remote: uci
+      revision: v2
+      repo-path: ucComm
+      path: modules/uccomm

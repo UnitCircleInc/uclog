@@ -1,0 +1,83 @@
+# © 2025 Unit Circle Inc
+
+menu "Unit Circle"
+
+config UC_LOG
+        bool "Use UC logging framework"
+        select UCCOMM
+        depends on UCUART || UCUSB || UCUART_Z
+
+if UC_LOG
+
+config UC_FAULT
+        bool "Use UC fault handling"
+        default n
+
+config UC_LOG_SAVE
+        bool "On startup copy log buffer to saved log buffer"
+        default n
+
+config UC_LOG_BUF_SIZE
+        int "UC size of buffer"
+        default 8192
+
+
+config UC_LOG_SERVER
+        bool "Enable support for log server"
+        default n
+
+config UC_LOG_MAX_PACKET_SIZE
+        int "UC log max packet size"
+        default 1500
+
+if UC_LOG_SERVER
+
+config UC_LOG_SERVER_PORTS
+        int "UC log server input ports"
+        default 8
+
+config UC_LOG_STACK_SIZE
+        int "UC log thread stack size"
+        default 2048
+
+config UC_LOG_THREAD_PRIORITY
+        int "UC log thread priority"
+        default 10
+
+config UC_SYSCALLS
+        bool "Enable support for stdio fileio using syscalls over UC log"
+        default n
+
+config UC_SHELL
+        bool "Enable support for shell over UC log"
+        default n
+        depends on !SHELL_BACKENDS
+
+if UC_SHELL
+
+config UC_SHELL_PROMPT
+        string "UC log shell prompt"
+        default "uclog$~ "
+        help
+          Needs to end with "~ " to allow flushing of buffered text.
+
+config UC_SHELL_STACK_SIZE
+        int "UC log shell stack size"
+        default 512
+
+
+backend = UC
+backend-str = UC
+source "subsys/logging/Kconfig.template.log_format_config"
+
+endif
+
+endif
+endif
+
+config UC_SIGNED_IMAGE
+        bool "Enable support for UC signed images"
+        default n
+
+endmenu
+
