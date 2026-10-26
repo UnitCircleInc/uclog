@@ -208,7 +208,9 @@ pub async fn fetch(url: &str, token: Option<&str>) -> Result<Vec<u8>, FetchError
 /// What to do about a refused logdata request.
 pub fn auth_hint(status: u16, sent_token: bool) -> Option<&'static str> {
     match (status, sent_token) {
-        (401, false) => Some("No token was sent: set a logdata token, or have the account allow reading without a token"),
+        (401, false) => {
+            Some("No token was sent: set a logdata token, or have the account allow reading without a token")
+        }
         (401, true) => Some("The token was not accepted (expired or revoked?): set a new logdata token"),
         (403, _) => Some("The token is for another account than this domain, or lacks the logdata:read scope"),
         _ => None,
@@ -248,7 +250,8 @@ mod tests {
         assert!(auth_hint(401, true).unwrap().starts_with("The token was not accepted"));
         assert!(auth_hint(403, true).unwrap().contains("logdata:read"));
         assert_eq!(auth_hint(500, true), None);
-        let e = FetchError::Http { status: 401, detail: None, request_id: Some("r".into()), hint: auth_hint(401, false) };
+        let e =
+            FetchError::Http { status: 401, detail: None, request_id: Some("r".into()), hint: auth_hint(401, false) };
         assert!(e.to_string().starts_with("HTTP 401 (request id r). No token was sent"));
     }
 
@@ -270,7 +273,8 @@ mod tests {
     /// refuses everything).
     async fn service(public: bool) -> String {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        let body = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../spec/vectors/sample.logdata")).unwrap();
+        let body =
+            std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../spec/vectors/sample.logdata")).unwrap();
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", l.local_addr().unwrap());
         tokio::spawn(async move {
@@ -281,7 +285,9 @@ mod tests {
                 let reply = if req.contains("authorization:") || !public {
                     b"HTTP/1.1 401 Unauthorized\r\ncontent-length: 0\r\nconnection: close\r\n\r\n".to_vec()
                 } else {
-                    let mut r = format!("HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: close\r\n\r\n", body.len()).into_bytes();
+                    let mut r =
+                        format!("HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: close\r\n\r\n", body.len())
+                            .into_bytes();
                     r.extend_from_slice(&body);
                     r
                 };

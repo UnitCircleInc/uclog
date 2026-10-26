@@ -324,7 +324,8 @@ pub fn portable_name(s: &str) -> bool {
     // Windows matches the part before the first dot, ignoring trailing spaces.
     let stem = s.split('.').next().unwrap_or("").trim_end_matches(' ').to_ascii_uppercase();
     let numbered = |p: &str| {
-        stem.strip_prefix(p).is_some_and(|n| matches!(n, "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"))
+        stem.strip_prefix(p)
+            .is_some_and(|n| matches!(n, "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"))
     };
     !(DEVICES.contains(&stem.as_str()) || numbered("COM") || numbered("LPT"))
 }
@@ -439,7 +440,11 @@ mod tests {
         }
         #[cfg(windows)]
         {
-            let r = if dir { std::os::windows::fs::symlink_dir(target, link) } else { std::os::windows::fs::symlink_file(target, link) };
+            let r = if dir {
+                std::os::windows::fs::symlink_dir(target, link)
+            } else {
+                std::os::windows::fs::symlink_file(target, link)
+            };
             r.is_ok()
         }
     }
@@ -470,7 +475,9 @@ mod tests {
     fn sandbox() {
         let d = tempfile::tempdir().unwrap();
         let mut h = handler(d.path());
-        for p in ["../x", "/etc/passwd", "a/../../x", "a\\..\\..\\x", "\\x", "C:/x", "C:x", "\\\\?\\C:\\x", "//srv/share/x"] {
+        for p in
+            ["../x", "/etc/passwd", "a/../../x", "a\\..\\..\\x", "\\x", "C:/x", "C:x", "\\\\?\\C:\\x", "//srv/share/x"]
+        {
             assert_eq!(r_errno(&reply(h.handle(&open_req(oflag::RDONLY, p)))), (-1, errno::EACCES), "{p}");
         }
         assert_eq!(r_errno(&reply(h.handle(&open_req(oflag::RDONLY, "missing")))), (-1, errno::ENOENT));
@@ -549,9 +556,28 @@ mod tests {
         let mut h = handler(d.path());
         let creat = oflag::WRONLY | oflag::CREAT | oflag::TRUNC;
         for p in [
-            "CON", "nul", "Nul.txt", "aux.tar.gz", "PRN ", "COM1", "lpt9.log", "COM¹", "CONIN$", "conout$.x",
-            "plain.txt:stream", "sub/C:x", "trail.", "trail ", "...", "q?.txt", "a*", "<x>", "\"q\"", "p|q",
-            "x\u{1}y", "sub/NUL/x",
+            "CON",
+            "nul",
+            "Nul.txt",
+            "aux.tar.gz",
+            "PRN ",
+            "COM1",
+            "lpt9.log",
+            "COM¹",
+            "CONIN$",
+            "conout$.x",
+            "plain.txt:stream",
+            "sub/C:x",
+            "trail.",
+            "trail ",
+            "...",
+            "q?.txt",
+            "a*",
+            "<x>",
+            "\"q\"",
+            "p|q",
+            "x\u{1}y",
+            "sub/NUL/x",
         ] {
             assert_eq!(r_errno(&reply(h.handle(&open_req(creat, p)))), (-1, errno::EACCES), "{p:?}");
         }
