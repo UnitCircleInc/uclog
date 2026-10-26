@@ -196,9 +196,11 @@ Implemented in [`web/`](../../web/README.md). Where it differs from the plan abo
   - A file loaded manually is saved in the cache under the device's `app_hash`.
   - The demo page loads `spec/vectors/sample.logdata` under the simulated device's `app_hash`
     (`5a…5a.logdata`), so it never applies to real devices.
-- **Semihost files:** *Serve files from folder…* uses the File System Access API. Writes reach the
-  file when the device closes it (`createWritable`), so a file opened read-write does not see
-  its own unflushed writes.
+- **Semihost files:** *Serve files from folder…* uses the File System Access API. A writable stream
+  only reaches the file when it is closed, so a file open for writing is held in memory, shared by
+  all its handles (reads see the writes), and written to the file 200 ms after a write and on
+  close. Closing the page loses at most the last 200 ms; closing it mid-write leaves the previous
+  copy (Chrome swaps the file in whole).
 - **Simulated device:** `loopback:` in TypeScript, matching the native one (same commands and
   plots). It runs in the transport worker.
 - **Element:**

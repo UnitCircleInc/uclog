@@ -69,7 +69,8 @@ counts). On Windows, Web Bluetooth is as fast as the Bluetooth driver allows: ke
     data, drag zooms, double-click fits again; click sets cursor A, Shift-click cursor B (Δx and
     1/Δx), ⌘/Ctrl-click adds a marker. Heatmaps and spectrograms with a colour bar.
   - **Device**: port-62 fields, the logdata and where it came from, *Load logdata…* (`.logdata`
-    or ELF), *Serve files from folder…* for semihost, counters and notes.
+    or ELF), *Serve files from folder…* for semihost (what the device writes is in the folder
+    within 0.2 s, not only when it closes the file), counters and notes.
   - **FW update**: the signed `.bin`, port 59 then 3, progress, cancel.
 - **Export all** (⋯) downloads a zip: the logs as CSV, the terminal text and every plot as CSV.
 - **Settings** (⋯): logdata domain, URL and token, max log lines, lines sent on connect, the
