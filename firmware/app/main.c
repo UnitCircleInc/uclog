@@ -132,6 +132,16 @@ static void log_selftest(void) {
   sensor_dump();
 }
 
+// Bursts shorter than this also time the port's own buffering, past the log ring: a BLE stack
+// queues tens of kB of notifications, so the reported rate is too high (unset: no such buffering).
+#if defined(BURST_MIN_LOGS) && BURST_MIN_LOGS > 0
+#define STR_(x) #x
+#define STR(x) STR_(x)
+#define BURST_SHORT(n) ((n) < BURST_MIN_LOGS ? " (short burst: the rate includes buffering; use burst " STR(BURST_MIN_LOGS) " or more)" : "")
+#else
+#define BURST_SHORT(n) ""
+#endif
+
 static void burst(int port, unsigned n) {
   log_stats_t before, after;
   log_get_stats(&before);
@@ -150,10 +160,11 @@ static void burst(int port, unsigned n) {
   log_get_stats(&after);
   uint32_t bytes = after.tx_bytes - before.tx_bytes;
   uint32_t tenths = n ? (uint32_t)((uint64_t)bytes * 10 / n) : 0;
-  reply(port, "burst of %u logs: %lu bytes (%lu.%lu per log) in %lu ms = %lu B/s, %lu dropped%s\r\n", n,
+  reply(port, "burst of %u logs: %lu bytes (%lu.%lu per log) in %lu ms = %lu B/s, %lu dropped%s%s\r\n", n,
         (unsigned long)bytes, (unsigned long)(tenths / 10), (unsigned long)(tenths % 10), (unsigned long)ms,
         (unsigned long)(ms ? (uint64_t)bytes * 1000 / ms : 0),
-        (unsigned long)(after.tx_dropped - before.tx_dropped), flushed ? "" : " (not flushed: no host?)");
+        (unsigned long)(after.tx_dropped - before.tx_dropped), flushed ? "" : " (not flushed: no host?)",
+        BURST_SHORT(n));
 }
 
 // One frame of n bytes: "<n>:" then a repeating pattern, ending in "|\r\n".

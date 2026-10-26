@@ -117,7 +117,7 @@ used only by this test firmware.
 | `test` | One log of every kind: int32/uint32/int64/uint64, float/double, flags and widths, strings (escapes, UTF-8, truncation), pointer, `{sym}` (function, variable, unknown), `{enum}` (enum, typedef enum, unknown value), 14 arguments, `LOG_MEM`, all levels. It also runs at boot |
 | `sh` | Semihost through `syscalls.c` (printf/stderr with no-reply WRITE, `fopen`/`fgets`/`fstat`, `mkdir`, `gettimeofday`), plus a file round trip of one maximum WRITE (1438 bytes; 507 on the C071) and one of several (4000 bytes; 1200 on the C071), checked with CRC-32C. It also sends raw requests: the time ops, a WRITE with a reply, and the expected errors (`EACCES` sandbox escape, `EBADF` for close and write, `ENOSYS` for LSEEK and an unknown op, `EINVAL` for a malformed request, the 48-byte FSTAT error) |
 | `input` | Semihost READ on stdin |
-| `burst [n]` | Throughput. It waits for buffer room, so nothing is dropped. The reply gives bytes, bytes per log and B/s, timed until the last byte has gone out |
+| `burst [n]` | Throughput. It waits for buffer room, so nothing is dropped. The reply gives bytes, bytes per log and B/s, timed until the last byte has left the log ring. On the STM32WBA55G-DK1 that is when the BLE stack has it, so bursts under 10,000 logs are flagged "short burst" (`BURST_MIN_LOGS`; see "BLE throughput with a Mac") |
 | `big [n]` | One port-61 frame of `n` bytes (default 1443, which is 1452 on the wire) |
 | `info`, `stats` | Resends the device info; shows the link counters |
 | `link` | The link in use: `uart`, `cdc` or `hid` |
@@ -159,7 +159,10 @@ make run        # flash, then: uclog term -l build/app.elf --files-dir build/fil
 ```
 
 `make flash` programs the board's own ST-LINK: `STLINK_SN=…`, or the probe whose board name is
-`NUCLEO-L452RE-P` (several boards may be connected).
+`NUCLEO-L452RE-P` (several boards may be connected). Two ST-LINKs can report the same serial
+number: here the NUCLEO-C071RB's and the STM32WBA55G-DK1's are both 0047002E3133511335333335.
+STM32CubeProgrammer then lists only one of them, and `make flash` cannot find the other: plug in
+one of the two at a time to flash it.
 
 The toolchain and build steps are the same for every board.
 
@@ -410,7 +413,7 @@ device is `ble:ucLog test STM32WBA55G-DK1` (by name).
 | Check | UART | BLE |
 |---|---|---|
 | `test` (Python library, through `uclog-hub`) | 23 records, 0 error records | 24 records, 0 error records |
-| `burst 2000` | 2,000 decoded, 0 errors, 100,000 B/s | 2,000 decoded, 0 errors (the 8 KiB ring absorbs part: ~70,000 B/s) |
+| `burst 2000` | 2,000 decoded, 0 errors, 100,000 B/s | 2,000 decoded, 0 errors (reported 103,000-118,000 B/s: buffering, see below) |
 | Sustained (`burst 10000`) | — | ~72,000 B/s (see below) |
 | 1443-byte frame, device → host (`big`) | ✓ | ✓ |
 | Host → device (port 5 echo), 10 to 1443 bytes | ✓ | ✓ |
@@ -436,6 +439,26 @@ With 248-byte notifications every one took two link layer packets (251 + 4 bytes
 notifications per event" were really 6-7 packets. The rate halves with the 1M PHY and doubles with
 half the interval: macOS limits each connection event by time, not the device. More needs a
 central that gives longer connection events (or a shorter interval).
+
+**Short bursts over BLE overstate the rate**: `burst` stops its clock when the log ring is empty,
+and over BLE that means the frames are in the BLE stack's queues, not at the host. The stack holds
+tens of kB, so a burst that fits in the ring and the queues times how fast they fill. Only bursts
+well beyond that show the link (2026-10-26, Chrome's Web Bluetooth on macOS, which matches
+`uclog term`):
+
+| `burst n` | Bytes | Reported |
+|---|---|---|
+| 200 | 3,800 | 180,952 B/s |
+| 1000 (the default) | 19,000 | 191,919 B/s |
+| 2000 | 38,000 | 118,380 B/s |
+| 5000 | 95,000 | 79,899 B/s |
+| 10000 | 190,000 | 69,040-73,929 B/s (5 runs) |
+| 20000 | 380,000 | 70,110 B/s |
+
+So the WBA55 firmware is built with `BURST_MIN_LOGS=10000`, and a shorter burst's reply ends with
+"(short burst: the rate includes buffering; use burst 10000 or more)". The UART and USB boards
+have no such buffering after the ring (their ports hold at most a DMA transfer or a 64-byte
+packet), so they don't warn.
 
 **BLE throughput with Windows 11** (2026-10-25, Intel Wireless Bluetooth, USB `8087:0026`):
 Windows negotiates what macOS does (15 ms interval, 2M PHY, 251-byte data length, ATT MTU 251),

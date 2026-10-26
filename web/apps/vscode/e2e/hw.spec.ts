@@ -3,8 +3,8 @@
 //   UCLOG_TEST_FIRMWARE=nucleo-c071rb UCLOG_TEST_DEVICE=hid:<serial> …   (the C071's USB links)
 //   UCLOG_TEST_FIRMWARE=stm32wba55g-dk1 UCLOG_TEST_DEVICE="ble:<advertised name>" …   (BLE)
 // The workspace holds the firmware build's <app_hash>.logdata files, found by the extension host;
-// then `test` and `burst` must decode cleanly, and `sh` must create its files in the workspace
-// (semihost through the extension).
+// then `test` and `burst` must decode cleanly, and `sh` must create its files in the workspace's
+// uclog-files (semihost through the extension).
 
 import { expect, test } from '@playwright/test';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
@@ -48,8 +48,8 @@ test('real device through a private hub: workspace logdata, test, burst', async 
     await input.fill('sh');
     await input.press('Enter');
     await expect(f.locator('uc-terminal .xterm-rows')).toContainText('semihost selftest done', { timeout: 30_000 });
-    await expect.poll(() => existsSync(join(code.ws, 'uclog-big.bin')), { timeout: 10_000 }).toBe(true);
-    expect(readFileSync(join(code.ws, 'uclog-test.txt'), 'utf8')).toMatch(/^written by nucleo at \d+\n$/);
+    await expect.poll(() => existsSync(join(code.ws, 'uclog-files', 'uclog-big.bin')), { timeout: 10_000 }).toBe(true);
+    expect(readFileSync(join(code.ws, 'uclog-files', 'uclog-test.txt'), 'utf8')).toMatch(/^written by nucleo at \d+\n$/);
     st = (await decodeState(f))!;
     expect(st.errorCounts).toEqual({});
     await f.locator('uc-log nav button', { hasText: 'Logs' }).click();

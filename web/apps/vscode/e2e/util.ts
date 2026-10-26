@@ -69,6 +69,8 @@ export class Code {
         '--new-window',
         this.ws,
       ],
+      // Not the shared logdata cache (~/.cache/uclog), which the firmware builds fill.
+      env: { ...process.env, UCLOG_CACHE_DIR: join(this.tmp, 'cache') },
     });
     this.page = await this.app.firstWindow();
     await this.page.waitForSelector('.monaco-workbench', { timeout: 60_000 });

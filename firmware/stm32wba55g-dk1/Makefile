@@ -69,7 +69,7 @@ LIBS := $(WPAN)/link_layer/ll_cmd_lib/lib/LinkLayer_BLE_Peripheral_Only_V3_0.a \
 
 CPU    := -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mfp16-format=ieee
 DEFS   := -DSTM32WBA55xx -DUSE_HAL_DRIVER -DUSE_FULL_LL_DRIVER -DBLE_LL -DPHY_40nm_3_00_a \
-          -DBLE_STACK_PERIPHERAL_ONLY
+          -DBLE_STACK_PERIPHERAL_ONLY -DBURST_MIN_LOGS=10000
 # board/ first: its skel_ble.h stands in for the example's application header (app_conf.h is the
 # example's own; ble.c overrides its MBLOCK margin).
 INCS   := -I$(APP_DIR) -Iboard -I$(UCLOG_DIR) -I$(UCCOMM_DIR) \
