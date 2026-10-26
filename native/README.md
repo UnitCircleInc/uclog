@@ -199,6 +199,10 @@ serial, BLE and a remote hub. Building needs rustup and the Visual Studio C++ Bu
 - Settings from `setx` (for example `setx UCLOG_LOGDATA_DOMAIN example.com`) reach only windows
   opened afterwards. The logdata domain can also be set in the TUI or GUI settings.
 - The logdata cache is `%USERPROFILE%\.cache\uclog`, as on the other platforms.
+- direnv (optional; `.envrc` adds nothing on Windows except `.secrets`) runs `.envrc` with the
+  first `bash` on `PATH`. If that is not a full bash (STM32CubeCLT's `make\bin\bash` is not), set
+  `bash_path = "C:\\Program Files\\Git\\bin\\bash.exe"` in
+  `%USERPROFILE%\.config\direnv\direnv.toml`.
 - The semihost sandbox is not tested against Windows symlinks, junctions and `\\?\` paths yet (plan
   07 task 34).
 
