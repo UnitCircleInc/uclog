@@ -439,7 +439,7 @@ which decides how many packets a connection event carries:
 | Intel driver | Notifications per event | `burst 10000` |
 |---|---|---|
 | 22.190.0.2 (2022) | ~1.8 | 28,581 B/s (`uclog term`), 27,818 B/s (Chrome) |
-| 24.70.0.4 (2026) | ~5.1 | 82,002 B/s |
+| 24.70.0.4 (2026) | ~5.0 | 79,714 and 80,936 B/s (`uclog term`), 82,002 B/s (Chrome) |
 
 So on Windows, slow BLE (~28 kB/s with the link at 15 ms and 2M) means an old Bluetooth driver:
 install the current one from the adapter's maker (Intel's Driver & Support Assistant), not the one
