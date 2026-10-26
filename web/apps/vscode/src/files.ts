@@ -13,48 +13,14 @@ import { createHash } from 'node:crypto';
 import { constants as C, promises as fsp, type Stats } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-
-/** newlib errno names the device understands (protocol.md §5.5, D25). */
-const ERRNO = new Set([
-  'EPERM',
-  'ENOENT',
-  'EIO',
-  'EBADF',
-  'EAGAIN',
-  'ENOMEM',
-  'EACCES',
-  'EEXIST',
-  'ENOTDIR',
-  'EISDIR',
-  'EINVAL',
-  'EMFILE',
-  'ENOSPC',
-  'EROFS',
-  'ENOTEMPTY',
-  'ENAMETOOLONG',
-]);
-
-export class FsError extends Error {
-  constructor(readonly errno: string) {
-    super(errno);
-  }
-}
+import { ERRNO, FsError, portableName, type Errno, type OpenFlags } from '@uclog/core';
 
 function mapError(e: unknown): FsError {
   if (e instanceof FsError) return e;
   const code = (e as NodeJS.ErrnoException).code ?? '';
   if (code === 'ELOOP') return new FsError('EACCES');
   if (code === 'ENFILE') return new FsError('EMFILE');
-  return new FsError(ERRNO.has(code) ? code : 'EIO');
-}
-
-export interface OpenFlags {
-  read: boolean;
-  write: boolean;
-  append: boolean;
-  create: boolean;
-  truncate: boolean;
-  exclusive: boolean;
+  return new FsError(Object.hasOwn(ERRNO, code) ? (code as Errno) : 'EIO');
 }
 
 interface Handle {
@@ -62,16 +28,6 @@ interface Handle {
   pos: number;
   read: boolean;
   write: boolean;
-}
-
-const DEVICES = new Set(['CON', 'PRN', 'AUX', 'NUL', 'CONIN$', 'CONOUT$']);
-
-/** The same rule as @uclog/core's portableName (protocol.md §5.5.5), checked again here: no `:`,
- * Windows device names, trailing dot or space, control characters or `<>"|?*`. */
-function portableName(s: string): boolean {
-  if (!s || /[. ]$/.test(s) || /[\x00-\x1f<>:"|?*]/.test(s)) return false;
-  const stem = s.split('.')[0].replace(/ +$/, '').toUpperCase();
-  return !DEVICES.has(stem) && !/^(COM|LPT)[0-9\u00b9\u00b2\u00b3]$/.test(stem);
 }
 
 /** Semihost files under `root` (the webview has already split and checked the path; checked again

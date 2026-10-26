@@ -14,5 +14,6 @@ export * from './records.ts';
 export * from './logstore.ts';
 export * from './plots.ts';
 export * from './transport.ts';
+export * from './hub.ts';
 export * from './decoder.ts';
 export * from './loopback.ts';

@@ -3,7 +3,7 @@
 
 /** Messages between the main thread and the two workers (plan 02 §3). */
 
-import type { FilterSpec, FwProgress, Liveness, ResolverConfig, Row, SourceKind, ToDecoder } from '@uclog/core';
+import type { FilterSpec, FwProgress, LinkState, Liveness, ResolverConfig, Row, SourceKind, ToDecoder } from '@uclog/core';
 import type { HostCaps } from './rpc.ts';
 
 /** How the transport worker reaches the device. */
@@ -17,7 +17,7 @@ export type LinkInit =
 /** Semihost files: a folder the user granted, the host's files (by name, see `host`), or none. */
 export type FsInit = FileSystemDirectoryHandle | { host: string } | null;
 
-export type LinkState = 'connecting' | 'approval' | 'open' | 'busy' | 'closed' | 'error' | 'timeout';
+export type { LinkState };
 
 export type MainToTransport =
   | { t: 'init'; decoder: MessagePort }

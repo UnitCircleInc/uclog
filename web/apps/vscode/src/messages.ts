@@ -3,7 +3,18 @@
 
 /** Messages between the extension host and the logger webview (plan 03 §2, "Data path"). */
 
-export type LinkState = 'connecting' | 'approval' | 'open' | 'busy' | 'timeout' | 'closed' | 'error';
+import type { LinkState } from '@uclog/core';
+
+export type { LinkState };
+
+/** Byte arrays may arrive as plain objects or ArrayBuffers, depending on the VS Code version. */
+export function toBytes(v: unknown): Uint8Array {
+  if (v instanceof Uint8Array) return v;
+  if (v instanceof ArrayBuffer) return new Uint8Array(v);
+  if (ArrayBuffer.isView(v)) return new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+  if (v && typeof v === 'object') return Uint8Array.from(Object.values(v as Record<string, number>));
+  return new Uint8Array(0);
+}
 
 /** Passed in the page (no round trip before the element starts). */
 export interface WebviewInit {

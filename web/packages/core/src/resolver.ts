@@ -89,7 +89,7 @@ export async function fetchLogdata(
   if (!r.ok) {
     let detail = '';
     try {
-      const body = await r.json();
+      const body = (await r.json()) as { detail?: string; title?: string };
       detail = body.detail || body.title || '';
     } catch {
       /* not JSON */

@@ -10,7 +10,7 @@ import TransportWorker from '@uclog/workers/transport.worker?worker&inline';
 import DecodeWorker from '@uclog/workers/decode.worker?worker&inline';
 import { UcLog, type Settings } from '@uclog/ui';
 import type { MainLink } from '@uclog/transports-web';
-import type { FromWebview, LinkState, ToWebview, WebviewInit } from '../src/messages.ts';
+import { toBytes, type FromWebview, type LinkState, type ToWebview, type WebviewInit } from '../src/messages.ts';
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void };
 const vscode = acquireVsCodeApi();
@@ -30,15 +30,6 @@ function call<T>(op: string, ...args: unknown[]): Promise<T> {
     calls.set(id, { resolve: resolve as (v: unknown) => void, reject });
     post({ t: 'call', id, op, args });
   });
-}
-
-/** Byte arrays may arrive as plain objects or ArrayBuffers, depending on the VS Code version. */
-function bytes(v: unknown): Uint8Array {
-  if (v instanceof Uint8Array) return v;
-  if (v instanceof ArrayBuffer) return new Uint8Array(v);
-  if (ArrayBuffer.isView(v)) return new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
-  if (v && typeof v === 'object') return Uint8Array.from(Object.values(v as Record<string, number>));
-  return new Uint8Array(0);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -132,12 +123,12 @@ UcLog.workers = {
 
 UcLog.host = {
   services: {
-    cache: { get: (h) => call<Uint8Array | undefined>('cache-get', h).then((v) => (v ? bytes(v) : undefined)), put: (h, d) => call('cache-put', h, d) },
-    fetch: (url, headers) => call<{ status: number; headers: Record<string, string>; body: unknown }>('fetch', url, headers).then((r) => ({ ...r, body: bytes(r.body) })),
-    sibling: (h) => call<{ name: string; data: unknown } | undefined>('sibling', h).then((r) => (r ? { name: r.name, data: bytes(r.data) } : undefined)),
+    cache: { get: (h) => call<Uint8Array | undefined>('cache-get', h).then((v) => (v ? toBytes(v) : undefined)), put: (h, d) => call('cache-put', h, d) },
+    fetch: (url, headers) => call<{ status: number; headers: Record<string, string>; body: unknown }>('fetch', url, headers).then((r) => ({ ...r, body: toBytes(r.body) })),
+    sibling: (h) => call<{ name: string; data: unknown } | undefined>('sibling', h).then((r) => (r ? { name: r.name, data: toBytes(r.data) } : undefined)),
     fs: {
       open: (p, f) => call('fs-open', p, f),
-      read: (fd, n) => call('fs-read', fd, n).then(bytes),
+      read: (fd, n) => call('fs-read', fd, n).then(toBytes),
       write: (fd, d) => call('fs-write', fd, d),
       close: (fd) => call('fs-close', fd),
       stat: (fd) => call('fs-stat', fd),
@@ -145,7 +136,7 @@ UcLog.host = {
     },
   },
   showConnect: () => post({ t: 'show-connect' }),
-  pickFile: (kind) => call<{ name: string; data: unknown } | null>('pick-file', kind).then((r) => (r ? { name: r.name, data: bytes(r.data) } : null)),
+  pickFile: (kind) => call<{ name: string; data: unknown } | null>('pick-file', kind).then((r) => (r ? { name: r.name, data: toBytes(r.data) } : null)),
   openSource: (file, line) => post({ t: 'open-source', file, line }),
   save: (name, data) => post({ t: 'save', name, data }),
   openSettings: () => post({ t: 'open-settings' }),
@@ -182,25 +173,25 @@ window.addEventListener('message', (e: MessageEvent<ToWebview>) => {
     case 'link':
       return links.get(m.id)?.state(m.state, m.detail);
     case 'rx':
-      return links.get(m.id)?.rx(bytes(m.data));
+      return links.get(m.id)?.rx(toBytes(m.data));
     case 'settings':
       return el.settings?.replace(m.settings);
     case 'files':
       return el.client?.setHostFiles(m.files);
     case 'load-logdata':
-      void el.loadLogdata({ name: m.name, data: bytes(m.data) }).then(
+      void el.loadLogdata({ name: m.name, data: toBytes(m.data) }).then(
         (r) => el.dispatchEvent(new CustomEvent('uc-note', { detail: `logdata ${m.name} loaded for target ${r.target}` })),
         (err: Error) => el.dispatchEvent(new CustomEvent('uc-note', { detail: `${m.name}: ${err.message}` })),
       );
       return;
     case 'fw':
-      void el.fwUpdate(m.name, bytes(m.data));
+      void el.fwUpdate(m.name, toBytes(m.data));
       return;
     case 'terminal-forward':
       terminalForward = m.on;
       return;
     case 'send':
-      return el.send(m.port, bytes(m.data));
+      return el.send(m.port, toBytes(m.data));
     case 'note':
       el.dispatchEvent(new CustomEvent('uc-note', { detail: m.text }));
       return;

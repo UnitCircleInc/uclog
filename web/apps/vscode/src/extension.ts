@@ -8,18 +8,18 @@
  */
 
 import * as vscode from 'vscode';
+import { DEFAULT_LOGDATA_URL, FsError } from '@uclog/core';
 import { promises as fsp } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { DEMO, deviceLabel, DevicesTree, pickDevice } from './devices.ts';
 import { allowedUrl, hostFetch } from './fetch.ts';
-import { findLocalLogdata, FsError, ImageHashes, LogdataStore, NodeFs, sharedCacheDir } from './files.ts';
+import { findLocalLogdata, ImageHashes, LogdataStore, NodeFs, sharedCacheDir } from './files.ts';
 import { deviceProblem, listDevices, parseHubAddress, PrivateHub, resolveHub, type Device } from './hub.ts';
-import type { ConnSummary, FromWebview, WebviewInit } from './messages.ts';
+import { toBytes, type ConnSummary, type FromWebview, type WebviewInit } from './messages.ts';
 import { LoggerPanel, type Target } from './panel.ts';
 import { DeviceTerminal } from './term.ts';
 
-const DEFAULT_LOGDATA_URL = 'https://fw.unitcircle.ca';
 const TOKEN_KEY = 'uclog.logdataToken';
 const UI_STATE = 'uclog.ui';
 const EXCLUDE = '{**/node_modules/**,**/.git/**}';
@@ -709,14 +709,6 @@ class App implements vscode.Disposable {
     this.disposables.forEach((d) => d.dispose());
     await this.stopHubs();
   }
-}
-
-function toBytes(v: unknown): Uint8Array {
-  if (v instanceof Uint8Array) return v;
-  if (v instanceof ArrayBuffer) return new Uint8Array(v);
-  if (ArrayBuffer.isView(v)) return new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
-  if (v && typeof v === 'object') return Uint8Array.from(Object.values(v as Record<string, number>));
-  return new Uint8Array(0);
 }
 
 let app: App | null = null;

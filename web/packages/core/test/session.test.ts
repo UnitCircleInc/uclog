@@ -1,10 +1,12 @@
 // Transport + decode halves against the simulated loopback device, plus the FW update, the
-// semihost sandbox, the resolver and the stores.
+// semihost sandbox, the resolver and the stores, and hub admission.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
+  HubAdmission,
+  type LinkState,
   decode,
   DecodeSession,
   encode,
@@ -548,4 +550,51 @@ test('cbor round trip and map keys', () => {
   expect(d.get('a')).toBe(1);
   expect(d.get('b')).toEqual([1.5, -2, 'x', new Uint8Array([1, 2])]);
   expect(d.get('big')).toBe(2n ** 60n);
+});
+
+describe('hub admission', () => {
+  const run = (f: (a: HubAdmission, states: [LinkState, string?][]) => void) => {
+    vi.useFakeTimers();
+    try {
+      const states: [LinkState, string?][] = [];
+      f(new HubAdmission((s, d) => states.push(d ? [s, d] : [s])), states);
+      return states;
+    } finally {
+      vi.useRealTimers();
+    }
+  };
+
+  test('silence means approval; the first bytes open it', () => {
+    const states = run((a) => {
+      a.opened(() => {});
+      vi.advanceTimersByTime(1500);
+      a.data();
+      a.data();
+      vi.advanceTimersByTime(120_000);
+    });
+    expect(states).toEqual([['connecting'], ['approval'], ['open']]);
+  });
+
+  test('approval times out once, and closes the link', () => {
+    let closed = 0;
+    const states = run((a) => {
+      a.opened(() => closed++, 5000);
+      vi.advanceTimersByTime(5000);
+      a.end('error', 'closed after the timeout');
+      a.data();
+    });
+    expect(states.map((s) => s[0])).toEqual(['connecting', 'approval', 'timeout']);
+    expect(states[2][1]).toMatch(/within 5 s/);
+    expect(closed).toBe(1);
+  });
+
+  test('our own close reports nothing, and stops the timers', () => {
+    const states = run((a) => {
+      a.opened(() => {});
+      a.end();
+      vi.advanceTimersByTime(120_000);
+      a.end('closed');
+    });
+    expect(states).toEqual([['connecting']]);
+  });
 });

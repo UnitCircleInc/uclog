@@ -102,8 +102,9 @@ test('a hub kept running buffers while the logger is closed', async () => {
   let f = await logger();
   await expect(f.locator('uc-log footer')).toContainText('simulated device', { timeout: 30_000 });
   // Close the logger: the hub stays.
-  await page.locator('.tabs-container .tab', { hasText: 'ucLog' }).hover();
-  await page.locator('.tabs-container .tab', { hasText: 'ucLog' }).locator('.codicon-close').click();
+  const tab = page.locator('.tabs-container .tab', { hasText: 'ucLog' });
+  await tab.hover();
+  await tab.getByRole('button', { name: /^Close/ }).click();
   await page.waitForTimeout(1500);
   expect(loopbackHubs()).toBe(1);
   // Reopening connects again; the backlog fills the log at once.
