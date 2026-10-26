@@ -14,7 +14,7 @@ use uclog_link::discover::UsbFilter;
 use uclog_link::LinkSpec;
 
 #[derive(Parser)]
-#[command(name = "uclog", version, about = "ucLog client tools", propagate_version = true)]
+#[command(name = "uclog", version = env!("UCLOG_VERSION"), about = "ucLog client tools", propagate_version = true)]
 struct Cli {
     /// -v: info, -vv: debug + wire trace
     #[arg(short, long, action = clap::ArgAction::Count, global = true)]

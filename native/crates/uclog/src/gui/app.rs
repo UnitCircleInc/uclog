@@ -738,7 +738,7 @@ impl GuiApp {
         egui::Window::new("About ucLog").collapsible(false).resizable(false).open(&mut self.show_about).show(
             ctx,
             |ui| {
-                ui.heading(format!("ucLog {}", env!("CARGO_PKG_VERSION")));
+                ui.heading(format!("ucLog {}", env!("UCLOG_VERSION")));
                 ui.label("Logs, terminal, commands, plots and FW update for Unit Circle devices.");
                 ui.label("Keys: ⌘K connect · ⌘L load logdata · ⌘E export all · ⌘, settings · ⌘+/⌘− UI scale");
                 if let Some(p) = &self.settings_path {

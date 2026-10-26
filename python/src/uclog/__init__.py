@@ -25,7 +25,7 @@ from .hub import DeviceInfo, HubInfo, list_devices, list_hubs, start_hub, stop_h
 from .logdata import DecodeError, LogData, LogDataError, LogRecord
 from .resolver import Resolver
 
-__version__ = '0.1.0'
+__version__ = '4a1'
 
 __all__ = [
   'connect', 'Connection', 'list_hubs', 'list_devices', 'start_hub', 'stop_hub', 'HubInfo',

@@ -43,7 +43,7 @@ the hub binaries this phase signs.
 |---|---|---|---|
 | 11 | PyPI: create the `uclog` project and set up a **trusted publisher** (GitHub OIDC) for this repository, `release.yml` and a `pypi` environment with required reviewers. Do the same on TestPyPI | 06 §9 | S |
 | 12 | A publish job in `release.yml` (`pypa/gh-action-pypi-publish`, `id-token: write`, no API token). It publishes the wheels and sdist on a `v*` tag, after the build jobs. Publish to TestPyPI first, then install from it on 3 OS | 06 §9 | S |
-| 13 | Versioning: SoloVer (plan 08 §2.2a). One host version line `vN`, starting at `v4` (the device repository already has `v1`–`v3`), mapped to each manifest (Rust workspace, Python package, `package.json` files, VSIX; all `0.1.0` now); CI derives them from the tag and checks them | 08 | S |
+| 13 | Versioning: SoloVer (plan 08 §2.2a). One host version line `vN`, starting at `v4` (the device repository already has `v1`–`v3`), mapped to each manifest (Rust workspace, Python package, `package.json` files, VSIX; all `0.1.0` now); CI derives them from the tag and checks them. **Done 2026-10-26** as plan 08 task 1: `scripts/version.py set N` before tagging; `release.yml` checks the tag | 08 | S |
 | 13a | npm: publish `@uclog/element` (Changesets, provenance) and a versioned single-file build on GitHub Releases or a CDN | 02 §7, §10 | S |
 | 13b | VS Code: create the `unitcircle` publisher (Marketplace) and namespace (Open VSX); a publish job in `release.yml` with `vsce publish` and `ovsx publish` (tokens as secrets, `--require-all` targets). Check the repository URL in the manifest | 03 §6 | S |
 | 14 | First release: tag, publish the draft GitHub release, release notes | — | S |

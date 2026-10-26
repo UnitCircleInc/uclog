@@ -27,10 +27,23 @@ Building the Rust workspace on macOS needs Homebrew's `rustup` and direnv (the r
 - [`spec/vectors/`](spec/vectors/README.md) — test vectors every implementation must pass
 - [`spec/reference/`](spec/reference/ucref.py) — executable reference (Python standard library only)
 - [`spec/firmware-changes.md`](spec/firmware-changes.md) — what the firmware must change or confirm
+- [`spec/compatibility.md`](spec/compatibility.md) — device library versions against host versions
 
 ```sh
 python3 spec/reference/gen_vectors.py --check   # vectors are up to date
 python3 spec/reference/check_vectors.py         # vectors pass against the reference
+```
+
+## Versions
+
+SoloVer ([plan 08 §2.2a](docs/plans/08-public.md)): host tools `vN`, device library `device-vN`,
+starting at 4. [`scripts/version.py`](scripts/version.py) maps a version to each manifest
+(Cargo, Python, `package.json`, VSIX) and to `UCLOG_DEVICE_VERSION`:
+
+```sh
+python3 scripts/version.py show              # in-tree versions (CI: the manifests agree)
+python3 scripts/version.py set 4             # then commit, and tag v4 (CI: version.py check v4)
+python3 scripts/version.py set 4 --device    # then commit, and tag device-v4
 ```
 
 The legacy Python client (`uclog-client`) is frozen. It stays in its own repository until the

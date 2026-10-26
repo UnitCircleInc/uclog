@@ -1,6 +1,6 @@
 {
   "name": "@uclog/workers",
-  "version": "0.1.0",
+  "version": "4.0.0-alpha.1",
   "description": "ucLog transport and decode workers, and the main-thread client that drives them",
   "license": "Apache-2.0",
   "type": "module",

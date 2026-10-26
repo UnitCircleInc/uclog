@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(
     name = "uclog-hub",
-    version,
+    version = env!("UCLOG_VERSION"),
     about = "ucLog hub: one device, one TCP/WebSocket/UDP client at a time",
     args_conflicts_with_subcommands = true
 )]

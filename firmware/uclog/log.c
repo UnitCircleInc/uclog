@@ -36,7 +36,7 @@ static const __attribute__((used, section(".apphash"))) uint8_t app_hash[LOG_APP
 static cb_t tx_cb;
 static uint8_t tx_buf[LOG_TX_BUF_SIZE];
 
-#define MAX_DEVICE_INFO_SIZE 160
+#define MAX_DEVICE_INFO_SIZE 192
 static uint8_t device_info_tx_buf[COBS_ENC_SIZE(MAX_DEVICE_INFO_SIZE) + 2];
 static size_t device_info_len;
 
@@ -269,15 +269,16 @@ __attribute__((noreturn)) void log_fatal_(void) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Device info (port 62): CBOR {"app_hash": bytes(64), "image_type": text, "board": text}
+// Device info (port 62): CBOR {"app_hash": bytes(64), "image_type": text, "board": text,
+// "uclog_version": text}
 
 static void fill_device_info(const char *board, const char *image_type) {
   uint8_t p[MAX_DEVICE_INFO_SIZE];
   p[0] = (DEVICE_INFO_PORT << 2) | 3;
   cbor_stream_t cs;
   cbor_init(&cs, p + 1, sizeof(p) - 1);
-  cbor_error_t err = cbor_pack(&cs, "{.app_hash:b,.image_type:s,.board:s}", app_hash,
-                               (size_t)LOG_APP_HASH_SIZE, image_type, board);
+  cbor_error_t err = cbor_pack(&cs, "{.app_hash:b,.image_type:s,.board:s,.uclog_version:s}", app_hash,
+                               (size_t)LOG_APP_HASH_SIZE, image_type, board, UCLOG_DEVICE_VERSION);
   if (err != CBOR_ERROR_NONE) LOG_FATAL("CBOR pack error: %d", err);
   device_info_len = frame(device_info_tx_buf, p, 1 + cbor_read_avail(&cs));
 }

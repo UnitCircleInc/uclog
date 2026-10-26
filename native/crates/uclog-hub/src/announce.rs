@@ -147,7 +147,7 @@ impl Registry {
         let v = json!({
             "pid": std::process::id(), "port": id.port, "ws_port": id.ws_port, "udp_port": id.udp_port,
             "bind": id.bind, "name": id.name, "device": id.device, "serial_number": id.serial_number,
-            "kind": id.kind, "tls": id.tls, "busy": busy, "version": env!("CARGO_PKG_VERSION"),
+            "kind": id.kind, "tls": id.tls, "busy": busy, "version": env!("UCLOG_VERSION"),
         });
         let tmp = self.path.with_extension("tmp");
         if std::fs::write(&tmp, v.to_string()).and_then(|_| std::fs::rename(&tmp, &self.path)).is_err() {

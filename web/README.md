@@ -30,9 +30,9 @@ The VS Code extension (in `apps/vscode`):
 ```sh
 npx tsc -p apps/vscode/tsconfig.json
 (cd apps/vscode && npx vite build --mode host && npx vite build)   # dist/extension.cjs, dist/webview
-(cd apps/vscode && node scripts/package.mjs --local)              # bin/ from native/target, then uclog-0.1.0.vsix
+(cd apps/vscode && node scripts/package.mjs --local)              # bin/ from native/target, then uclog-<version>.vsix
 npx playwright test -c apps/vscode/playwright.config.ts           # in the installed VS Code (UCLOG_VSCODE=…)
-UCLOG_VSIX=apps/vscode/uclog-0.1.0.vsix npx playwright test -c apps/vscode/playwright.config.ts
+UCLOG_VSIX=apps/vscode/uclog-<version>.vsix npx playwright test -c apps/vscode/playwright.config.ts
 UCLOG_TEST_DEVICE=serial:/dev/cu.usbmodem… npx playwright test -c apps/vscode/playwright.config.ts hw
 ```
 
@@ -42,7 +42,7 @@ npx playwright test ble` (Web Bluetooth, the chooser answered through DevTools).
 
 To try it by hand, build it and fill `bin/` (the first three lines), then open `apps/vscode` in VS
 Code and press F5 (*Run Extension*), or install the VSIX
-(`code --install-extension apps/vscode/uclog-0.1.0.vsix`).
+(`code --install-extension apps/vscode/uclog-<version>.vsix`).
 
 The demo page's query parameters set the element's attributes, for example
 `?hub-url=ws://lab-pc:9000&theme=dark&layout=grid`, and `?connect=loopback:rate=5` connects at

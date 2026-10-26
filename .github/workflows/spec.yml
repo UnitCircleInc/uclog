@@ -19,3 +19,14 @@ jobs:
         run: python3 -I spec/reference/gen_vectors.py --check
       - name: Vectors pass against the reference
         run: python3 -I spec/reference/check_vectors.py
+
+  # Versions (plan 08 §2.2a): the manifests agree with each other, and the SoloVer mapping holds.
+  versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python3 -I -m unittest discover -s scripts
+      - run: python3 -I scripts/version.py show

@@ -254,6 +254,7 @@ A CBOR map, sent by the device at boot, when a host returns after more than 2 s 
 | `app_hash` | bytes(64) | **SHA-512 of the signed image file after its first 512 bytes** (the image header). It selects the logdata (§6.4) |
 | `board` | text | board name |
 | `image_type` | text | image type (e.g. `app`, `afi`) |
+| `uclog_version` | text | the device library's version (SoloVer, e.g. `4`; `UCLOG_DEVICE_VERSION`). Absent before `device-v4`. Informational: hosts show it with the other keys; see `spec/compatibility.md` |
 | *others* | any | informational; shown as-is |
 
 **Every port-62 frame starts a new decoding context**: the device may have reset or changed

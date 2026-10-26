@@ -2,7 +2,7 @@
 
 import { _electron, type ElectronApplication, type Frame, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,7 +53,7 @@ export class Code {
     const exts = join(this.tmp, 'extensions');
     if (VSIX) {
       execFileSync(CLI, ['--extensions-dir', exts, '--user-data-dir', join(this.tmp, 'user'), '--install-extension', VSIX], { stdio: 'inherit' });
-      extRoot = join(exts, 'unitcircle.uclog-0.1.0');
+      extRoot = join(exts, `unitcircle.uclog-${JSON.parse(readFileSync(join(ext, 'package.json'), 'utf8')).version}`);
     }
     this.app = await _electron.launch({
       executablePath: CODE,

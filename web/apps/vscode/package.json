@@ -2,7 +2,7 @@
   "name": "uclog",
   "displayName": "ucLog",
   "description": "Logs, terminal, plots and FW updates for ucLog devices (Serial, HID, BLE, UDP) and hubs",
-  "version": "0.1.0",
+  "version": "4.0.0-alpha.1",
   "publisher": "unitcircle",
   "license": "Apache-2.0",
   "private": true,
