@@ -1,0 +1,189 @@
+{
+ "date": "2026-10-27",
+ "firmware": "v2-68-g88958e2-dirty",
+ "cpu": "Cortex-M0+",
+ "links": [
+  {
+   "link": "uart",
+   "logs": 2000,
+   "bytes": 38000,
+   "ms": 380,
+   "dropped": 0,
+   "bytes_per_s": 100000,
+   "logs_per_s": 5263
+  },
+  {
+   "link": "cdc",
+   "logs": 2000,
+   "bytes": 38000,
+   "ms": 83,
+   "dropped": 0,
+   "bytes_per_s": 457831,
+   "logs_per_s": 24096
+  },
+  {
+   "link": "hid",
+   "logs": 2000,
+   "bytes": 38000,
+   "ms": 603,
+   "dropped": 0,
+   "bytes_per_s": 63018,
+   "logs_per_s": 3317
+  }
+ ],
+ "round_trip": {
+  "uart": {
+   "bytes": 16,
+   "n": 50,
+   "median_ms": 2.02,
+   "p90_ms": 2.61
+  },
+  "cdc": {
+   "bytes": 16,
+   "n": 50,
+   "median_ms": 1.0,
+   "p90_ms": 1.03
+  },
+  "hid": {
+   "bytes": 16,
+   "n": 50,
+   "median_ms": 8.97,
+   "p90_ms": 9.65
+  }
+ },
+ "board": "nucleo_c071rb",
+ "hz": 48000000,
+ "n": 32,
+ "statements": [
+  {
+   "id": "args0",
+   "code": "LOG_INFO(\"bench: no arguments\");",
+   "wire": 7,
+   "text": 21,
+   "log_min": 721,
+   "log_avg": 721,
+   "printf_min": 252,
+   "printf_avg": 252
+  },
+  {
+   "id": "int1",
+   "code": "LOG_INFO(\"bench: count %d\", count);",
+   "wire": 11,
+   "text": 19,
+   "log_min": 953,
+   "log_avg": 953,
+   "printf_min": 1591,
+   "printf_avg": 1591
+  },
+  {
+   "id": "int2",
+   "code": "LOG_INFO(\"bench: x=%d y=%d\", x, y);",
+   "wire": 15,
+   "text": 20,
+   "log_min": 1204,
+   "log_avg": 1231,
+   "printf_min": 2509,
+   "printf_avg": 2534
+  },
+  {
+   "id": "int4",
+   "code": "LOG_INFO(\"bench: %d %d %d %d\", count, x, y, z);",
+   "wire": 23,
+   "text": 28,
+   "log_min": 1567,
+   "log_avg": 1592,
+   "printf_min": 4968,
+   "printf_avg": 5072
+  },
+  {
+   "id": "float1",
+   "code": "LOG_INFO(\"bench: temp %.2f\", temp);",
+   "wire": 15,
+   "text": 19,
+   "log_min": 1153,
+   "log_avg": 1230,
+   "printf_min": 9994,
+   "printf_avg": 10071
+  },
+  {
+   "id": "double1",
+   "code": "LOG_INFO(\"bench: ratio %f\", ratio);",
+   "wire": 15,
+   "text": 23,
+   "log_min": 1128,
+   "log_avg": 1128,
+   "printf_min": 10906,
+   "printf_avg": 11138
+  },
+  {
+   "id": "str1",
+   "code": "LOG_INFO(\"bench: name %s\", name);",
+   "wire": 16,
+   "text": 22,
+   "log_min": 1319,
+   "log_avg": 1319,
+   "printf_min": 1479,
+   "printf_avg": 1660
+  },
+  {
+   "id": "mixed4",
+   "code": "LOG_INFO(\"bench: %s count=%d temp=%.1f ratio=%f\", name, count, temp, ratio);",
+   "wire": 36,
+   "text": 53,
+   "log_min": 2318,
+   "log_avg": 2369,
+   "printf_min": 22002,
+   "printf_avg": 22389
+  }
+ ],
+ "host_decode": {
+  "python_logs_per_s": 175939,
+  "native_logs_per_s": 758356,
+  "machine": "Darwin arm64, Python 3.14.7"
+ },
+ "footprint": {
+  "objects": {
+   "log.o": {
+    "flash": 2297,
+    "ram": 9243,
+    "logdata": 706
+   },
+   "log_plot.o": {
+    "flash": 848,
+    "ram": 0,
+    "logdata": 0
+   },
+   "semihost.o": {
+    "flash": 1176,
+    "ram": 512,
+    "logdata": 222
+   },
+   "syscalls.o": {
+    "flash": 272,
+    "ram": 0,
+    "logdata": 359
+   },
+   "cb.o": {
+    "flash": 162,
+    "ram": 0,
+    "logdata": 0
+   },
+   "cobs.o": {
+    "flash": 98,
+    "ram": 0,
+    "logdata": 0
+   },
+   "cbor.o": {
+    "flash": 1888,
+    "ram": 0,
+    "logdata": 0
+   }
+  },
+  "flash": 6741,
+  "ram": 9755,
+  "format_strings": 5266,
+  "snprintf_int": 2827,
+  "snprintf_float": 22324,
+  "log_ring": 4096
+ }
+}

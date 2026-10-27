@@ -37,6 +37,7 @@ BUILD      := build
 # Paths as given here become __FILE__, i.e. the file names shown with each log; the shared test
 # app (../app) is shown as src/ (-ffile-prefix-map below).
 SRCS := $(APP_DIR)/main.c \
+        $(APP_DIR)/bench.c \
         $(APP_DIR)/drivers/sensor.c \
         $(APP_DIR)/sh/semihost_test.c \
         board/board.c \

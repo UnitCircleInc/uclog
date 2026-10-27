@@ -79,6 +79,21 @@ const uint8_t *board_uid(void) {
   return (const uint8_t *)UID_BASE;
 }
 
+// The Cortex-M0+ has no cycle counter: SysTick's, extended by the millisecond count (SysTick
+// runs at the CPU clock, reloading every millisecond).
+uint32_t board_cycles(void) {
+  uint32_t per_ms = SysTick->LOAD + 1, m, v;
+  do {
+    m = ms;
+    v = SysTick->VAL;
+  } while (m != ms); // a tick in between: read again
+  return m * per_ms + (per_ms - 1 - v);
+}
+
+uint32_t board_hz(void) {
+  return SystemCoreClock;
+}
+
 uint32_t board_ms(void) {
   return ms;
 }

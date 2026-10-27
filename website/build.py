@@ -309,6 +309,92 @@ def python_reference(ref: str) -> str:
   return '\n'.join(out)
 
 
+BENCH = HERE / 'bench'  # firmware/bench.py's results, one JSON per board
+BOARD_ORDER = ['nucleo-c071rb', 'nucleo-l452re-p', 'stm32wba55g-dk1']
+LINK_NAMES = {'uart': 'UART, 1 Mbaud', 'cdc': 'USB CDC', 'hid': 'USB HID', 'ble': 'Bluetooth LE'}
+
+
+def performance_page() -> str:
+  """The performance page from website/bench/*.json (firmware/bench.py on each board)."""
+  boards = sorted(BENCH.glob('*.json'), key=lambda p: BOARD_ORDER.index(p.stem) if p.stem in BOARD_ORDER else 99)
+  rs = [json.loads(p.read_text(encoding='utf-8')) for p in boards]
+  out = ['# Performance', '',
+         'Measured on the boards by the test firmware\'s `bench` and `burst` commands, collected by '
+         f'[`firmware/bench.py`]({GITHUB}/blob/main/firmware/bench.py), which also reads the '
+         'footprint from each build\'s link map. Rerun it to update this page.', '']
+  if not rs:
+    return '\n'.join(out + ['No results yet.', ''])
+  name = lambda r: f'{r["board"]} ({r["cpu"]}, {r["hz"] // 1_000_000} MHz)'
+  out += ['| Board | Measured | Firmware |', '|---|---|---|']
+  out += [f'| {name(r)} | {r["date"]} | `{r["firmware"]}` |' for r in rs]
+  first = rs[0]['statements']
+
+  out += ['', '## Bytes per log', '',
+          'What one log statement sends: ucLog\'s frame (the format string\'s address, the arguments in '
+          'binary, COBS and the frame delimiter), against the same message formatted as text with '
+          'its line end. Neither counts a timestamp, level or file name: ucLog\'s hosts get those '
+          'from the logdata; a text log would usually add them.', '',
+          '| Statement | ucLog | text |', '|---|---|---|']
+  for st in first:
+    out.append(f'| `{st["code"]}` | {st["wire"]} B | {st["text"]} B |')
+
+  out += ['', '## Time per log', '',
+          'CPU cycles for the call (the fastest of 32, interrupts on): ucLog\'s call encodes the frame, '
+          'copies it into the log ring and starts sending it; `snprintf` (newlib-nano) only formats '
+          'the text, which then still has to be sent. On a 1 Mbaud UART each byte takes 10 µs, so '
+          'the bytes above matter as much as the cycles.', '']
+  head = '| Statement | ' + ' | '.join(f'{r["board"]}: ucLog | snprintf' for r in rs) + ' |'
+  out += [head, '|---|' + '---|---|' * len(rs)]
+  for i, st in enumerate(first):
+    cells = []
+    for r in rs:
+      x = r['statements'][i]
+      us = lambda c: f'{c / r["hz"] * 1e6:.1f} µs'
+      cells += [f'{x["log_min"]} ({us(x["log_min"])})', f'{x["printf_min"]} ({us(x["printf_min"])})']
+    out.append(f'| `{st["id"]}` | ' + ' | '.join(cells) + ' |')
+
+  out += ['', '## Throughput', '',
+          'A burst of 2000 logs as fast as the link takes them (`burst 2000`, 19 bytes per log), and the '
+          'median round trip of 16 bytes from a script through the hub to the device and back.', '',
+          '| Board | Link | Bytes/s | Logs/s | Round trip |', '|---|---|---|---|---|']
+  for r in rs:
+    for l in r['links']:
+      rt = r['round_trip'].get(l['link'], {})
+      out.append(f'| {r["board"]} | {LINK_NAMES.get(l["link"], l["link"])} | {l["bytes_per_s"]:,} | '
+                 f'{l["logs_per_s"]:,} | {rt.get("median_ms", "–")} ms |')
+
+  out += ['', '## Footprint', '',
+          'The library as linked into the test firmware (`-Os`, unused functions removed), from the link '
+          'map. RAM includes the log ring, which is configurable (`LOG_TX_BUF_SIZE`). The format strings '
+          'stay in the ELF and cost no flash. For comparison: what `snprintf` adds to a program, with '
+          'integers only and with floats.', '',
+          '| Board | ucLog flash | ucLog RAM (log ring) | Format strings, not in flash | snprintf | snprintf with floats |',
+          '|---|---|---|---|---|---|']
+  kb = lambda n: f'{n / 1024:.1f} KiB'
+  for r in rs:
+    f = r['footprint']
+    out.append(f'| {r["board"]} | {kb(f["flash"])} | {kb(f["ram"])} ({kb(f["log_ring"])}) | '
+               f'{kb(f["format_strings"])} | {kb(f["snprintf_int"])} | {kb(f["snprintf_float"])} |')
+  objs = list(rs[0]['footprint']['objects'])
+  out += ['', 'By object (flash / RAM, bytes):', '',
+          '| Object | ' + ' | '.join(r['board'] for r in rs) + ' |', '|---|' + '---|' * len(rs)]
+  for o in objs:
+    cells = [f'{r["footprint"]["objects"].get(o, {}).get("flash", 0)} / {r["footprint"]["objects"].get(o, {}).get("ram", 0)}'
+             for r in rs]
+    out.append(f'| `{o}` | ' + ' | '.join(cells) + ' |')
+  out += ['', '`log.o` is the core; `log_plot.o` is only linked with plots; `semihost.o` and `syscalls.o` '
+          'only with semihost (files and stdio on the host); `cb.o`, `cobs.o`, `cbor.o` are ucComm.']
+
+  out += ['', '## On the host', '',
+          'Logs decoded per second, from frames recorded off the board:', '',
+          '| Board | Python library | `uclog decode` | Machine |', '|---|---|---|---|']
+  for r in rs:
+    h = r.get('host_decode', {})
+    nat = f'{h["native_logs_per_s"]:,}' if h.get('native_logs_per_s') else '–'
+    out.append(f'| {r["board"]} | {h.get("python_logs_per_s", 0):,} | {nat} | {h.get("machine", "")} |')
+  return '\n'.join(out) + '\n'
+
+
 def generate(version):
   ref = ref_for(version)
   for page, src in SPEC_PAGES.items():
@@ -321,6 +407,7 @@ def generate(version):
   (HERE / 'docs' / PYTHON_REFERENCE_PAGE).write_text(python_reference(ref), encoding='utf-8')
   # The releases up to this commit (a release's docs list it and the ones before it).
   (HERE / 'docs/releases.md').write_text(releases.table(merged='HEAD'), encoding='utf-8')
+  (HERE / 'docs/performance.md').write_text(performance_page(), encoding='utf-8')
 
 
 def zensical(*args, env=None):

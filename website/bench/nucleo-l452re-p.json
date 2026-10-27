@@ -1,0 +1,159 @@
+{
+ "date": "2026-10-27",
+ "firmware": "v2-68-g88958e2-dirty",
+ "cpu": "Cortex-M4F",
+ "links": [
+  {
+   "link": "uart",
+   "logs": 2000,
+   "bytes": 38000,
+   "ms": 380,
+   "dropped": 0,
+   "bytes_per_s": 100000,
+   "logs_per_s": 5263
+  }
+ ],
+ "round_trip": {
+  "uart": {
+   "bytes": 16,
+   "n": 50,
+   "median_ms": 2.8,
+   "p90_ms": 3.09
+  }
+ },
+ "board": "nucleo_l452re_p",
+ "hz": 80000000,
+ "n": 32,
+ "statements": [
+  {
+   "id": "args0",
+   "code": "LOG_INFO(\"bench: no arguments\");",
+   "wire": 7,
+   "text": 21,
+   "log_min": 706,
+   "log_avg": 711,
+   "printf_min": 194,
+   "printf_avg": 194
+  },
+  {
+   "id": "int1",
+   "code": "LOG_INFO(\"bench: count %d\", count);",
+   "wire": 11,
+   "text": 19,
+   "log_min": 929,
+   "log_avg": 930,
+   "printf_min": 1467,
+   "printf_avg": 1471
+  },
+  {
+   "id": "int2",
+   "code": "LOG_INFO(\"bench: x=%d y=%d\", x, y);",
+   "wire": 15,
+   "text": 20,
+   "log_min": 1084,
+   "log_avg": 1090,
+   "printf_min": 2320,
+   "printf_avg": 2332
+  },
+  {
+   "id": "int4",
+   "code": "LOG_INFO(\"bench: %d %d %d %d\", count, x, y, z);",
+   "wire": 23,
+   "text": 28,
+   "log_min": 1344,
+   "log_avg": 1345,
+   "printf_min": 4183,
+   "printf_avg": 4183
+  },
+  {
+   "id": "float1",
+   "code": "LOG_INFO(\"bench: temp %.2f\", temp);",
+   "wire": 15,
+   "text": 19,
+   "log_min": 1089,
+   "log_avg": 1089,
+   "printf_min": 6751,
+   "printf_avg": 6768
+  },
+  {
+   "id": "double1",
+   "code": "LOG_INFO(\"bench: ratio %f\", ratio);",
+   "wire": 15,
+   "text": 23,
+   "log_min": 1061,
+   "log_avg": 1061,
+   "printf_min": 6412,
+   "printf_avg": 6433
+  },
+  {
+   "id": "str1",
+   "code": "LOG_INFO(\"bench: name %s\", name);",
+   "wire": 16,
+   "text": 22,
+   "log_min": 1280,
+   "log_avg": 1291,
+   "printf_min": 1462,
+   "printf_avg": 1466
+  },
+  {
+   "id": "mixed4",
+   "code": "LOG_INFO(\"bench: %s count=%d temp=%.1f ratio=%f\", name, count, temp, ratio);",
+   "wire": 36,
+   "text": 53,
+   "log_min": 2014,
+   "log_avg": 2014,
+   "printf_min": 14615,
+   "printf_avg": 14655
+  }
+ ],
+ "host_decode": {
+  "python_logs_per_s": 154975,
+  "native_logs_per_s": 744441,
+  "machine": "Darwin arm64, Python 3.14.7"
+ },
+ "footprint": {
+  "objects": {
+   "log.o": {
+    "flash": 2273,
+    "ram": 13339,
+    "logdata": 706
+   },
+   "log_plot.o": {
+    "flash": 890,
+    "ram": 0,
+    "logdata": 0
+   },
+   "semihost.o": {
+    "flash": 1108,
+    "ram": 1443,
+    "logdata": 222
+   },
+   "syscalls.o": {
+    "flash": 248,
+    "ram": 0,
+    "logdata": 359
+   },
+   "cb.o": {
+    "flash": 154,
+    "ram": 0,
+    "logdata": 0
+   },
+   "cobs.o": {
+    "flash": 92,
+    "ram": 0,
+    "logdata": 0
+   },
+   "cbor.o": {
+    "flash": 1896,
+    "ram": 0,
+    "logdata": 0
+   }
+  },
+  "flash": 6661,
+  "ram": 14782,
+  "format_strings": 5458,
+  "snprintf_int": 2771,
+  "snprintf_float": 15565,
+  "log_ring": 8192
+ }
+}

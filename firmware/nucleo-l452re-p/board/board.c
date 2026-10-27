@@ -128,6 +128,20 @@ const uint8_t *board_uid(void) {
   return (const uint8_t *)UID_BASE;
 }
 
+// DWT's cycle counter, started on first use.
+uint32_t board_cycles(void) {
+  if (!(DWT->CTRL & DWT_CTRL_CYCCNTENA_Msk)) {
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+  }
+  return DWT->CYCCNT;
+}
+
+uint32_t board_hz(void) {
+  return SystemCoreClock;
+}
+
 uint32_t board_ms(void) {
   return ms;
 }

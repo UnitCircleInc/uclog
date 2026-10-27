@@ -121,11 +121,24 @@ used only by this test firmware.
 | `sh` | Semihost through `syscalls.c` (on Zephyr the semihost file system at `/host`; printf/stderr with no-reply WRITE, `fopen`/`fgets`/`fstat`, `mkdir`, `gettimeofday`), plus a file round trip of one maximum WRITE (1438 bytes; 507 on the C071) and one of several (4000 bytes; 1200 on the C071), checked with CRC-32C. It also sends raw requests: the time ops, a WRITE with a reply, and the expected errors (`EACCES` sandbox escape, `EBADF` for close and write, `ENOSYS` for LSEEK and an unknown op, `EINVAL` for a malformed request, the 48-byte FSTAT error) |
 | `input` | Semihost READ on stdin |
 | `burst [n]` | Throughput. It waits for buffer room, so nothing is dropped. The reply gives bytes, bytes per log and B/s, timed until the last byte has left the log ring. Over BLE (STM32WBA55G-DK1) that is when the BLE stack has it, so bursts under 10,000 logs are flagged "short burst" (`BURST_MIN_LOGS`; see "BLE throughput with a Mac") |
+| `bench` | For each of 8 log statements (0–4 arguments: ints, float, double, string): the bytes it sends and the CPU cycles of the call (fastest and mean of 32), beside `snprintf` of the same message (`app/bench.c`; cycles from `board_cycles()`: DWT on the M4 and M33, SysTick on the M0+, `k_cycle_get_32()` on Zephyr). `bench.py` collects it with throughput, round trips and footprint as JSON for the docs' performance page (below) |
 | `big [n]` | One port-61 frame of `n` bytes (default 1443, which is 1452 on the wire) |
 | `plot [n]` | A line plot "waves" through `log_plot.h`: `n` points (default 200) of sin and cos on axis 1 and their product on axis 2 |
 | `info`, `stats` | Resends the device info; shows the link counters |
 | `link` | The link in use: `uart`, `cdc` or `hid` |
 | `led on/off`, `fatal` | LED control; `LOG_FATAL` (flush, then reset) |
+
+### Performance (`bench.py`)
+
+```sh
+python3 firmware/bench.py --board-dir firmware/nucleo-l452re-p --build firmware/nucleo-l452re-p/build \
+    --device serial:/dev/cu.usbmodemXXXX --cpu-name Cortex-M4F -o website/bench/nucleo-l452re-p.json
+```
+
+The firmware must be the one in `--build` (its `app.elf` and `app.map`), built from a clean checkout so
+the results name a commit. Give one `--device` per link to measure (the first also runs `bench`):
+the C071's UART, CDC and HID; the WBA55's UART and BLE. The docs render
+`website/bench/*.json` as *Protocol → Performance*.
 
 ## NUCLEO-L452RE-P test firmware
 

@@ -23,6 +23,14 @@ void board_led_toggle(void) {
   board_led(!led_on);
 }
 
+uint32_t board_cycles(void) {
+  return k_cycle_get_32(); // the system timer's cycles: the CPU clock with the Cortex-M SysTick
+}
+
+uint32_t board_hz(void) {
+  return sys_clock_hw_cycles_per_sec();
+}
+
 uint32_t board_ms(void) {
   return k_uptime_get_32();
 }

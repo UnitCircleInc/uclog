@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "bench.h"
 #include "board.h"
 #include "drivers/sensor.h"
 #include "log.h"
@@ -236,6 +237,7 @@ static void run_command(int port, char *c) {
                 "  help        this list\r\n"
                 "  info        resend device info (port 62), show app hash\r\n"
                 "  test        log every argument kind\r\n"
+                "  bench       bytes and cycles per log statement, beside snprintf\r\n"
                 "  sh          semihost selftest (printf, files, time)\r\n"
                 "  input       read a line from the host's stdin (semihost)\r\n"
                 "  burst [n]   n logs as fast as the link allows (default 1000)\r\n"
@@ -254,6 +256,8 @@ static void run_command(int port, char *c) {
   } else if (strcmp(c, "test") == 0) {
     log_selftest();
     reply(port, "logged the selftest\r\n");
+  } else if (strcmp(c, "bench") == 0) {
+    bench(port);
   } else if (strcmp(c, "sh") == 0) {
     sh_selftest();
     reply(port, "semihost selftest done (see the logs)\r\n");

@@ -12,6 +12,8 @@ void board_led_toggle(void);
 uint32_t board_ms(void);
 void board_delay_ms(uint32_t d);
 const uint8_t *board_uid(void); // 12 bytes
+uint32_t board_cycles(void);    // a CPU cycle counter (wraps), for timing short stretches of code
+uint32_t board_hz(void);        // CPU cycles per second
 const char *board_link(void);   // the link in use: "uart" or "ble"
 
 bool board_lock(void);            // mask all but the radio interrupts; true if none were masked
