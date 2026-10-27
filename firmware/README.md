@@ -5,7 +5,7 @@ Test firmware for exercising the hosts on real hardware, built on the device lib
 
 | Directory | Contents |
 |---|---|
-| [`../device/`](../device/README.md) | The device library: `include/log.h`, `src/log.c`, the semihost client and newlib syscalls, the Zephyr port and drivers, `tools/`, and ucComm v3 (`uccomm/`); the boards build it through `uclog.mk` |
+| [`../device/`](../device/README.md) | The device library: `include/log.h`, `src/log.c`, the semihost client and newlib syscalls, the Zephyr port and drivers, `tools/`, and ucComm v5 (`uccomm/`); the boards build it through `uclog.mk` |
 | [`app/`](app/) | The test app every board builds: commands, the selftests |
 | [`nucleo-l452re-p/`](nucleo-l452re-p/) | Test firmware for the NUCLEO-L452RE-P (STM32L452RE, Cortex-M4F, hard-float): UART |
 | [`nucleo-c071rb/`](nucleo-c071rb/) | Test firmware for the NUCLEO-C071RB (STM32C071RB, Cortex-M0+): UART, USB CDC-ACM and USB HID at once |

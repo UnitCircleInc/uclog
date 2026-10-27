@@ -76,7 +76,7 @@ extern "C" {
 //  There are also compatibility issues with zephyr/include/zephyr/dsp/types.h
 //  in rel 3.x.
 //  See: https://releases.llvm.org/16.0.0/tools/clang/docs/LanguageExtensions.html#:~:text=__fp16
-#if defined(__x86_64_) || defined(__i386)
+#if defined(__x86_64__) || defined(__i386)
 typedef int16_t float16_t;
 #else
 typedef __fp16 float16_t;

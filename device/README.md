@@ -25,12 +25,12 @@ info; tagged `device-vN` ([spec/compatibility.md](https://github.com/UnitCircleI
 | [drivers/](drivers/), [dts/](dts/) | Zephyr drivers: `ucuart_z` (any Zephyr UART), `ucuart` and `ucusb` (nRF UARTE and USBD) |
 | [CMakeLists.txt](CMakeLists.txt), [uclog.mk](uclog.mk) | Builds: Zephyr module, or a CMake library; a Makefile fragment |
 | [cmake/](cmake/), [snippets/](snippets/), [zephyr/module.yml](zephyr/module.yml), [Kconfig](Kconfig), [west.yml](west.yml) | Zephyr build integration; the post-link steps for CMake |
-| [uccomm/](uccomm/README.md) | ucComm v3 (COBS, CBOR, the ring buffer), pinned |
+| [uccomm/](uccomm/README.md) | ucComm v5 (COBS, CBOR, the ring buffer), pinned |
 | [test/host/](test/host/) | The library on a host, checked against the protocol's test vectors |
 | [tools/](tools/README.md) | Build-time tools: logdata from the ELF, the app hash, image signing |
 | [app/](app/) | A minimal Zephyr sample |
 
-COBS, CBOR and the ring buffer come from [ucComm](https://github.com/UnitCircleInc/ucComm), tag v3:
+COBS, CBOR and the ring buffer come from [ucComm](https://github.com/UnitCircleInc/ucComm), tag v5:
 the copy in `uccomm/`, or on Zephyr the ucComm module when the workspace has one.
 
 ## Bare metal

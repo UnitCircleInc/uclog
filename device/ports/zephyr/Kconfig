@@ -5,7 +5,7 @@ menu "Unit Circle"
 
 config UC_LOG
 	bool "Use UC logging framework"
-	# The ucComm module when the workspace has it, else the copy in uccomm/ (pinned to the same tag)
+	# The ucComm module when the workspace has it, else the copy in uccomm/ (the same tag as west.yml)
 	select UCCOMM if ZEPHYR_UCCOMM_MODULE
 	depends on UCUART || UCUSB || UCUART_Z
 	help

@@ -1485,17 +1485,20 @@ static cbor_error_t cbor_pack1(cbor_pack_state_t* state) {
 }
 
 cbor_error_t cbor_vpack(cbor_stream_t* s, const char* fmt, va_list args) {
-  cbor_pack_state_t state = { .s = *s, .fmt = fmt, .level = 0, .args = args };
+  cbor_pack_state_t state = { .s = *s, .fmt = fmt, .level = 0 };
+  va_copy(state.args, args); // va_list may be an array type (x86-64): it cannot initialise a member
+  cbor_error_t err = CBOR_ERROR_NONE;
   while (*state.fmt != '\0') {
-    CHECK(cbor_pack1(&state));
+    err = cbor_pack1(&state);
+    if (err != CBOR_ERROR_NONE) break;       // as CHECK() did: *s unchanged
     if (state.s.error != CBOR_ERROR_NONE) {
-      //LOG_ERROR("cbor_pack \"%s\" offset: %u error: {enum:cbor_error_t}%d", fmt, (unsigned) (state.fmt - fmt), state.s.error);
-      *s = state.s;
-      return state.s.error;
+      err = state.s.error;
+      break;
     }
   }
-  *s = state.s;
-  return CBOR_ERROR_NONE;
+  va_end(state.args);
+  if (err == CBOR_ERROR_NONE || err == state.s.error) *s = state.s;
+  return err;
 }
 
 cbor_error_t cbor_pack(cbor_stream_t* s, const char* fmt, ...) {
