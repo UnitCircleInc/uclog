@@ -29,9 +29,38 @@
       uc-log {
         flex: 1;
       }
+      #app-bar {
+        display: flex;
+        gap: 1em;
+        align-items: center;
+        margin: -4px 0 8px;
+        font: 13px system-ui, sans-serif;
+        color: #555;
+      }
+      #app-bar[hidden],
+      #app-update[hidden] {
+        display: none;
+      }
+      #app-bar a {
+        color: inherit;
+      }
+      #app-update {
+        margin-left: auto;
+      }
+      @media (prefers-color-scheme: dark) {
+        #app-bar {
+          color: #aaa;
+        }
+      }
     </style>
   </head>
   <body>
+    <!-- Shown by the built app on the site (main.ts); not in development or the one-file app. -->
+    <nav id="app-bar" hidden>
+      <a href="../">ucLog docs</a>
+      <a href="uclog-app.html" download>Download for offline use</a>
+      <span id="app-update" hidden>A new version is ready. <button type="button">Reload</button></span>
+    </nav>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

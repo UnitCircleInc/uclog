@@ -15,7 +15,7 @@ Next-generation ucLog clients for Unit Circle devices. Every client shares one w
 | Native TUI (`uclog tui`) | [`native/`](native/README.md) | [05](docs/plans/05-tui.md) | **Phase 3**: done; verified on hardware (macOS) |
 | Python library for scripts | [`python/`](python/README.md) | [06](docs/plans/06-python-client.md) | **Phase 2b**: done; verified with the loopback device and on hardware (macOS); PyPI publishing: Phase 7 |
 | Release: CI, signing, PyPI, platforms, hardware coverage | — | [07](docs/plans/07-release.md) | **Phase 7**: planned |
-| Public repository, device library merge, uclog.unitcircle.ca (docs, web app, `<uc-log>` builds) | — | [08](docs/plans/08-public.md) | **Phase 8**: planned |
+| Public repository, device library merge, uclog.unitcircle.ca (docs, web app, `<uc-log>` builds) | [`website/`](website/THEME.md) (`website/build.py`) | [08](docs/plans/08-public.md) | **Phase 8**: in progress; device library merged, site and offline app built (deploy waits on the Pages settings and DNS) |
 
 Start with [docs/plans/README.md](docs/plans/README.md): decisions, architecture and phasing.
 

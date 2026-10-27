@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <style>
+    .ring { fill: #1C1B19; }
+    .dot  { fill: #9B1C22; }
+    @media (prefers-color-scheme: dark) {
+      .ring { fill: #EDE6D8; }
+      .dot  { fill: #D0463F; }
+    }
+  </style>
+  <path class="ring" d="M13.95 5.51A6.45 6.45 0 1 1 10.49 2.05A2.65 2.65 0 0 0 8.855 4.658A3.45 3.45 0 1 0 11.342 7.145A2.65 2.65 0 0 0 13.95 5.51Z"/><circle class="dot" cx="11.5" cy="4.5" r="1.65"/>
+</svg>

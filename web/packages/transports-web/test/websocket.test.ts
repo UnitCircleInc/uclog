@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { isLocalHost, localNetworkHint } from '../src/websocket.ts';
+import { fileOriginHint, isLocalHost, localNetworkHint } from '../src/websocket.ts';
 
 describe('local network (Chrome Local Network Access)', () => {
   test('local hosts', () => {
@@ -15,5 +15,11 @@ describe('local network (Chrome Local Network Access)', () => {
     expect(localNetworkHint('ws://127.0.0.1:9000', 'localhost')).toBe('');
     expect(localNetworkHint('wss://hub.example.com', 'uclog.unitcircle.ca')).toBe('');
     expect(localNetworkHint('not a url', 'uclog.unitcircle.ca')).toBe('');
+  });
+
+  test('a page from a file that a hub refused', () => {
+    expect(fileOriginHint(1008, 'null')).toContain('--allow-origin null');
+    expect(fileOriginHint(1008, 'https://uclog.unitcircle.ca')).toBe('');
+    expect(fileOriginHint(1006, 'null')).toBe('');
   });
 });

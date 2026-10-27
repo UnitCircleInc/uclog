@@ -18,6 +18,7 @@ __pycache__/
 # Node
 node_modules/
 dist/
+dist-single/
 
 # Editors / OS
 .DS_Store
@@ -31,3 +32,7 @@ cmds.txt
 
 # Secrets
 .secrets
+# Website (website/build.py): the build, and the pages generated from spec/
+/website/site/
+/website/.cache/
+/website/docs/protocol/

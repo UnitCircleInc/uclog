@@ -1,0 +1,190 @@
+/* 円と点 — "Sumi & Ai" site palette for Zensical (modern variant)
+   Roles:
+     Brand      beni   #9B1C22  logo dot ONLY — never UI, never data, never status
+     Ink        sumi   #1C1B19  text, logo ring
+     Paper      washi  #F3EEE4  header and footer band
+     Action     ai     #24508F  links, focus, active nav, buttons
+     Status     separate set below, always paired with an icon + label
+     Charts     --chart-* tokens, validated categorical order on white
+   Fonts: platform system fonts (theme.font = false), per the brand README.
+*/
+
+:root {
+  --sumi:  #1C1B19;
+  --washi: #F3EEE4;
+  --beni:  #9B1C22;
+  --ai:    #24508F;
+  --ai-deep: #183A6B;
+
+  /* Status: brighter, more orange reds/ambers than beni so they never read as the brand */
+  --status-good:     #0A7D33;
+  --status-warning:  #B26A00;
+  --status-serious:  #C2501E;
+  --status-critical: #C62828;
+
+  /* Chart categorical order (validated: CVD-safe adjacent pairs on white) */
+  --chart-1: #2a78d6;  --chart-2: #eb6834;  --chart-3: #1baf7a;  --chart-4: #eda100;
+  --chart-5: #e87ba4;  --chart-6: #008300;  --chart-7: #6250d6;  --chart-8: #e34948;
+}
+
+/* ---------- Light ---------- */
+[data-md-color-scheme="default"] {
+  /* Header & footer band: washi paper, full-strength sumi ink */
+  --md-primary-fg-color:        var(--washi);
+  --md-primary-fg-color--light: #F8F4EC;
+  --md-primary-fg-color--dark:  #E6DFD2;
+  --md-primary-bg-color:        var(--sumi);
+  --md-primary-bg-color--light: #47433D;          /* 8.5:1 on washi */
+
+  /* Action colour = Ai indigo */
+  --md-accent-fg-color:              var(--ai-deep);
+  --md-accent-fg-color--transparent: rgba(36, 80, 143, 0.08);
+  --md-accent-bg-color:              #FFFFFF;
+  --md-accent-bg-color--light:       rgba(255, 255, 255, 0.7);
+
+  /* Page: near-white with a trace of warmth (R = G, so no pink cast).
+     Plots, figures and dashboard cards sit on white cards (see below). */
+  --card-bg:        #FFFFFF;
+  --card-line:      rgba(28, 27, 25, 0.10);
+  --md-default-bg-color:           #FAFAF7;
+  --md-default-fg-color:           #1C1B19;        /* 16.5:1 */
+  --md-default-fg-color--light:    #47433D;        /*  9.4:1  nav, captions */
+  --md-default-fg-color--lighter:  #625D55;        /*  6.2:1  TOC, meta */
+  --md-default-fg-color--lightest: rgba(28, 27, 25, 0.14);  /* rules */
+
+  --md-typeset-a-color: var(--ai);                 /*  7.7:1 */
+
+  /* Code */
+  --md-code-bg-color: #F0EFEA;
+  --md-code-fg-color: #1C1B19;                     /* 14.9:1 */
+  --md-code-hl-keyword-color: var(--ai-deep);
+  --md-code-hl-string-color:  #0A6B4F;
+  --md-code-hl-number-color:  #8A4B00;
+  --md-code-hl-comment-color: #625D55;             /*  5.7:1 */
+  --md-code-hl-function-color: var(--ai);
+  --md-code-hl-name-color:    var(--md-code-fg-color);
+
+  --enso-dot: var(--beni);
+}
+
+/* ---------- Dark ---------- */
+[data-md-color-scheme="slate"] {
+  --md-hue: 30;
+
+  --md-primary-fg-color:        #1C1B19;
+  --md-primary-fg-color--light: #262422;
+  --md-primary-fg-color--dark:  #121110;
+  --md-primary-bg-color:        #EDE6D8;
+  --md-primary-bg-color--light: #C9C1B2;
+
+  --ai: #8DB1E6;                                   /* lifted ai for dark */
+  --md-accent-fg-color:              #A9C4EC;
+  --md-accent-fg-color--transparent: rgba(141, 177, 230, 0.12);
+  --md-accent-bg-color:              #141312;
+
+  --md-default-bg-color:           #141312;
+  --card-bg:        #1C1B19;
+  --card-line:      rgba(237, 230, 216, 0.10);
+  --md-default-bg-color--light:    rgba(20, 19, 18, 0.54);
+  --md-default-fg-color:           #EDE6D8;        /* 14.9:1 */
+  --md-default-fg-color--light:    #C9C1B2;        /* 10.4:1 */
+  --md-default-fg-color--lighter:  #A39B8D;        /*  6.7:1 */
+  --md-default-fg-color--lightest: rgba(237, 230, 216, 0.14);
+
+  --md-typeset-a-color: #8DB1E6;                   /*  8.5:1 */
+
+  --md-code-bg-color: #1E1C1A;
+  --md-code-fg-color: #E4DDCF;
+  --md-code-hl-keyword-color: #A9C4EC;
+  --md-code-hl-string-color:  #7FCBA8;
+  --md-code-hl-number-color:  #E3B26B;
+  --md-code-hl-comment-color: #A39B8D;
+  --md-code-hl-function-color: #8DB1E6;
+  --md-code-hl-name-color:    var(--md-code-fg-color);
+
+  --status-good:     #4CC27A;
+  --status-warning:  #E8A93A;
+  --status-serious:  #EE8A5A;
+  --status-critical: #F2726A;
+
+  --chart-1: #3987e5;  --chart-2: #d95926;  --chart-3: #199e70;  --chart-4: #c98500;
+  --chart-5: #d55181;  --chart-6: #008300;  --chart-7: #9085e9;  --chart-8: #e66767;
+
+  --enso-dot: #C23A36;
+}
+
+/* ---------- Type ---------- */
+.md-typeset h1 { font-weight: 600; color: var(--md-default-fg-color); }
+.md-typeset h2 { font-weight: 600; }
+
+/* ---------- Header & footer: the washi/sumi band ----------
+   Modern draws both in page colours; put them on the primary (band) colours. */
+.md-header {
+  color: var(--md-primary-bg-color);
+  background-color: var(--md-primary-fg-color);
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+.md-tabs { border-bottom: 1px solid var(--md-default-fg-color--lightest); }
+.md-tabs__link { opacity: 1; color: var(--md-primary-bg-color--light); }
+.md-tabs__link--active, .md-tabs__link:hover { color: var(--md-primary-bg-color); }
+
+.md-footer-meta {
+  color: var(--md-primary-bg-color--light);
+  background-color: var(--md-primary-fg-color);
+}
+.md-footer-meta a { color: var(--md-primary-bg-color); }
+
+/* ---------- Links & navigation ---------- */
+.md-typeset a { text-decoration: underline; text-decoration-thickness: 1px;
+                text-underline-offset: 0.2em; text-decoration-color: rgba(36, 80, 143, 0.35); }
+.md-typeset a:hover { text-decoration-color: currentColor; }
+
+::selection { background: rgba(36, 80, 143, 0.18); }
+
+/* Logo: ring follows header ink, dot is the only beni on the page */
+.md-header__button.md-logo svg .enso-dot,
+.md-nav__button.md-logo svg .enso-dot { fill: var(--enso-dot); }
+.md-header__button.md-logo svg { width: 1.6rem; height: 1.6rem; }
+
+/* ---------- Admonitions ----------
+   Modern tints the whole box; set the tint, the icon and a left border from one
+   role colour: neutral notes in ai, status types in the status colours.
+   ([class] lifts specificity above modern's per-type `details.info` rules.) */
+.md-typeset :is(.admonition, details)[class] {
+  --adm: var(--ai);
+  background-color: color-mix(in srgb, var(--adm) 8%, transparent);
+  border-left: 0.2rem solid var(--adm);
+}
+.md-typeset :is(.admonition, details):is(.tip, .success)          { --adm: var(--status-good); }
+.md-typeset :is(.admonition, details):is(.warning)                { --adm: var(--status-warning); }
+.md-typeset :is(.admonition, details):is(.failure, .danger, .bug) { --adm: var(--status-critical); }
+.md-typeset :is(.admonition, details) > :is(.admonition-title, summary)::before { background-color: var(--adm); }
+.md-typeset :is(.admonition, details) > :is(.admonition-title, summary)::after  { color: var(--adm); }
+
+/* ---------- Figures & embedded plots ----------
+   Plots usually come with a white background, so every figure sits on a white
+   card: flush in light mode, and a clean panel (not a hole) in dark mode. */
+.md-typeset :is(figure img, .plot, .js-plotly-plot) {
+  background: #FFFFFF; padding: 8px; border: 1px solid var(--card-line); border-radius: 4px;
+  box-sizing: border-box;
+}
+
+/* ---------- Dashboards ----------
+   Wrap a dashboard page's content in <div class="dashboard"> … </div>
+   (Markdown inside needs `md_in_html`). Each .card is white on the warm page,
+   so a white plot sits flush inside its card.  */
+.md-typeset .dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 1rem;
+}
+.md-typeset .dashboard .card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-line);
+  border-radius: 4px;
+  padding: 1rem 1.2rem;
+}
+.md-typeset .dashboard .card--wide { grid-column: 1 / -1; }
+.md-typeset .dashboard .card :is(img, .plot, .js-plotly-plot) {
+  background: transparent; padding: 0; border: 0; display: block; max-width: 100%;
+}

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  <!-- Fallbacks next to the SVG favicon set in mkdocs.yml -->
+  <link rel="icon" href="{{ 'assets/favicon.ico' | url }}" sizes="16x16 32x32 48x48">
+  <link rel="apple-touch-icon" href="{{ 'assets/apple-touch-icon.png' | url }}">
+  <meta name="theme-color" content="#F3EEE4" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1C1B19" media="(prefers-color-scheme: dark)">
+{% endblock %}

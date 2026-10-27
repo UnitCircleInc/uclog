@@ -1,0 +1,60 @@
+# uclog.unitcircle.ca: the ucLog documentation (plan 08 §3). Built by build.py, which also writes
+# the pages generated from ../spec. Theme: the Unit Circle "Sumi & Ai" brand, copied from
+# UnitCircleInc/uc-www (THEME.md).
+
+[project]
+site_name = "ucLog"
+site_description = "Compact binary logging for embedded devices, and the tools to read it"
+site_url = "https://uclog.unitcircle.ca/"
+repo_url = "https://github.com/UnitCircleInc/uclog"
+repo_name = "UnitCircleInc/uclog"
+copyright = "© 2026 Unit Circle Inc. Apache-2.0."
+extra_css = ["stylesheets/extra.css"]
+nav = [
+  { "Home" = "index.md" },
+  { "Getting started" = "getting-started.md" },
+  { "The hosts" = "hosts.md" },
+  { "Web app" = "web-app.md" },
+  { "Protocol" = [
+    { "Wire protocol" = "protocol/index.md" },
+    { "Compatibility" = "protocol/compatibility.md" },
+  ] },
+]
+
+[project.extra.version]
+provider = "mike"                   # the selector reads ../versions.json (build.py writes it)
+
+[project.theme]
+variant = "modern"
+custom_dir = "overrides"            # holds .icons/brand/enso.svg
+favicon = "assets/favicon.svg"
+font = false                        # platform system fonts (see the brand README)
+icon.logo = "brand/enso"            # inlined SVG, so it follows header colours
+features = ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/circle"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/circle-dot"
+toggle.name = "Switch to light mode"
+
+[project.markdown_extensions]
+admonition = {}
+attr_list = {}
+md_in_html = {}
+tables = {}
+toc.permalink = true
+pymdownx.details = {}
+pymdownx.highlight = {}
+pymdownx.inlinehilite = {}
+pymdownx.superfences = {}

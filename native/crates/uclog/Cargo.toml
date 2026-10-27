@@ -45,5 +45,5 @@ rfd = { version = "0.17.2", optional = true, default-features = false, features 
 vte = { version = "0.15.0", optional = true }
 
 [dev-dependencies]
-egui_kittest = "0.36.2"
+egui_kittest = { version = "0.36.2", features = ["wgpu"] } # wgpu: rendered screenshots (gui_screens)
 tempfile = "3.27.0"

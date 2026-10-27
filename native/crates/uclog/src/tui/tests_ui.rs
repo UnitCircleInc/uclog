@@ -261,3 +261,133 @@ fn refused_token_prompt() {
     assert!(matches!(app.modal, Modal::None));
     assert!(screen(&app).contains("UCLOG_LOGDATA_TOKEN"));
 }
+
+// ------------------------------------------------------------------------------- screenshots
+
+/// The TestBackend buffer as an SVG "screenshot" for the docs (dark terminal colours, the xterm
+/// palette for named and indexed colours).
+fn svg(b: &ratatui::buffer::Buffer) -> String {
+    use ratatui::style::{Color, Modifier};
+    const CW: f32 = 8.4; // cell width and height (px) for a 14 px monospace font
+    const CH: f32 = 17.0;
+    const FG: &str = "#d4d4d4";
+    const BG: &str = "#1e1e1e";
+    fn ansi(i: u8) -> String {
+        const BASE: [&str; 16] = [
+            "#000000", "#cd3131", "#0dbc79", "#e5e510", "#2472c8", "#bc3fbc", "#11a8cd", "#e5e5e5", "#666666",
+            "#f14c4c", "#23d18b", "#f5f543", "#3b8eea", "#d670d6", "#29b8db", "#ffffff",
+        ];
+        match i {
+            0..=15 => BASE[i as usize].into(),
+            16..=231 => {
+                let v = |c: u8| if c == 0 { 0 } else { 55 + 40 * c };
+                let i = i - 16;
+                format!("#{:02x}{:02x}{:02x}", v(i / 36), v(i / 6 % 6), v(i % 6))
+            }
+            _ => {
+                let g = 8 + 10 * (i - 232);
+                format!("#{g:02x}{g:02x}{g:02x}")
+            }
+        }
+    }
+    fn colour(c: Color, default: &str) -> String {
+        match c {
+            Color::Reset => default.into(),
+            Color::Black => ansi(0),
+            Color::Red => ansi(1),
+            Color::Green => ansi(2),
+            Color::Yellow => ansi(3),
+            Color::Blue => ansi(4),
+            Color::Magenta => ansi(5),
+            Color::Cyan => ansi(6),
+            Color::Gray => ansi(7),
+            Color::DarkGray => ansi(8),
+            Color::LightRed => ansi(9),
+            Color::LightGreen => ansi(10),
+            Color::LightYellow => ansi(11),
+            Color::LightBlue => ansi(12),
+            Color::LightMagenta => ansi(13),
+            Color::LightCyan => ansi(14),
+            Color::White => ansi(15),
+            Color::Indexed(i) => ansi(i),
+            Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
+        }
+    }
+    fn esc(s: &str) -> String {
+        s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    }
+    let (w, h) = (b.area.width, b.area.height);
+    let mut out = format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {0} {1}\">\n\
+         <rect width=\"100%\" height=\"100%\" fill=\"{BG}\"/>\n\
+         <g font-family=\"Menlo, Consolas, 'DejaVu Sans Mono', monospace\" font-size=\"14\">\n",
+        w as f32 * CW,
+        h as f32 * CH
+    );
+    for y in 0..h {
+        // Backgrounds, then text, each in runs of the same style.
+        let mut x = 0;
+        while x < w {
+            let c = &b[(x, y)];
+            let (fg, bg) = if c.modifier.contains(Modifier::REVERSED) { (c.bg, c.fg) } else { (c.fg, c.bg) };
+            let bg = colour(bg, if c.modifier.contains(Modifier::REVERSED) { FG } else { BG });
+            let mut end = x + 1;
+            while end < w {
+                let d = &b[(end, y)];
+                if d.fg != c.fg || d.bg != c.bg || d.modifier != c.modifier {
+                    break;
+                }
+                end += 1;
+            }
+            let (px, py) = (x as f32 * CW, y as f32 * CH);
+            if bg != BG {
+                out += &format!(
+                    "<rect x=\"{px:.1}\" y=\"{py:.1}\" width=\"{:.1}\" height=\"{CH}\" fill=\"{bg}\"/>\n",
+                    (end - x) as f32 * CW
+                );
+            }
+            // The text: each stretch of non-blank cells at its own column (SVG collapses spaces).
+            let fg = colour(fg, if c.modifier.contains(Modifier::REVERSED) { BG } else { FG });
+            let weight = if c.modifier.contains(Modifier::BOLD) { " font-weight=\"bold\"" } else { "" };
+            let dim = if c.modifier.contains(Modifier::DIM) { " opacity=\"0.6\"" } else { "" };
+            let mut i = x;
+            while i < end {
+                if b[(i, y)].symbol().trim().is_empty() {
+                    i += 1;
+                    continue;
+                }
+                let start = i;
+                let mut word = String::new();
+                while i < end && !b[(i, y)].symbol().trim().is_empty() {
+                    word.push_str(b[(i, y)].symbol());
+                    i += 1;
+                }
+                out += &format!(
+                    "<text x=\"{:.1}\" y=\"{:.1}\" fill=\"{fg}\"{weight}{dim} textLength=\"{:.1}\">{}</text>\n",
+                    start as f32 * CW,
+                    py + CH * 0.78,
+                    (i - start) as f32 * CW,
+                    esc(&word)
+                );
+            }
+            x = end;
+        }
+    }
+    out + "</g>\n</svg>\n"
+}
+
+/// Screenshots for the docs (website/build.py screenshots):
+/// `UCLOG_SHOTS=dir cargo test -p uclog --lib tui_screens -- --ignored`.
+#[tokio::test]
+#[ignore]
+async fn tui_screens() {
+    let dir = PathBuf::from(std::env::var("UCLOG_SHOTS").expect("UCLOG_SHOTS: where to write the screenshots"));
+    let mut app = App::new(Settings::default(), PathBuf::from("."));
+    run_loopback(&mut app, "rate=20", 2.5, &[(61, b"help\r")]).await;
+    for (tab, name) in [(Tab::Logs, "logs"), (Tab::Terminal, "terminal"), (Tab::Device, "device")] {
+        app.tab = tab;
+        let mut t = Terminal::new(TestBackend::new(120, 34)).unwrap();
+        t.draw(|f| ui::draw(f, &app)).unwrap();
+        std::fs::write(dir.join(format!("tui-{name}.svg")), svg(t.backend().buffer())).unwrap();
+    }
+}

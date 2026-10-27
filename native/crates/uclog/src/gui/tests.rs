@@ -234,3 +234,31 @@ fn hw_reconnect() {
     r.h.state().backend.send(Cmd::Connect(dev.parse().unwrap()));
     r.until("second connection", |a| a.conn.connected() && a.logs.received > n);
 }
+
+/// Screenshots for the docs (website/build.py screenshots), rendered with wgpu:
+/// `UCLOG_SHOTS=dir cargo test -p uclog --bin uclog gui_screens -- --ignored`.
+#[test]
+#[ignore]
+fn gui_screens() {
+    let dir = PathBuf::from(std::env::var("UCLOG_SHOTS").expect("UCLOG_SHOTS: where to write the screenshots"));
+    for theme in ["light", "dark"] {
+        let mut s = Settings::default();
+        s.gui.theme = theme.into();
+        s.terminal.on_connect = vec!["help".into(), "plot".into()];
+        let mut r = rig("loopback:rate=20", true, s);
+        r.until("logs and plots", |a| a.logs.received >= 40 && a.plots.frames > 40);
+        r.h.state_mut().focus(Tab::Logs);
+        for _ in 0..3 {
+            r.h.step();
+        }
+        r.h.render().unwrap().save(dir.join(format!("gui-logs-{theme}.png"))).unwrap();
+        if theme == "light" {
+            r.h.state_mut().focus(Tab::Plot("loopback".into()));
+            for _ in 0..3 {
+                r.h.step();
+            }
+            r.h.render().unwrap().save(dir.join("gui-plots-light.png")).unwrap();
+        }
+        r.h.state().send(ports::TERMINAL, b"plot stop\r".to_vec());
+    }
+}

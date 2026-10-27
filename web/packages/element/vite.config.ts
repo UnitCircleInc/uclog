@@ -20,7 +20,9 @@ export default defineConfig(({ mode }) => {
   }
   const iife = mode === 'iife';
   return {
-    worker: { format: 'es' },
+    // Classic workers: a module worker from a blob: URL does not start in a page with an opaque
+    // origin (opened from a file).
+    worker: { format: 'iife' },
     build: {
       emptyOutDir: !iife,
       sourcemap: true,

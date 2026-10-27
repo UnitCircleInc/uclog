@@ -22,6 +22,27 @@ export function isLocalHost(host: string): boolean {
   return a === 127 || a === 10 || (a === 172 && b >= 16 && b < 32) || (a === 192 && b === 168) || (a === 169 && b === 254);
 }
 
+/** Why a hub turned the page away (1008): a page opened from a file has the origin "null", which a
+ * hub only accepts with `--allow-origin null`. */
+export function fileOriginHint(code: number, pageOrigin: string): string {
+  return code === 1008 && pageOrigin === 'null'
+    ? ': a page opened from a file has the origin "null"; start the hub with --allow-origin null'
+    : '';
+}
+
+/** The page's origin, also from a blob: worker (whose own URL says blob:). */
+function pageOrigin(): string {
+  return (globalThis as { origin?: string }).origin ?? globalThis.location?.origin ?? '';
+}
+
+function hostOf(origin: string): string {
+  try {
+    return origin === 'null' ? '' : new URL(origin).hostname;
+  } catch {
+    return '';
+  }
+}
+
 /** Why a connection from a public page (`pageHost`) to a hub on the local network may never open:
  * Chrome's Local Network Access needs the site's permission (it asks, or it was denied). */
 export function localNetworkHint(url: string, pageHost: string): string {
@@ -62,7 +83,8 @@ export class WebSocketLink {
     this.ws.onclose = (e) => {
       if (e.code === WS_BUSY) this.adm.end('busy', HUB_BUSY);
       else if (!this.adm.admitted && e.code !== 1000) {
-        const hint = !opened && e.code === 1006 ? localNetworkHint(url, globalThis.location?.hostname ?? '') : '';
+        const origin = pageOrigin();
+        const hint = !opened && e.code === 1006 ? localNetworkHint(url, hostOf(origin)) : fileOriginHint(e.code, origin);
         this.adm.end('error', `connection closed (${e.code}${e.reason ? ` ${e.reason}` : ''})${hint}`);
       }
       else this.adm.end('closed', e.reason || undefined);

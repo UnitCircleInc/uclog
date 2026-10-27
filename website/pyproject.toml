@@ -1,0 +1,11 @@
+[project]
+name = "uclog-website"
+version = "0"
+description = "uclog.unitcircle.ca: the ucLog documentation site, built with Zensical"
+requires-python = ">=3.13"
+dependencies = [
+    "zensical==0.0.73",
+]
+
+[tool.uv]
+package = false

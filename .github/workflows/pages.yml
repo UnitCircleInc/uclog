@@ -1,0 +1,83 @@
+# uclog.unitcircle.ca on GitHub Pages (plan 08 §3, tasks 9 and 9a): website/build.py assembles
+# - the docs: /dev/ from main, and every published release's uclog-docs-N.tar.gz at /vN/
+#   (/latest/ = the newest that is not a pre-release; / redirects there);
+# - the web app at /app/ (with its service worker), and the one-file app (/app/uclog-app.html, and
+#   uclog-app-N.html per release);
+# - <uc-log> as one script: /element/dev/, /element/N/ per release, /element/latest/.
+# A Pages deploy replaces the whole site, so each one fetches the releases' parts again. Pull
+# requests only build it. Pages: Settings → Pages → Source "GitHub Actions", custom domain
+# uclog.unitcircle.ca, HTTPS enforced (DNS: CNAME uclog → unitcircleinc.github.io).
+name: pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Web app and element
+        working-directory: web
+        run: |
+          npx -y pnpm@12.10.1 install --frozen-lockfile
+          npx -y pnpm@12.10.1 --filter @uclog/element build
+          (cd apps/demo && npx vite build && npx vite build --mode single)
+          cp apps/demo/dist-single/uclog-app.html apps/demo/dist/uclog-app.html
+      - name: Docs from main
+        run: uv run --project website python website/build.py docs dev build/dev
+      - name: The releases' parts
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/releases
+          for tag in $(gh release list --exclude-drafts --limit 200 --json tagName --jq '.[].tagName' | grep -E '^v[0-9]'); do
+            gh release download "$tag" -D "build/releases/$tag" \
+              -p 'uclog-docs-*.tar.gz' -p 'uclog-app-*.html' -p 'uclog-element-*.iife.js' || true
+          done
+          ls -R build/releases
+      - name: Assemble
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          docs=(build/releases/*/uclog-docs-*.tar.gz)
+          apps=() elements=("dev=web/packages/element/dist/uclog-element.iife.js")
+          for f in build/releases/*/uclog-app-*.html; do n=${f##*/uclog-app-}; apps+=("${n%.html}=$f"); done
+          for f in build/releases/*/uclog-element-*.iife.js; do n=${f##*/uclog-element-}; elements+=("${n%.iife.js}=$f"); done
+          uv run --project website python website/build.py assemble build/site --dev build/dev \
+            --app web/apps/demo/dist ${docs:+--release-docs "${docs[@]}"} \
+            ${apps:+--app-file "${apps[@]}"} --element "${elements[@]}"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/site
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.repository == 'UnitCircleInc/uclog'
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

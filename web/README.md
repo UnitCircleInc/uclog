@@ -23,7 +23,15 @@ npx tsc -p tsconfig.json         # type check
 npx vitest run                   # unit tests, spec/vectors, worker hosts
 npx playwright test              # end-to-end in Chrome (the hub test needs native/target/*/uclog-hub)
 npx -y pnpm@12.10.1 build        # packages/element/dist and apps/demo/dist
+(cd apps/demo && npx vite build --mode single)   # apps/demo/dist-single/uclog-app.html
 ```
+
+The app at `uclog.unitcircle.ca/app/` (`apps/demo`, production build) works offline: `sw.js`
+(written by the build) caches it on the first visit; when a new build is deployed the page offers
+**Reload**. `uclog-app.html` is the same app as one file (workers and the sample logdata inlined,
+no service worker) for machines without network access; opened from `file://` it is a secure
+context with Web Serial, WebHID and Web Bluetooth, and a hub admits it only with
+`--allow-origin null` (the app says so). Both are checked by `e2e/offline.spec.ts`.
 
 The VS Code extension (in `apps/vscode`):
 
@@ -110,7 +118,8 @@ builds, and semihost files. A link the host owns is passed as `connect({kind: 'e
 Host requirements:
 
 - A secure context. In an iframe: `allow="serial; hid; bluetooth"`.
-- The inlined workers need `worker-src blob:` in the page's CSP. Without it, serve
+- The inlined workers are classic (IIFE) workers: module workers from `blob:` URLs fail in a
+  `file://` page. They need `worker-src blob:` in the page's CSP. Without it, serve
   `dist/workers/*.js` and set `worker-base` to their directory.
 - A hub on another machine needs `wss://`. A local hub asks its operator about pages that are
   not on its `--allow-origin` list (`localhost` and `https://uclog.unitcircle.ca` are allowed by
