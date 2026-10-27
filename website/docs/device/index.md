@@ -187,8 +187,9 @@ copies it to the hosts' cache.
 Notes:
 
 - The device CI builds with Zephyr 3.7 LTS and 4.4.
-- Zephyr maps an app's source directory to `CMAKE_SOURCE_DIR`, so its logs show
-  `CMAKE_SOURCE_DIR/src/main.c`.
+- Logs name files relative to the app (`src/main.c`), the West workspace (`zephyr/...`,
+  `modules/...`) or the library (`uclog/...`): the module sets `-fmacro-prefix-map` for these, so
+  no absolute path ends up in the firmware.
 - On an STM32L4 (a USART without a FIFO) at 1 Mbaud, give `ucuart_z` DMA with a **circular** RX
   channel, as the example's overlay does: interrupt-driven RX, and DMA from one buffer to the
   next, lose bytes.

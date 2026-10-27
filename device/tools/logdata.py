@@ -7,10 +7,17 @@ Derived from scripts/logdata.py in github.com/UnitCircleInc/uclog:
 - format strings come from the ELF's `.logdata` section (start symbol `_slogstr`);
 - enums, typedef'd enums, functions and variables come from `<objdump> -Wi` (DWARF).
 
-Usage: logdata.py [--objdump arm-none-eabi-objdump] [--dump] ELF -o OUT.logdata  (--ofile: as -o)
+Usage: logdata.py [--objdump arm-none-eabi-objdump] [--prefix-map OLD=NEW]... [--dump] ELF -o OUT.logdata
+       (--ofile: as -o)
+
+Variables are named <file>:<name>, the file from the DWARF compile unit. Files are written with /,
+mapped by --prefix-map as the compiler's -ffile-prefix-map (the last that matches wins), and an
+absolute path left after that becomes its file name alone: no build machine's paths (or Windows
+drive letters, whose ':' the hosts would split on) in the logdata.
 """
 
 import argparse
+import posixpath
 import re
 import struct
 import subprocess
@@ -146,10 +153,30 @@ def enum_map(e):
   return {c['const_value'].value: c['name'].short for c in e.children if 'const_value' in c}
 
 
-def extract(root, items):
+def unix_path(p):
+  p = posixpath.normpath(p.replace('\\', '/'))
+  return p if p != '.' else ''
+
+
+def source_name(path, prefix_maps=()):
+  """A compile unit's file as the logdata names it: see the module docstring."""
+  p = unix_path(path)
+  for old, new in reversed(prefix_maps):
+    old = unix_path(old)
+    if old and (p == old or p.startswith(old.rstrip('/') + '/')):
+      rest = p[len(old):].lstrip('/')
+      new = unix_path(new).rstrip('/')
+      p = f'{new}/{rest}' if new and rest else new or rest
+      break
+  if p.startswith('/') or re.match(r'[A-Za-z]:', p):
+    p = posixpath.basename(p)
+  return p
+
+
+def extract(root, items, prefix_maps=()):
   enums, tdenums, variables, functions = {}, {}, {}, {}
   for cu in root.children:
-    cu_name = cu['name'].short if 'name' in cu else '?'
+    cu_name = source_name(cu['name'].short, prefix_maps) if 'name' in cu else '?'
     for item in cu.children:
       if item.tag == 'subprogram':
         if 'low_pc' in item and 'name' in item and 'high_pc' in item:
@@ -281,15 +308,20 @@ def main():
   ap.add_argument('elf')
   ap.add_argument('-o', '--output', '--ofile')
   ap.add_argument('--objdump', default='arm-none-eabi-objdump')
+  ap.add_argument('--prefix-map', action='append', default=[], metavar='OLD=NEW',
+                  help="map source paths as the compiler's -ffile-prefix-map (repeatable)")
   ap.add_argument('--dump', action='store_true', help='print the format table')
   a = ap.parse_args()
+  maps = [tuple(m.split('=', 1)) for m in a.prefix_map]
+  if any(len(m) != 2 for m in maps):
+    ap.error('--prefix-map takes OLD=NEW')
 
   with open(a.elf, 'rb') as f:
     elf = Elf(f.read())
   saddr, fmts = load_fmts(elf)
   if saddr is None:
     sys.exit(f'{a.elf}: no .logdata section or _slogstr symbol')
-  enums, tdenums, variables, functions = extract(*parse_dwarf(a.objdump, a.elf))
+  enums, tdenums, variables, functions = extract(*parse_dwarf(a.objdump, a.elf), maps)
 
   if a.dump:
     for addr in sorted(fmts):

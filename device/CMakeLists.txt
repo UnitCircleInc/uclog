@@ -17,9 +17,21 @@ set(UCLOG_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
 if(COMMAND zephyr_library)
   zephyr_include_directories(include)
-  # Logs name this library's files uclog/... (as on bare metal): no absolute paths, which could
-  # contain ':' on Windows (log.h).
-  zephyr_compile_options(-fmacro-prefix-map=${UCLOG_ROOT_DIR}=uclog)
+  # The file names logs show (__FILE__): relative, as on bare metal, and never absolute paths,
+  # which could contain ':' on Windows (log.h). Zephyr maps the app to CMAKE_SOURCE_DIR/ and the
+  # workspace to WEST_TOPDIR/; the last map that matches wins, so from here: Zephyr's files are
+  # zephyr/... (and modules/...), the app's src/main.c, and this library's uclog/... (last: it may
+  # be inside the app).
+  # The same maps name the variables' files in the logdata (tools/logdata.py, cmake/log.cmake).
+  if(WEST_TOPDIR)
+    set(UCLOG_PREFIX_MAPS ${WEST_TOPDIR}/=)
+  else()
+    set(UCLOG_PREFIX_MAPS ${ZEPHYR_BASE}/=zephyr/)
+  endif()
+  list(APPEND UCLOG_PREFIX_MAPS ${CMAKE_SOURCE_DIR}/= ${UCLOG_ROOT_DIR}=uclog)
+  foreach(map ${UCLOG_PREFIX_MAPS})
+    zephyr_compile_options(-fmacro-prefix-map=${map})
+  endforeach()
   add_subdirectory(drivers)
   add_subdirectory(ports/zephyr)
   return()

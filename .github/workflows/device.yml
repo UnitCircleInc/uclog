@@ -37,6 +37,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: cmake -S device/test/host -B build/host && cmake --build build/host
       - run: python3 device/test/host/test_vectors.py build/host/uclog_host_test -v
+      - run: python3 -I -m unittest discover -s device/tools -v
 
   # The bare-metal example (device/examples/baremetal, with make and with CMake) and the test
   # firmware for the three STM32 boards (firmware/README.md), against the STM32Cube parts they use

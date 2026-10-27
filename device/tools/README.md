@@ -5,7 +5,7 @@ Called by the CMake helpers in `../cmake/`, by `../uclog.mk`, and by the
 
 | Script | Used by | Does |
 |---|---|---|
-| `logdata.py` | `log.cmake`, the Makefiles | the `.logdata` CBOR from the ELF (Python standard library and `objdump -Wi`; `-o` or `--ofile`) |
+| `logdata.py` | `log.cmake`, the Makefiles | the `.logdata` CBOR from the ELF (Python standard library and `objdump -Wi`; `-o` or `--ofile`). Variables' file names are relative and use `/`: `--prefix-map OLD=NEW` as the compiler's (`log.cmake` passes Zephyr's), and an absolute path left becomes the file name alone. Tests: `python3 -I -m unittest discover -s device/tools` |
 | `hash.py` | `apphash.cmake`, the Makefiles | the app hash of the image (`-f`: the whole unsigned image; else after the 512-byte signature header); prints it in hex |
 | `cachelogdata.py` | `log.cmake` | copies the `.logdata` into the hosts' cache (`$UCLOG_CACHE_DIR`, else `$XDG_CACHE_HOME/uclog`, else `~/.cache/uclog`), named by app hash |
 | `sbl.py` (with `ihex.py`, `sss.py`, `gf2.py`, `zbase32.py`) | `signature.cmake` | signs the image |

@@ -20,8 +20,13 @@ function(zephyr_log_tasks)
   # after the commands which generate the unsigned versions.
   set_property(GLOBAL APPEND PROPERTY extra_post_build_commands COMMAND
     echo "Build logdata ${output}.logdata")
+  set(prefix_maps)
+  foreach(map ${UCLOG_PREFIX_MAPS})  # as the logs' file names (../CMakeLists.txt)
+    list(APPEND prefix_maps --prefix-map ${map})
+  endforeach()
   set_property(GLOBAL APPEND PROPERTY extra_post_build_commands COMMAND
-    ${PYTHON_EXECUTABLE} ${UCLOG_ROOT_DIR}/tools/logdata.py --objdump ${CMAKE_OBJDUMP} --ofile ${output}.logdata ${output}.elf)
+    ${PYTHON_EXECUTABLE} ${UCLOG_ROOT_DIR}/tools/logdata.py --objdump ${CMAKE_OBJDUMP} ${prefix_maps}
+    --ofile ${output}.logdata ${output}.elf)
   set_property(GLOBAL APPEND PROPERTY extra_post_build_commands COMMAND
     echo "Add logdata to ${output}.elf")
   set_property(GLOBAL APPEND PROPERTY extra_post_build_commands COMMAND
