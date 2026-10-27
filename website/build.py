@@ -119,6 +119,17 @@ def zensical(*args, env=None):
                  env={**os.environ, **(env or {})})
 
 
+MARK = '.uclog-build'  # written into each output; only a directory with it (or empty) is replaced
+
+
+def fresh(out: Path):
+  """Empty `out` for a new build, refusing a directory this script did not make."""
+  if out.exists():
+    if any(out.iterdir()) and not (out / MARK).exists():
+      raise SystemExit(f'{out}: not empty and not made by build.py; not replacing it')
+    shutil.rmtree(out)
+
+
 def cmd_docs(a):
   if a.version != 'dev':
     solover.parse(a.version.removeprefix('v'))
@@ -126,9 +137,9 @@ def cmd_docs(a):
   # MIKE_DOCS_VERSION: Zensical puts the version into site_url (canonical links, the selector).
   zensical('build', '--clean', '--strict', env={'MIKE_DOCS_VERSION': a.version})  # warnings fail
   out = Path(a.out)
-  if out.exists():
-    shutil.rmtree(out)
+  fresh(out)
   shutil.copytree(HERE / 'site', out)
+  (out / MARK).touch()
   print(f'docs {a.version} -> {out}')
 
 
@@ -198,9 +209,9 @@ def redirect(to):
 
 def cmd_assemble(a):
   out = Path(a.out)
-  if out.exists():
-    shutil.rmtree(out)
+  fresh(out)
   out.mkdir(parents=True)
+  (out / MARK).touch()
   releases = {}
   for tar in a.release_docs or []:
     m = re.fullmatch(r'uclog-docs-(.+)\.tar\.gz', Path(tar).name)

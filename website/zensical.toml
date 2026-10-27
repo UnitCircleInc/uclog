@@ -15,6 +15,7 @@ nav = [
   { "Getting started" = "getting-started.md" },
   { "The hosts" = "hosts.md" },
   { "Web app" = "web-app.md" },
+  { "Embedding" = "embedding.md" },
   { "Protocol" = [
     { "Wire protocol" = "protocol/index.md" },
     { "Compatibility" = "protocol/compatibility.md" },

@@ -23,6 +23,7 @@ updates.
 | Host | Use it for |
 |---|---|
 | Web app | Nothing to install; Chrome or Edge on any desktop |
+| [`<uc-log>`](embedding.md) | The web app in your own web page: one script and one element |
 | VS Code extension | Logs next to the code: click a log to open its source line |
 | `uclog gui`, `uclog tui` | A native window or a terminal UI; `uclog term` for a plain terminal |
 | `uclog hub` | Share one device with a client anywhere on the network, or with the web app |
