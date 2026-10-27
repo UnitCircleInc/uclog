@@ -23,7 +23,8 @@ x64 and arm64, and for 32-bit Arm on Linux (`linux-armv7`, Raspberry Pi OS), eac
 
 - **Linux:** serial ports need your user in `dialout` (Debian, Ubuntu) or `uucp` (Arch). For USB
   CDC and HID devices (vendor `2fe3`), install the archive's `70-uclog.rules` as its first lines
-  say, then replug.
+  say, then replug. When Linux refuses access to a device, `uclog`, the GUI and the hub show these
+  commands.
 - **Windows:** the programs are not code-signed yet, so SmartScreen may stop the first run: choose
   *More info*, then *Run anyway*. Check the archive against its `.sha256` first.
 - **macOS:** the programs and ucLog.app are signed and notarised. Open the `.dmg` and drag ucLog

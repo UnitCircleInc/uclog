@@ -222,6 +222,8 @@ pub struct GuiApp {
     pub connect: ConnectDialog,
     pub settings_dlg: Option<SettingsDialog>,
     pub show_about: bool,
+    /// Linux refused access to the device: how to get it (a window until closed).
+    pub access_hint: Option<&'static [&'static str]>,
     /// The session's token is the keyring's (so removing it there helps).
     pub token_from_keyring: bool,
     /// `Some(open)`: asked about removing a refused token in this run.
@@ -266,6 +268,7 @@ impl GuiApp {
             connect: ConnectDialog::default(),
             settings_dlg: None,
             show_about: false,
+            access_hint: None,
             token_from_keyring: true,
             token_prompt: None,
             status: None,
@@ -369,10 +372,14 @@ impl GuiApp {
                 self.conn = Conn { uri: Some(uri), description, hub, ..Default::default() };
                 self.connect.open = false;
             }
-            Ev::ConnectFailed(m) => {
+            Ev::ConnectFailed(m, hint) => {
                 self.conn.connecting = None;
                 self.say(m);
-                self.open_connect();
+                if hint.is_some() {
+                    self.access_hint = hint;
+                } else {
+                    self.open_connect();
+                }
             }
             Ev::Reconnecting => self.conn.reconnecting = true,
             Ev::Devices(v) => self.connect.devices = v,
@@ -527,6 +534,7 @@ impl GuiApp {
         super::connect::dialog(self, &ctx);
         super::settings_dlg::dialog(self, &ctx);
         self.about(&ctx);
+        self.access_window(&ctx);
         self.token_dialog(&ctx);
         self.screenshots(&ctx);
         if self.quit {
@@ -728,6 +736,31 @@ impl GuiApp {
         });
         if close {
             self.token_prompt = Some(false);
+        }
+    }
+
+    fn access_window(&mut self, ctx: &egui::Context) {
+        let Some(hint) = self.access_hint else { return };
+        let mut open = true;
+        egui::Window::new("No access to the device").collapsible(false).resizable(false).open(&mut open).show(
+            ctx,
+            |ui| {
+                for line in hint {
+                    if let Some(cmd) = line.strip_prefix("    ") {
+                        ui.horizontal(|ui| {
+                            ui.code(cmd);
+                            if ui.small_button("Copy").clicked() {
+                                ui.ctx().copy_text(cmd.to_string());
+                            }
+                        });
+                    } else {
+                        ui.label(*line);
+                    }
+                }
+            },
+        );
+        if !open {
+            self.access_hint = None;
         }
     }
 

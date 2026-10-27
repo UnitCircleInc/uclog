@@ -121,13 +121,15 @@ uclog gui -d loopback: -l spec/vectors/sample.logdata   # simulated device; type
 - **Device:** device info, logdata source, frame and error counters, and resolver notes.
   *Load logdata…* also saves the file in the cache under the device's `app_hash`, so it is found
   next time.
-- **FW Update:** pick an image (`*.signed.bin` under the working directory are suggested); then
-  progress and cancel.
+- **FW Update:** pick an image (`*.signed.bin` under the working directory are suggested, unless
+  that is the home directory or above); then progress and cancel.
 - **File menu:** Connect (⌘K), Load logdata (⌘L), Screenshot (PNG), Export all (⌘E: logs,
   terminal and every plot), export directory, Settings (⌘,).
 - **View menu:** UI scale (⌘+/⌘−), theme, reset layout.
 - **Status bar:** connected, waiting for the device or hub approval, hub busy, device not
   responding, or reconnecting.
+- **Linux, no access to a device:** a window with the commands that grant it (the `dialout`
+  group; `70-uclog.rules`).
 
 ## TUI
 

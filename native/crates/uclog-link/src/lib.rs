@@ -38,6 +38,35 @@ pub enum LinkError {
     NotFound(String),
 }
 
+/// What to do when Linux refuses access to a device (plan 07 task 9): one line each.
+pub const LINUX_ACCESS_HINT: &[&str] = &[
+    "Linux refused access to the device:",
+    "- serial adapters (ST-LINK, FTDI): join the dialout group (uucp on Arch), then log in again:",
+    "    sudo usermod -aG dialout $USER",
+    "- ucLog USB devices (CDC, HID): install 70-uclog.rules from the release archive, then replug:",
+    "    sudo cp 70-uclog.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger",
+];
+
+impl LinkError {
+    /// On Linux, when the OS refused access to the device: how to get it (LINUX_ACCESS_HINT).
+    pub fn access_hint(&self) -> Option<&'static [&'static str]> {
+        (cfg!(target_os = "linux") && self.is_access_denied()).then_some(LINUX_ACCESS_HINT)
+    }
+
+    fn is_access_denied(&self) -> bool {
+        match self {
+            LinkError::Serial(e) => {
+                e.kind == serialport::ErrorKind::Io(std::io::ErrorKind::PermissionDenied)
+                    || e.description.contains("Permission denied")
+            }
+            LinkError::Io(e) => e.kind() == std::io::ErrorKind::PermissionDenied,
+            // hidapi's message carries the OS error's text.
+            LinkError::Hid(m) => m.contains("Permission denied"),
+            _ => false,
+        }
+    }
+}
+
 /// Something that happened on a link.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinkEvent {
@@ -106,5 +135,24 @@ pub async fn open(spec: &LinkSpec) -> Result<Link, LinkError> {
         LinkSpec::Ws { url } => net::open_ws(spec.clone(), url).await,
         LinkSpec::Loopback { opts } => loopback::open(spec.clone(), opts),
         LinkSpec::Auto => Err(LinkError::NotFound("`auto` must be resolved to a device first".into())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn access_denied() {
+        let serial = LinkError::Serial(serialport::Error::new(
+            serialport::ErrorKind::Io(std::io::ErrorKind::PermissionDenied),
+            "Permission denied",
+        ));
+        let hid = LinkError::Hid("Failed to open a device with path '/dev/hidraw3': Permission denied".into());
+        assert!(serial.is_access_denied() && hid.is_access_denied());
+        assert!(!LinkError::NotFound("no device".into()).is_access_denied());
+        assert!(!LinkError::Hid("device disconnected".into()).is_access_denied());
+        // The hint is for Linux only: elsewhere the OS asks (macOS) or it does not apply.
+        assert_eq!(serial.access_hint().is_some(), cfg!(target_os = "linux"));
     }
 }

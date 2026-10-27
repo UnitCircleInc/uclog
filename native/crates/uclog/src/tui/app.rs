@@ -61,8 +61,12 @@ pub enum Action {
 #[derive(Debug, Clone)]
 pub enum Bg {
     Connecting(String),
-    Connected { uri: String, description: String },
-    ConnectFailed(String),
+    Connected {
+        uri: String,
+        description: String,
+    },
+    /// The message, and on Linux when access was refused, how to get it.
+    ConnectFailed(String, Option<&'static [&'static str]>),
     Devices(Vec<Device>),
     BleDevices(Result<Vec<Device>, String>),
     Fw(FwProgress),
@@ -406,10 +410,18 @@ impl App {
                 self.sent_on_connect = false;
                 self.device = DeviceState::default();
             }
-            Bg::ConnectFailed(e) => {
+            Bg::ConnectFailed(e, hint) => {
                 self.conn.connecting = None;
                 self.conn.closed = Some(e.clone());
-                self.say(e);
+                if let Some(h) = hint {
+                    for line in h.iter().rev() {
+                        // the Device tab lists notes newest first
+                        self.note(line.to_string());
+                    }
+                    self.say(format!("{e} (the Device tab says how to get access)"));
+                } else {
+                    self.say(e);
+                }
             }
             Bg::Devices(d) => {
                 // Keep BLE results from an earlier scan.

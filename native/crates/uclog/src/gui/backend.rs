@@ -40,7 +40,8 @@ pub enum Ev {
         description: String,
         hub: bool,
     },
-    ConnectFailed(String),
+    /// The message, and on Linux when access was refused, how to get it.
+    ConnectFailed(String, Option<&'static [&'static str]>),
     /// Reconnecting in a second (a direct device went away).
     Reconnecting,
     Devices(Vec<Device>),
@@ -135,7 +136,7 @@ impl Runner {
                     ui.send(Ev::Connected { uri: spec.to_string(), description, hub: spec.is_hub() });
                     let _ = ns.send((h, ev)).await;
                 }
-                Err(e) => ui.send(Ev::ConnectFailed(format!("{spec}: {e}"))),
+                Err(e) => ui.send(Ev::ConnectFailed(format!("{spec}: {e}"), e.access_hint())),
             }
         });
     }
@@ -162,7 +163,7 @@ impl Runner {
                 let filters = crate::front::usb_filters(&self.device.usb_filter, &self.settings);
                 match tokio::task::spawn_blocking(move || discover::resolve_auto(&filters)).await {
                     Ok(Ok(spec)) => self.connect(spec),
-                    Ok(Err((msg, _))) => self.ui.send(Ev::ConnectFailed(msg)),
+                    Ok(Err((msg, _))) => self.ui.send(Ev::ConnectFailed(msg, None)),
                     Err(_) => {}
                 }
             }

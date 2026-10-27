@@ -189,7 +189,7 @@ impl Runner {
                     let _ = ns.send((h, ev)).await;
                 }
                 Err(e) => {
-                    let _ = bg.send(Bg::ConnectFailed(format!("{spec}: {e}"))).await;
+                    let _ = bg.send(Bg::ConnectFailed(format!("{spec}: {e}"), e.access_hint())).await;
                 }
             }
         });

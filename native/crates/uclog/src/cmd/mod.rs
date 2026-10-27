@@ -3,7 +3,7 @@ pub mod fw;
 pub mod list;
 pub mod term;
 
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use uclog_link::{Link, LinkSpec};
 
 use crate::DeviceArgs;
@@ -21,7 +21,13 @@ pub async fn open(d: &DeviceArgs) -> anyhow::Result<Link> {
         s => s.clone(),
     }
     .with_baud(d.baud);
-    let link = uclog_link::open(&spec).await.with_context(|| format!("opening {spec}"))?;
+    let link = match uclog_link::open(&spec).await {
+        Ok(l) => l,
+        Err(e) => {
+            let hint = e.access_hint().map(|h| format!("\n{}", h.join("\n"))).unwrap_or_default();
+            return Err(anyhow::Error::new(e).context(format!("opening {spec}{hint}")));
+        }
+    };
     eprintln!("uclog: connected to {}", link.description);
     Ok(link)
 }

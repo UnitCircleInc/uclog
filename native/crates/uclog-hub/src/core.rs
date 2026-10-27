@@ -171,6 +171,9 @@ pub async fn device_task(shared: Arc<Shared>, opener: Opener, mut to_device: mps
             Err(e) => {
                 if failures == 0 {
                     warn!("device: {e} (retrying)");
+                    for line in e.access_hint().unwrap_or_default() {
+                        warn!("{line}");
+                    }
                 }
                 failures += 1;
                 // Drop what clients send while there is no device.
