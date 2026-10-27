@@ -39,6 +39,7 @@ enum Command {
     /// Update device firmware with a signed image (port 59, falling back to port 3).
     FwUpdate(cmd::fw::FwArgs),
     /// Share one device with one TCP/WebSocket/UDP client at a time (also `uclog-hub`).
+    #[command(args_override_self = true)]
     Hub(uclog_hub::HubArgs),
 }
 
@@ -102,18 +103,34 @@ pub fn default_cache_dir() -> Option<PathBuf> {
 }
 
 /// The arguments; with none, from ucLog.app (Finder, the Dock: packaging/macos/release.sh), `gui`.
-fn args() -> Vec<std::ffi::OsString> {
+/// `uclog hub --config FILE`: the file's options in its place (the other subcommands' `--config`
+/// is their settings file).
+fn args() -> anyhow::Result<Vec<std::ffi::OsString>> {
     #[allow(unused_mut)]
     let mut a: Vec<_> = std::env::args_os().collect();
     #[cfg(all(target_os = "macos", feature = "gui"))]
-    if a.len() == 1 && std::env::current_exe().is_ok_and(|p| p.parent().is_some_and(|d| d.ends_with("Contents/MacOS"))) {
+    if a.len() == 1 && std::env::current_exe().is_ok_and(|p| p.parent().is_some_and(|d| d.ends_with("Contents/MacOS")))
+    {
         a.push("gui".into());
     }
-    a
+    match a.iter().skip(1).position(|x| !x.to_string_lossy().starts_with('-')) {
+        Some(i) if a[i + 1] == "hub" => {
+            let rest = a.split_off(i + 2);
+            a.extend(uclog_hub::config::expand_config(rest)?);
+            Ok(a)
+        }
+        _ => Ok(a),
+    }
 }
 
 fn main() -> std::process::ExitCode {
-    let cli = Cli::parse_from(args());
+    let cli = match args() {
+        Ok(a) => Cli::parse_from(a),
+        Err(e) => {
+            eprintln!("uclog: {e:#}");
+            return std::process::ExitCode::from(2);
+        }
+    };
     // The hub reports connections at info level; the client tools are quiet by default.
     let is_hub = matches!(cli.cmd, Command::Hub(_));
     // btleplug logs at error level for things it then reports as Ok (CoreBluetooth: disconnecting a

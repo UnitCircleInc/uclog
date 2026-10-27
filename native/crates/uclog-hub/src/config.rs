@@ -1,7 +1,8 @@
 //! Hub command line (hub plan §8), shared by `uclog hub` and `uclog-hub`.
 
+use std::ffi::OsString;
 use std::net::IpAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clap::{Args, ValueEnum};
@@ -106,10 +107,123 @@ pub struct HubArgs {
     /// Seconds between statistics lines (with -v)
     #[arg(long, value_name = "SECS", default_value_t = 10.0, hide = true)]
     pub stats_interval: f64,
+    /// Options from a TOML file, keyed by their long names (port = 9001, allow-from = ["10.0.0.0/8"],
+    /// no-mdns = true); the command line overrides it (repeatable options add to it)
+    #[arg(long, value_name = "FILE")]
+    pub config: Option<PathBuf>,
+}
+
+/// `args` with `--config FILE` (or `--config=FILE`) replaced by the file's options, so clap reads
+/// them where the option was: put it before the other options, and with `args_override_self`
+/// those win. Keys are the long option names (`_` may stand for `-`); a value is a string, number
+/// or boolean (true: the flag; false: nothing), or an array of them for a repeatable option.
+pub fn expand_config(args: Vec<OsString>) -> anyhow::Result<Vec<OsString>> {
+    let mut out = Vec::with_capacity(args.len());
+    let mut it = args.into_iter();
+    while let Some(a) = it.next() {
+        let file = match a.to_str() {
+            Some("--config") => Some(it.next().ok_or_else(|| anyhow::anyhow!("--config needs a FILE"))?),
+            Some(s) if s.starts_with("--config=") => Some(OsString::from(&s["--config=".len()..])),
+            _ => None,
+        };
+        match file {
+            Some(f) => out.extend(config_args(Path::new(&f))?),
+            None => out.push(a),
+        }
+    }
+    Ok(out)
+}
+
+fn config_args(path: &Path) -> anyhow::Result<Vec<OsString>> {
+    let text = std::fs::read_to_string(path).map_err(|e| anyhow::anyhow!("--config {}: {e}", path.display()))?;
+    let table: toml::Table = text.parse().map_err(|e| anyhow::anyhow!("--config {}: {e}", path.display()))?;
+    let mut out = vec![];
+    for (key, value) in table {
+        let opt = format!("--{}", key.replace('_', "-"));
+        if opt == "--config" {
+            anyhow::bail!("--config {}: a config file cannot name another", path.display());
+        }
+        let values = match value {
+            toml::Value::Array(v) => v,
+            v => vec![v],
+        };
+        for v in values {
+            match v {
+                toml::Value::Boolean(true) => out.push(OsString::from(&opt)),
+                toml::Value::Boolean(false) => {}
+                toml::Value::String(s) => out.push(OsString::from(format!("{opt}={s}"))),
+                toml::Value::Integer(n) => out.push(OsString::from(format!("{opt}={n}"))),
+                toml::Value::Float(x) => out.push(OsString::from(format!("{opt}={x}"))),
+                v => anyhow::bail!(
+                    "--config {}: {key}: {} is not a string, number or boolean",
+                    path.display(),
+                    v.type_str()
+                ),
+            }
+        }
+    }
+    Ok(out)
 }
 
 impl HubArgs {
     pub fn client_timeout(&self) -> Duration {
         Duration::from_secs_f64(self.client_timeout.max(0.5))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[derive(Parser)]
+    #[command(args_override_self = true)]
+    struct Cli {
+        #[command(flatten)]
+        hub: HubArgs,
+    }
+
+    fn parse(file: &str, args: &[&str]) -> anyhow::Result<HubArgs> {
+        let dir = tempfile::tempdir()?;
+        let f = dir.path().join("hub.toml");
+        std::fs::write(&f, file)?;
+        let mut a: Vec<OsString> = vec!["uclog-hub".into()];
+        a.extend(args.iter().map(|s| OsString::from(s.replace("FILE", f.to_str().unwrap()))));
+        Ok(Cli::try_parse_from(expand_config(a)?)?.hub)
+    }
+
+    #[test]
+    fn the_file_sets_options() {
+        let h = parse(
+            "device = 'loopback:'\nport = 9005\nno_mdns = true\nudp = false\nallow-from = ['10.0.0.0/8', '192.168.1.0/24']\nclient-timeout = 2.5\nslow-client = 'disconnect'\n",
+            &["--config", "FILE"],
+        )
+        .unwrap();
+        assert_eq!(h.device.to_string(), "loopback:");
+        assert_eq!(h.port, Some(9005));
+        assert!(h.no_mdns && !h.udp);
+        assert_eq!(h.allow_from.len(), 2);
+        assert_eq!(h.client_timeout, 2.5);
+        assert_eq!(h.slow_client, SlowClient::Disconnect);
+    }
+
+    #[test]
+    fn the_command_line_wins() {
+        let h = parse(
+            "port = 9005\nallow-from = ['10.0.0.0/8']\n",
+            &["--config=FILE", "--port", "9010", "--allow-from", "172.16.0.0/12"],
+        )
+        .unwrap();
+        assert_eq!(h.port, Some(9010));
+        assert_eq!(h.allow_from.len(), 2); // repeatable: added to the file's
+    }
+
+    #[test]
+    fn bad_files_are_errors() {
+        assert!(parse("port = 'x'\n", &["--config", "FILE"]).is_err());
+        assert!(parse("no-such-option = 1\n", &["--config", "FILE"]).is_err());
+        assert!(parse("[table]\nx = 1\n", &["--config", "FILE"]).is_err());
+        assert!(parse("config = 'other.toml'\n", &["--config", "FILE"]).is_err());
+        assert!(parse("port = 9005\n", &["--config", "/no/such/file.toml"]).is_err());
     }
 }

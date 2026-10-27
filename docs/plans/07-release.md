@@ -77,7 +77,7 @@ the hub binaries this phase signs.
 
 | # | Task | From | Size |
 |---|---|---|---|
-| 28 | `uclog hub --config FILE` (in the plan's CLI, not implemented) | 01 §8 | S |
+| 28 | `uclog hub --config FILE` (in the plan's CLI, not implemented) **Done 2026-10-27**: a TOML file keyed by the long option names (`port = 9001`, `allow-from = [...]`, `no-mdns = true`), for `uclog hub` and `uclog-hub`: `expand_config` puts the file's options where `--config` was, and with `args_override_self` the command line wins; repeatable options add to the file's. Precedence: command line, file, environment, defaults. Tests in `config.rs`; the docs' *The hub* page | 01 §8 | S |
 | 29 | GUI terminal character mode (each key sent at once), like the TUI's | 04 §9 | S |
 | 30 | GUI fonts: bundle a fallback font for the symbols and emoji egui's default fonts lack, which now show as boxes. Watch the size target (≤ 15 MB) | 04 §9 | S |
 

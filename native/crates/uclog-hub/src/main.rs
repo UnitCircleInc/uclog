@@ -7,7 +7,8 @@ use clap::{Parser, Subcommand};
     name = "uclog-hub",
     version = env!("UCLOG_VERSION"),
     about = "ucLog hub: one device, one TCP/WebSocket/UDP client at a time",
-    args_conflicts_with_subcommands = true
+    args_conflicts_with_subcommands = true,
+    args_override_self = true
 )]
 struct Cli {
     /// -v: statistics every 10 s, -vv: debug
@@ -41,7 +42,14 @@ enum Cmd {
 }
 
 fn main() -> std::process::ExitCode {
-    let cli = Cli::parse();
+    // --config FILE: the file's options in its place, so the ones after it override them.
+    let cli = match uclog_hub::config::expand_config(std::env::args_os().collect()) {
+        Ok(args) => Cli::parse_from(args),
+        Err(e) => {
+            eprintln!("uclog-hub: {e:#}");
+            return std::process::ExitCode::from(2);
+        }
+    };
     if let Some(Cmd::List { json, ble_scan, hubs, usb_filter }) = &cli.cmd {
         let secs = |s: &Option<f64>| s.map(|s| std::time::Duration::from_secs_f64(s.max(0.0)));
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");

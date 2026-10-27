@@ -44,4 +44,14 @@ Then connect to `tcp://HOST:9000` (or `ws://`, `wss://`) from any host, or pick 
 - A hub started for tests: `--port 0 --json-ready` prints the port it got as JSON, and
   `--exit-on-stdin-eof` stops it when its parent goes away.
 
+- `--config FILE` reads options from a TOML file, keyed by their long names. Options on the
+  command line override it, and repeatable ones add to it:
+
+```toml
+device = "serial:/dev/ttyACM0"
+port = 9001
+allow-from = ["10.0.0.0/8"]
+no-mdns = true
+```
+
 `uclog hub --help` lists every option.
