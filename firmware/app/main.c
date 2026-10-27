@@ -6,6 +6,7 @@
 // - `sh`: semihost selftest (printf, files and time through the host, port 63).
 // - Port 5 (test only): echoes each frame back, for maximum-size frames from the host.
 
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +15,7 @@
 #include "board.h"
 #include "drivers/sensor.h"
 #include "log.h"
+#include "log_plot.h"
 #include "crc32c.h"
 #include "sh/semihost_test.h"
 
@@ -199,6 +201,31 @@ static void on_echo(const uint8_t *rx, size_t n, void *ctx) {
   log_tx(ECHO_PORT, rx, n);
 }
 
+// A line plot (port 60) with n points of sin and cos (axis 1) and their product (axis 2).
+static void plot(int port, unsigned n) {
+  static const char *const trig[] = {"sin", "cos"};
+  static const char *const prod[] = {"sin*cos"};
+  const log_plot_axis_t axes[] = {
+    {.label = "value", .series = trig, .n = 2, .lo = -1.1f, .hi = 1.1f},
+    {.label = "product", .series = prod, .n = 1},
+  };
+  if (!log_plot_create("waves", "t", axes, 2, 0)) {
+    reply(port, "plot: no room to create it\r\n");
+    return;
+  }
+  unsigned sent = 0;
+  for (unsigned i = 0; i < n; i++) {
+    float t = (float)i * 0.05f;
+    const float ys[] = {sinf(t), cosf(t)}, p = ys[0] * ys[1];
+    uint32_t t0 = board_ms();
+    bool ok;
+    // A full buffer drains while the host is there (as burst does); give up after 200 ms.
+    while (!(ok = log_plot_point("waves", t, ys, 2)) && board_ms() - t0 < 200) log_poll();
+    if (ok && log_plot_data("waves", 2, 1, &t, &p, 1)) sent++;
+  }
+  reply(port, "plot \"waves\": %u of %u points\r\n", sent, n);
+}
+
 static void run_command(int port, char *c) {
   char *arg = strchr(c, ' ');
   if (arg) *arg++ = 0;
@@ -213,6 +240,7 @@ static void run_command(int port, char *c) {
                 "  input       read a line from the host's stdin (semihost)\r\n"
                 "  burst [n]   n logs as fast as the link allows (default 1000)\r\n"
                 "  big [n]     one port-61 frame of n bytes (default the maximum, 1443)\r\n"
+                "  plot [n]    a line plot of n points (default 200)\r\n"
                 "  stats       link counters\r\n"
                 "  link        the link in use (uart, cdc, hid)\r\n"
                 "  led on|off  user LED (stops blinking)\r\n"
@@ -245,6 +273,8 @@ static void run_command(int port, char *c) {
     burst(port, n);
   } else if (strcmp(c, "big") == 0) {
     big(port, arg ? (size_t)strtoul(arg, NULL, 0) : LOG_MAX_PACKET_SIZE);
+  } else if (strcmp(c, "plot") == 0) {
+    plot(port, arg ? (unsigned)strtoul(arg, NULL, 0) : 200);
   } else if (strcmp(c, "stats") == 0) {
     log_stats_t s;
     log_get_stats(&s);

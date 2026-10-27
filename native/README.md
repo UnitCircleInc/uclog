@@ -191,7 +191,8 @@ uclog hub -d loopback:rate=10 --port 0 --json-ready --exit-on-stdin-eof   # simu
   WebSocket (`/` or `/uclog`) and, with `--tls-cert/--tls-key`, TLS and `wss://`.
 - **Admission:**
   - Clients on this machine are accepted. The exception is a browser page whose `Origin` is not on
-    `--allow-origin`.
+    `--allow-origin` (default: `localhost` and `127.0.0.1` pages, VS Code webviews, and the hosted
+    web app `https://uclog.unitcircle.ca`).
   - Others are accepted with `--allow-all`, `--allow-from CIDR`, or the saved allow-list.
   - Otherwise the operator is asked on the console: yes, no, or always (saved to `hub.allow` in the
     config directory). Without a console the client is rejected, and a log line says how to allow

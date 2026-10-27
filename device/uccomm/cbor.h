@@ -77,7 +77,8 @@ extern "C" {
 //  in rel 3.x.
 //  See: https://releases.llvm.org/16.0.0/tools/clang/docs/LanguageExtensions.html#:~:text=__fp16
 #if defined(__x86_64__) || defined(__i386)
-typedef int16_t float16_t;
+typedef int16_t float16_t; // not a float: no half precision here (CBOR_NO_FLOAT16)
+#define CBOR_NO_FLOAT16 1
 #else
 typedef __fp16 float16_t;
 #endif

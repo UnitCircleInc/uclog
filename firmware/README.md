@@ -5,7 +5,7 @@ Test firmware for exercising the hosts on real hardware, built on the device lib
 
 | Directory | Contents |
 |---|---|
-| [`../device/`](../device/README.md) | The device library: `include/log.h`, `src/log.c`, the semihost client and newlib syscalls, the Zephyr port and drivers, `tools/`, and ucComm v5 (`uccomm/`); the boards build it through `uclog.mk` |
+| [`../device/`](../device/README.md) | The device library: `include/log.h`, `src/log.c`, the semihost client and newlib syscalls, the Zephyr port and drivers, `tools/`, and ucComm v6 (`uccomm/`); the boards build it through `uclog.mk` |
 | [`app/`](app/) | The test app every board builds: commands, the selftests |
 | [`nucleo-l452re-p/`](nucleo-l452re-p/) | Test firmware for the NUCLEO-L452RE-P (STM32L452RE, Cortex-M4F, hard-float): UART |
 | [`nucleo-c071rb/`](nucleo-c071rb/) | Test firmware for the NUCLEO-C071RB (STM32C071RB, Cortex-M0+): UART, USB CDC-ACM and USB HID at once |
@@ -122,6 +122,7 @@ used only by this test firmware.
 | `input` | Semihost READ on stdin |
 | `burst [n]` | Throughput. It waits for buffer room, so nothing is dropped. The reply gives bytes, bytes per log and B/s, timed until the last byte has left the log ring. Over BLE (STM32WBA55G-DK1) that is when the BLE stack has it, so bursts under 10,000 logs are flagged "short burst" (`BURST_MIN_LOGS`; see "BLE throughput with a Mac") |
 | `big [n]` | One port-61 frame of `n` bytes (default 1443, which is 1452 on the wire) |
+| `plot [n]` | A line plot "waves" through `log_plot.h`: `n` points (default 200) of sin and cos on axis 1 and their product on axis 2 |
 | `info`, `stats` | Resends the device info; shows the link counters |
 | `link` | The link in use: `uart`, `cdc` or `hid` |
 | `led on/off`, `fatal` | LED control; `LOG_FATAL` (flush, then reset) |

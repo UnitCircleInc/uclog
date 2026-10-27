@@ -61,7 +61,7 @@ pub struct HubArgs {
     /// Accept clients from this network without asking (e.g. 192.168.1.0/24); repeatable
     #[arg(long, value_name = "CIDR")]
     pub allow_from: Vec<Cidr>,
-    /// Browser origins allowed from this machine (glob); repeatable [default: localhost, 127.0.0.1, vscode-webview]
+    /// Browser origins allowed from this machine (glob); repeatable [default: localhost, 127.0.0.1, vscode-webview, https://uclog.unitcircle.ca]
     #[arg(long, value_name = "GLOB")]
     pub allow_origin: Vec<String>,
     /// TLS certificate chain (PEM) for wss:// and TLS-TCP

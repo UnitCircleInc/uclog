@@ -29,6 +29,7 @@ cmake_minimum_required(VERSION 3.20)
 
 add_library(uclog STATIC
   src/log.c
+  src/log_plot.c
   src/semihost.c
   uccomm/cb.c
   uccomm/cobs.c

@@ -3,7 +3,7 @@
 
 if(CONFIG_UC_LOG)
   zephyr_library()
-  zephyr_library_sources(${UCLOG_ROOT_DIR}/src/log.c port.c)
+  zephyr_library_sources(${UCLOG_ROOT_DIR}/src/log.c ${UCLOG_ROOT_DIR}/src/log_plot.c port.c)
   if(NOT CONFIG_UCCOMM) # no ucComm module in the workspace: the pinned copy
     zephyr_include_directories(${UCLOG_ROOT_DIR}/uccomm)
     zephyr_library_sources(${UCLOG_ROOT_DIR}/uccomm/cb.c ${UCLOG_ROOT_DIR}/uccomm/cobs.c

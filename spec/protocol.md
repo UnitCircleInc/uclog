@@ -463,6 +463,9 @@ CBOR maps from the device. The first key that is present determines the message:
 
 - Data for a plot that does not exist yet is counted and dropped. This happens when the host
   connected after the plot was created.
+- The device library builds the line-plot messages with `log_plot.h` (`log_plot_create`,
+  `log_plot_point`, `log_plot_data`, `log_plot_clear`); heatmaps and spectrograms are hand-built
+  CBOR for now.
 - `yprops`/`*props` are passed to the renderer as hints; unknown props are ignored.
 
 ### 5.7 Port 61 — terminal

@@ -1251,15 +1251,21 @@ static cbor_error_t write_float64(cbor_stream_t* s, float64_t v) {
 // Good overview of converting float representations:
 //   http://www.fox-toolkit.org/ftp/fasthalffloatconversion.pdf
 cbor_error_t cbor_write_float32(cbor_stream_t* s, float32_t v) {
+#if defined(CBOR_NO_FLOAT16)
+  return write_float32(s, v);
+#endif
   if (isnan(v) || isinf(v)) return cbor_write_float16(s, (float16_t) v);
   float16_t hfv = (float16_t) v;
   return hfv == v ? cbor_write_float16(s, hfv) : write_float32(s, v);
 }
 
 cbor_error_t cbor_write_float64(cbor_stream_t* s, float64_t v) {
+  float32_t fv = (float32_t)v;
+#if defined(CBOR_NO_FLOAT16)
+  return (float64_t)fv == v || isnan(v) ? write_float32(s, fv) : write_float64(s, v);
+#endif
   if (isnan(v) || isinf(v)) return cbor_write_float16(s, (float16_t) v);
 
-  float32_t fv = (float32_t)v;
   if ((float64_t)fv == v) {
     float16_t hfv = (float16_t) fv;
     return hfv == fv ? cbor_write_float16(s, hfv) : write_float32(s, fv);

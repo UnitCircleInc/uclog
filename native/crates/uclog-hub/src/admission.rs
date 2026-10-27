@@ -16,9 +16,16 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncRead};
 use tokio::sync::{mpsc, oneshot};
 
-/// Default `--allow-origin` patterns.
-pub const DEFAULT_ORIGINS: &[&str] =
-    &["http://localhost:*", "http://127.0.0.1:*", "http://[::1]:*", "https://localhost:*", "vscode-webview://*"];
+/// Default `--allow-origin` patterns: pages served from this machine, VS Code webviews, and the
+/// hosted web app (plan 08 §3).
+pub const DEFAULT_ORIGINS: &[&str] = &[
+    "http://localhost:*",
+    "http://127.0.0.1:*",
+    "http://[::1]:*",
+    "https://localhost:*",
+    "vscode-webview://*",
+    "https://uclog.unitcircle.ca",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cidr {
@@ -288,6 +295,15 @@ mod tests {
         assert_eq!(r.decide(ip("127.0.0.1"), None), Decision::Accept);
         assert_eq!(r.decide(ip("::1"), Some("http://localhost:8080")), Decision::Accept);
         assert!(matches!(r.decide(ip("127.0.0.1"), Some("https://evil.example")), Decision::Ask(_)));
+        // The hosted web app, and nothing that only starts like it.
+        assert_eq!(r.decide(ip("127.0.0.1"), Some("https://uclog.unitcircle.ca")), Decision::Accept);
+        for o in [
+            "https://uclog.unitcircle.ca.evil.example",
+            "https://uclog.unitcircle.ca:8443",
+            "http://uclog.unitcircle.ca",
+        ] {
+            assert!(matches!(r.decide(ip("127.0.0.1"), Some(o)), Decision::Ask(_)), "{o}");
+        }
         assert_eq!(r.decide(ip("10.1.2.3"), None), Decision::Accept);
         assert!(matches!(r.decide(ip("10.2.0.1"), None), Decision::Ask(_)));
         let all = Rules::new(true, vec![], vec![], None);

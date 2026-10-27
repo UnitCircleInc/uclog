@@ -91,7 +91,9 @@ advertises `ws=same` or the port number.
 2. **Approval**:
    - Loopback peers are accepted.
    - A **browser WebSocket** from loopback whose `Origin` is not in `--allow-origin` (default:
-     `http://localhost:*`, `http://127.0.0.1:*`, `vscode-webview://*`) is treated like a remote peer.
+     `http://localhost:*`, `http://127.0.0.1:*`, `http://[::1]:*`, `https://localhost:*`,
+     `vscode-webview://*`, and the hosted web app `https://uclog.unitcircle.ca`) is treated like a
+     remote peer.
      This stops arbitrary web pages from silently driving the device.
    - Non-loopback peers are accepted if `--allow-all` is set, or the peer matches `--allow-from CIDR`
      or the saved allow-list. Otherwise they are **held pending** while the hub asks the operator:

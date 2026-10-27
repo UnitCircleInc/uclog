@@ -28,6 +28,7 @@ OBJDUMP ?= arm-none-eabi-objdump
 UCLOG_CACHE ?= $(or $(UCLOG_CACHE_DIR),$(XDG_CACHE_HOME:%=%/uclog),$(HOME)/.cache/uclog)
 
 UCLOG_SRCS := $(UCLOG_DIR)/src/log.c \
+              $(UCLOG_DIR)/src/log_plot.c \
               $(UCLOG_DIR)/src/semihost.c \
               $(UCLOG_DIR)/uccomm/cb.c \
               $(UCLOG_DIR)/uccomm/cobs.c \

@@ -34,6 +34,6 @@ manifest:
 
     - name: uccomm
       remote: uci
-      revision: v5 # the same as uccomm/
+      revision: v6 # the same as uccomm/
       repo-path: ucComm
       path: modules/uccomm

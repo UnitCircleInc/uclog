@@ -11,12 +11,14 @@
 //   out                  prints "out HEX": what the port sent since the last `out`
 //   stats                prints "stats tx_dropped rx_frames rx_errors rx_no_handler"
 //   host                 prints "host 0|1"
+//   plots                the plot calls below, in order
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "host_port.h"
+#include "log_plot.h"
 
 static size_t unhex(const char *s, uint8_t *b) {
   size_t n = 0;
@@ -63,6 +65,27 @@ static void logs(void) {
   LOG_MEM_INFO("bytes", mem, sizeof(mem));
 }
 
+// test_vectors.py expects these messages (Plots there).
+static void plots(void) {
+  static const char *const temps[] = {"inside", "outside"};
+  static const char *const hum[] = {"humidity"};
+  static const char *const hum_props[] = {"dashed"};
+  const log_plot_axis_t axes[] = {
+    {.label = "C", .series = temps, .n = 2},
+    {.label = "%", .series = hum, .n = 1, .lo = 0, .hi = 100, .props = hum_props},
+  };
+  printf("ret %d\n", log_plot_create("weather", "s", axes, 2, 500));
+  const float t[] = {21.5f, 4.25f};
+  printf("ret %d\n", log_plot_point("weather", 1.0f, t, 2));
+  const float xs[] = {1, 2, 3}, ys[] = {40, 41.5f, 43};
+  printf("ret %d\n", log_plot_data("weather", 2, 1, xs, ys, 3));
+  printf("ret %d\n", log_plot_data("weather", 1, 2, NULL, ys, 1));
+  printf("ret %d\n", log_plot_clear("weather"));
+  printf("ret %d\n", log_plot_data("weather", 4, 1, NULL, ys, 1)); // no axis 4: refused
+  static float many[100];
+  printf("ret %d\n", log_plot_data("weather", 1, 1, NULL, many, 100)); // does not fit: refused
+}
+
 int main(void) {
   static char line[8192];
   static uint8_t b[4096];
@@ -96,6 +119,8 @@ int main(void) {
       log_stats_t s;
       log_get_stats(&s);
       printf("stats %u %u %u %u\n", s.tx_dropped, s.rx_frames, s.rx_errors, s.rx_no_handler);
+    } else if (strncmp(line, "plots", 5) == 0) {
+      plots();
     } else if (strncmp(line, "host", 4) == 0) {
       bool h;
       log_is_host_ready(&h);

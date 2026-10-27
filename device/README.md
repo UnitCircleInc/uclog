@@ -17,20 +17,21 @@ info; tagged `device-vN` ([spec/compatibility.md](https://github.com/UnitCircleI
 |---|---|
 | [include/log.h](include/log.h) | The API: `LOG_DEBUG`…`LOG_FATAL`, `LOG_MEM_*`, `log_tx`/`log_rx`/`log_notify`, device info |
 | [include/log_port.h](include/log_port.h) | The port (link) interface a board or RTOS implements |
+| [include/log_plot.h](include/log_plot.h) | Line plots (port 60): `log_plot_create`, `log_plot_point`, `log_plot_data`, `log_plot_clear` |
 | [include/semihost.h](include/semihost.h) | The semihost client (port 63): files and stdio on the host |
-| [src/log.c](src/log.c) | The library: framing, logs, host presence, RX, device info, saved log |
+| [src/log.c](src/log.c), [src/log_plot.c](src/log_plot.c) | The library: framing, logs, host presence, RX, device info, saved log; plots |
 | [src/semihost.c](src/semihost.c), [src/syscalls.c](src/syscalls.c) | Semihost requests; newlib syscalls on them (bare metal) |
 | [ports/zephyr/](ports/zephyr/) | The Zephyr port: `log_port.h` over the drivers below, the log thread, `SYS_INIT`, Zephyr's `LOG_*` as ucLog logs, the shell backend, semihost as a file system |
 | [ports/baremetal/log.ld](ports/baremetal/log.ld) | Linker fragment for the format strings (bare metal) |
 | [drivers/](drivers/), [dts/](dts/) | Zephyr drivers: `ucuart_z` (any Zephyr UART), `ucuart` and `ucusb` (nRF UARTE and USBD) |
 | [CMakeLists.txt](CMakeLists.txt), [uclog.mk](uclog.mk) | Builds: Zephyr module, or a CMake library; a Makefile fragment |
 | [cmake/](cmake/), [snippets/](snippets/), [zephyr/module.yml](zephyr/module.yml), [Kconfig](Kconfig), [west.yml](west.yml) | Zephyr build integration; the post-link steps for CMake |
-| [uccomm/](uccomm/README.md) | ucComm v5 (COBS, CBOR, the ring buffer), pinned |
+| [uccomm/](uccomm/README.md) | ucComm v6 (COBS, CBOR, the ring buffer), pinned |
 | [test/host/](test/host/) | The library on a host, checked against the protocol's test vectors |
 | [tools/](tools/README.md) | Build-time tools: logdata from the ELF, the app hash, image signing |
 | [app/](app/) | A minimal Zephyr sample |
 
-COBS, CBOR and the ring buffer come from [ucComm](https://github.com/UnitCircleInc/ucComm), tag v5:
+COBS, CBOR and the ring buffer come from [ucComm](https://github.com/UnitCircleInc/ucComm), tag v6:
 the copy in `uccomm/`, or on Zephyr the ucComm module when the workspace has one.
 
 ## Bare metal
@@ -44,7 +45,7 @@ Implement `log_port.h` for your link, and build the library one of three ways:
 - **CMake**: `add_subdirectory(path/to/device)`, or FetchContent from this mirror (or from the ucLog
   repository with `SOURCE_SUBDIR device`); then `target_link_libraries(app PRIVATE uclog
   uclog_syscalls)` and `uclog_add_logdata(app)` (comments in [CMakeLists.txt](CMakeLists.txt)).
-- **By hand**: `src/log.c`, `src/semihost.c`, `src/syscalls.c` and `uccomm/{cb,cobs,cbor,crc32c}.c`,
+- **By hand**: `src/log.c`, `src/log_plot.c`, `src/semihost.c`, `src/syscalls.c` and `uccomm/{cb,cobs,cbor,crc32c}.c`,
   with `include/` and `uccomm/` on the include path (Arm GCC: `-mfp16-format=ieee` for ucComm).
 
 Then:

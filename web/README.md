@@ -113,7 +113,12 @@ Host requirements:
 - The inlined workers need `worker-src blob:` in the page's CSP. Without it, serve
   `dist/workers/*.js` and set `worker-base` to their directory.
 - A hub on another machine needs `wss://`. A local hub asks its operator about pages that are
-  not on its `--allow-origin` list (`localhost` is allowed by default).
+  not on its `--allow-origin` list (`localhost` and `https://uclog.unitcircle.ca` are allowed by
+  default).
+- A page on a public site (such as `https://uclog.unitcircle.ca`) reaches a hub on this machine or
+  the local network only with Chrome's **Local network access** permission: Chrome asks the first
+  time, and once it is denied the connection never opens (close code 1006). The app then says to
+  allow it in the site's settings. Checked with Chrome 156 (`e2e/hosted.spec.ts`).
 - The logdata service only answers the origins it allows (CORS).
 
 Sizes (gzip): `uclog-element.js` 135 KB, plus 29 KB for uPlot, loaded with the first line plot.

@@ -1,7 +1,8 @@
 // Hardware, through the native hub over WebSocket (Web Serial's chooser cannot be automated):
 //   UCLOG_TEST_DEVICE=serial:/dev/cu.usbmodem… UCLOG_TEST_ELF=../firmware/nucleo-l452re-p/build/app.elf \
 //   npx playwright test hw
-// The ELF's .logdata_cbor is loaded in the page, then `test` and `burst` must decode cleanly.
+// The ELF's .logdata_cbor is loaded in the page, then `test` and `burst` must decode cleanly, and
+// `plot` must draw.
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -37,7 +38,7 @@ test.afterAll(() => {
   hub?.kill();
 });
 
-test('real device through the hub: device info, ELF logdata, test, burst', async ({ page }) => {
+test('real device through the hub: device info, ELF logdata, test, burst, plot', async ({ page }) => {
   test.setTimeout(120_000);
   const errors = watchErrors(page);
   await page.goto('/');
@@ -58,6 +59,13 @@ test('real device through the hub: device info, ELF logdata, test, burst', async
   const st = (await decodeState(page))!;
   console.log(`received ${st.received}, error records ${JSON.stringify(st.errorCounts)}`);
   expect(st.errorCounts).toEqual({});
+  // Plots through the device library's plot API (log_plot.h).
+  await input.fill('plot 100');
+  await input.press('Enter');
+  await expect(page.locator('.xterm-rows')).toContainText('plot "waves": 100 of 100 points', { timeout: 15_000 });
+  await expect.poll(async () => (await decodeState(page))!.plots.map((p) => p.name)).toContain('waves');
+  await page.getByRole('tab', { name: 'Plots' }).click();
+  await expect(page.locator('uc-line-plot .u-legend').first()).toContainText('sin*cos');
   await page.getByRole('tab', { name: 'Device' }).click();
   await expect(page.locator('uc-device-info')).toContainText('app_hash');
   expect(errors).toEqual([]);

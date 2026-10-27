@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """The device library against spec/vectors and the reference (spec/reference/ucref.py), through
 the host build (driver.c): framing (COBS), port frames, log argument packing, the device info,
-the RX scanner, host presence.
+the RX scanner, host presence, the plot messages (§5.6).
 
   python3 device/test/host/test_vectors.py path/to/uclog_host_test
 """
@@ -201,6 +201,28 @@ class Rx(unittest.TestCase):
     d.connect()
     d.cmd('rx 0003fb0000')                       # code 03 but only one byte follows
     self.assertEqual(d.query('stats', 'stats')[-1].split()[3], '1')
+
+
+class Plots(unittest.TestCase):
+  def test_plot_messages(self):
+    d = Device()
+    self.addCleanup(d.close)
+    d.connect()
+    lines = d.query('plots\nout', 'out')
+    self.assertEqual([s for s in lines if s.startswith('ret')], ['ret 1'] * 5 + ['ret 0'] * 2)
+    msgs = []
+    for f in frames(bytes.fromhex(lines[-1][4:])):
+      kind = ucref.mux_dec(f)
+      self.assertEqual(kind[:2], ('port', 60))
+      msgs.append(ucref.cbor_loads(kind[2]))
+    self.assertEqual(msgs, [
+      {'plot': 'weather', 'xlabel': 's', 'ylabel': ['C', '%'], 'yser': ['inside', 'outside'],
+       'y2ser': ['humidity'], 'y2limits': [0.0, 100.0], 'y2props': ['dashed'], 'xscroll': 500},
+      {'plot': 'weather', 'x': [1.0], 'y11': [21.5], 'y12': [4.25]},
+      {'plot': 'weather', 'x': [1.0, 2.0, 3.0], 'y21': [40.0, 41.5, 43.0]},
+      {'plot': 'weather', 'y12': [40.0]},
+      {'clear_plot': 'weather'},
+    ])
 
 
 class Presence(unittest.TestCase):
