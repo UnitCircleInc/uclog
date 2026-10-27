@@ -1,5 +1,6 @@
-# The device library (plan 08 task 6): the host build against spec/vectors, the bare-metal test
-# firmware, and Zephyr builds (3.7 LTS and current), with the repository root as the Zephyr module.
+# The device library (plan 08 task 6): the host build against spec/vectors, the bare-metal example
+# and test firmware, and Zephyr builds (3.7 LTS and current), with the repository root as the
+# Zephyr module.
 name: device
 
 on:
@@ -37,8 +38,9 @@ jobs:
       - run: cmake -S device/test/host -B build/host && cmake --build build/host
       - run: python3 device/test/host/test_vectors.py build/host/uclog_host_test -v
 
-  # The test firmware for the three STM32 boards (firmware/README.md), against the STM32Cube parts
-  # it uses (ST's code is not in this repository).
+  # The bare-metal example (device/examples/baremetal, with make and with CMake) and the test
+  # firmware for the three STM32 boards (firmware/README.md), against the STM32Cube parts they use
+  # (ST's code is not in this repository).
   firmware:
     runs-on: ubuntu-24.04
     steps:
@@ -55,6 +57,12 @@ jobs:
           $f STM32CubeWBA v1.10.0 cube/wba Drivers/CMSIS/Include \
             Projects/NUCLEO-WBA55CG/Applications/BLE/BLE_p2pServer_Simplest \
             -- Drivers/STM32WBAxx_HAL_Driver Drivers/CMSIS/Device/ST/STM32WBAxx Middlewares/ST/STM32_WPAN
+      - name: Example
+        run: |
+          make -C device/examples/baremetal STM32CUBE_L4=$PWD/cube/l4
+          cmake -S device/examples/baremetal -B build/example-cmake \
+            -DCMAKE_TOOLCHAIN_FILE=cortex-m4f.cmake -DSTM32CUBE_L4=$PWD/cube/l4
+          cmake --build build/example-cmake
       - name: Build
         run: |
           make -C firmware/nucleo-l452re-p STM32CUBE_L4=$PWD/cube/l4
@@ -67,8 +75,8 @@ jobs:
             firmware/*/build/app.elf
             firmware/*/build/app.bin
 
-  # .github/scripts/zephyr-builds.sh: the sample (device/app) on the NUCLEO-L452RE-P and the
-  # nRF52840-DK with each driver and every option, and the test firmware (firmware/zephyr, Zephyr 4).
+  # .github/scripts/zephyr-builds.sh: the example (device/examples/zephyr) on the NUCLEO-L452RE-P
+  # and the nRF52840-DK with each driver and every option, and the test firmware (firmware/zephyr, Zephyr 4).
   # Each Zephyr version in the CI image with the SDK it was released with.
   zephyr:
     strategy:

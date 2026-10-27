@@ -1,6 +1,7 @@
 /* ucLog's own additions to the theme (extra.css is the uc-www theme, copied as is: THEME.md). */
 
-/* Names in a table's first column (attributes, events, parts) stay on one line. */
-.md-typeset td:first-child code {
+/* Names in the first column of the reference's tables (attributes, events, parts) stay on one
+ * line (build.py wraps those tables in .uc-names). */
+.md-typeset .uc-names td:first-child code {
   white-space: nowrap;
 }

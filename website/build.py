@@ -178,7 +178,12 @@ def element_reference(manifest: dict, ref: str) -> str:
             '| Property | |', '|---|---|']
   for p in el.get('cssProperties', []):
     lines.append(f'| `{p["name"]}` | {one_line(p.get("description"))} |')
-  return '\n'.join(lines) + '\n'
+  return names_tables('\n'.join(lines) + '\n')
+
+
+def names_tables(md: str) -> str:
+  """Wrap each table in <div class="uc-names" markdown> (uclog.css keeps its names on one line)."""
+  return re.sub(r'((?:^\|.*\n)+)', lambda m: f'<div class="uc-names" markdown>\n\n{m[1]}\n</div>\n', md, flags=re.M)
 
 
 def generate(version):

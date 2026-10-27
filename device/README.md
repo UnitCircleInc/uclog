@@ -29,7 +29,7 @@ info; tagged `device-vN` ([spec/compatibility.md](https://github.com/UnitCircleI
 | [uccomm/](uccomm/README.md) | ucComm v6 (COBS, CBOR, the ring buffer), pinned |
 | [test/host/](test/host/) | The library on a host, checked against the protocol's test vectors |
 | [tools/](tools/README.md) | Build-time tools: logdata from the ELF, the app hash, image signing |
-| [app/](app/) | A minimal Zephyr sample |
+| [examples/](examples/README.md) | Minimal apps: bare metal (Makefile and CMake) and Zephyr, on the NUCLEO-L452RE-P |
 
 COBS, CBOR and the ring buffer come from [ucComm](https://github.com/UnitCircleInc/ucComm), tag v6:
 the copy in `uccomm/`, or on Zephyr the ucComm module when the workspace has one.

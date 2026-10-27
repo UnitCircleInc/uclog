@@ -1,0 +1,26 @@
+/* ucLog on the ST-LINK virtual COM port (USART2, PA2/PA3) at 1 Mbaud, through ucuart_z, with DMA
+ * (DMA1 channel 7 TX, channel 6 RX, request 2, as the bare-metal firmware) so that it uses the
+ * async UART API. RX DMA must be circular: the STM32L4 USART has no FIFO, so at 1 Mbaud both
+ * interrupt-driven RX and the default buffer-by-buffer DMA lose bytes (between buffers). */
+
+/ {
+	chosen {
+		uclog,link = &uclog0;
+	};
+};
+
+&dma1 {
+	status = "okay";
+};
+
+&usart2 {
+	current-speed = <1000000>;
+	dmas = <&dma1 7 2 (STM32_DMA_PERIPH_TX | STM32_DMA_PRIORITY_HIGH)>,
+	       <&dma1 6 2 (STM32_DMA_PERIPH_RX | STM32_DMA_PRIORITY_HIGH | STM32_DMA_MODE_CYCLIC)>;
+	dma-names = "tx", "rx";
+
+	uclog0: uclog {
+		compatible = "staric,ucuart_z";
+		current-speed = <1000000>;
+	};
+};

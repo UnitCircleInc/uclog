@@ -15,6 +15,10 @@ nav = [
   { "Getting started" = "getting-started.md" },
   { "The hosts" = "hosts.md" },
   { "Web app" = "web-app.md" },
+  { "Device" = [
+    { "From device code to screen" = "device/logging.md" },
+    { "Adding ucLog to a device" = "device/index.md" },
+  ] },
   { "Embedding" = [
     { "In a web page" = "embedding.md" },
     { "Element reference" = "reference/uc-log.md" },

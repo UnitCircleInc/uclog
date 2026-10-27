@@ -26,11 +26,12 @@ build() { # name board app [cmake args...]
 }
 
 mkdir -p "$out"
-build sample-l452-ucuart_z nucleo_l452re/stm32l452xx/p "$repo/device/app"
-build sample-nrf-ucuart nrf52840dk/nrf52840 "$repo/device/app"
-build sample-nrf-ucusb nrf52840dk/nrf52840 "$repo/device/app" -DEXTRA_DTC_OVERLAY_FILE="$z/ucusb.overlay"
-build sample-nrf-ucuart_z nrf52840dk/nrf52840 "$repo/device/app" -DEXTRA_DTC_OVERLAY_FILE="$z/ucuart_z-nrf.overlay"
-build sample-nrf-options nrf52840dk/nrf52840 "$repo/device/app" -DEXTRA_CONF_FILE="$z/options.conf"
+build example-l452-ucuart_z nucleo_l452re/stm32l452xx/p "$repo/device/examples/zephyr"
+build example-nrf-ucuart nrf52840dk/nrf52840 "$repo/device/examples/zephyr"
+build example-nrf-ucusb nrf52840dk/nrf52840 "$repo/device/examples/zephyr" -DEXTRA_DTC_OVERLAY_FILE="$z/ucusb.overlay"
+build example-nrf-ucuart_z nrf52840dk/nrf52840 "$repo/device/examples/zephyr" -DEXTRA_DTC_OVERLAY_FILE="$z/ucuart_z-nrf.overlay"
+build example-nrf-options nrf52840dk/nrf52840 "$repo/device/examples/zephyr" -DEXTRA_CONF_FILE="$z/options.conf" \
+  -DSNIPPET="uclog-target1;uclog-shell"
 if ((major >= 4)); then # the test firmware needs Zephyr 4's POSIX options
   build test-firmware-l452 nucleo_l452re/stm32l452xx/p "$repo/firmware/zephyr"
 fi
