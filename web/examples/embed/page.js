@@ -27,9 +27,10 @@ el.addEventListener('uc-connect', (e) => log('uc-connect', e.detail));
 el.addEventListener('uc-disconnect', (e) => log('uc-disconnect', e.detail));
 el.addEventListener('uc-error', (e) => log('uc-error', e.detail));
 el.addEventListener('uc-device-info', (e) => log('uc-device-info', e.detail.fields));
-// With emit-logs: decoded records, in batches.
+// With emit-logs: decoded records, in batches. Here, warnings and worse.
+const LOUD = new Set(['WARN', 'ERROR', 'FATAL', 'PANIC']);
 el.addEventListener('uc-log', (e) => {
-  for (const r of e.detail.records) if (r.lvl >= 2) log('uc-log', `${r.level} ${r.file}:${r.line} ${r.text}`);
+  for (const r of e.detail.records) if (LOUD.has(r.level)) log('uc-log', `${r.level} ${r.file}:${r.line} ${r.text}`);
 });
 
 const on = (id, f) => document.getElementById(id).addEventListener('click', () => f().catch?.((e) => log('error', e.message)));

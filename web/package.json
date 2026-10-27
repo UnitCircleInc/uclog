@@ -11,6 +11,7 @@
     "e2e": "playwright test"
   },
   "devDependencies": {
+    "@custom-elements-manifest/analyzer": "0.11.0",
     "@playwright/test": "1.64.0",
     "@types/node": "24.19.1",
     "@types/w3c-web-hid": "1.0.7",
@@ -19,5 +20,6 @@
     "typescript": "5.9.3",
     "vite": "8.3.4",
     "vitest": "5.0.3"
-  }
+  },
+  "customElements": "../website/.cache/cem/custom-elements.json"
 }

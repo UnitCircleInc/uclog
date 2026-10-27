@@ -1,6 +1,6 @@
 // A static server for the embedding example (a stand-in for "your web site").
 //
-//   node examples/embed/serve.mjs [--port 8080]
+//   node examples/embed/serve.mjs [--port 8080]   (0: any free port)
 //
 // Serves this folder at /, the built <uc-log> bundles (packages/element/dist) at /uclog/, and
 // spec/vectors/sample.logdata at /sample.logdata, with a strict Content-Security-Policy like a
@@ -15,7 +15,8 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const web = resolve(here, '../..');
 const roots = { '/uclog/': join(web, 'packages/element/dist'), '/': here };
-const port = Number(process.argv[process.argv.indexOf('--port') + 1]) || 8080;
+const i = process.argv.indexOf('--port');
+const port = i > 0 ? Number(process.argv[i + 1]) : 8080; // 0: any free port
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.map': 'application/json', '.css': 'text/css' };
 
 // What the page may do: its own scripts, the inlined workers (blob:), and WebSocket to hubs.
@@ -49,6 +50,7 @@ createServer(async (req, res) => {
   } catch {
     res.writeHead(404).end('not found');
   }
-}).listen(port, () => {
-  console.log(`embedding example on http://localhost:${port}/  (IIFE bundle: http://localhost:${port}/?bundle=iife)`);
+}).listen(port, 'localhost', function () {
+  const p = this.address().port;
+  console.log(`embedding example on http://localhost:${p}/  (IIFE bundle: http://localhost:${p}/?bundle=iife)`);
 });

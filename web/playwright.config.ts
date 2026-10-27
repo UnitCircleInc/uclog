@@ -4,6 +4,7 @@ import { defineConfig } from '@playwright/test';
 // UCLOG_E2E_CHANNEL=chromium to use Playwright's own build instead.
 export default defineConfig({
   testDir: 'e2e',
+  globalSetup: './e2e/global-setup.ts',
   timeout: 60_000,
   fullyParallel: false,
   workers: 1,

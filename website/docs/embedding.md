@@ -71,20 +71,6 @@ const r = await fetch('/firmware/app.logdata');
 await el.loadLogdata({ name: 'app.logdata', data: new Uint8Array(await r.arrayBuffer()) });
 ```
 
-## Attributes
-
-| Attribute | |
-|---|---|
-| `logdata-domain` | your account on the logdata service |
-| `logdata-url` | another logdata service (default `https://fw.unitcircle.ca`) |
-| `hub-url` | the hub the Connect dialog suggests, such as `ws://localhost:9000` |
-| `panels` | the views to show, from `log,terminal,commands,plots,device,fw-update` (all by default) |
-| `layout` | `tabs` or `grid` (the user can switch) |
-| `theme` | `auto` (the system's), `light` or `dark` |
-| `storage-key` | where the user's settings are kept (default `uclog`); give each element on a site its own |
-| `emit-logs` | send `uc-log` events with every decoded log |
-| `worker-base` | load the workers from this directory instead of `blob:` URLs (see the [repository](https://github.com/UnitCircleInc/uclog/tree/main/web/examples/embed)) |
-
 ## Scripting it
 
 ```js
@@ -104,25 +90,8 @@ el.addEventListener('uc-log', (e) => {            // with emit-logs
 });
 ```
 
-| Method | |
-|---|---|
-| `connect(spec)` | `ws://` or `wss://` URL of a hub; `loopback:` (simulated); `serial`, `hid` or `ble` to open the browser's chooser; or a `SerialPort`, `HIDDevice` or `BluetoothDevice` the page already has |
-| `disconnect()` | |
-| `send(port, data)` | bytes or text to a device port (61 is the terminal) |
-| `loadLogdata(file)` | a `File`, or `{name, data}` |
-| `fwUpdate(name, data)` | open the firmware update view with this image |
-| `showPicker()` | open the Connect dialog |
-| `ready()` | resolves once the element has started (the methods wait for it) |
-
-| Event | `detail` |
-|---|---|
-| `uc-ready` | |
-| `uc-connect` | `uri`, `description` |
-| `uc-disconnect` | `reason` |
-| `uc-device-info` | `info` (what the device reports), `fields` (`[name, value]` pairs, as the Device view shows them), `appHash` (hex) |
-| `uc-log` | `records`: `ts` (seconds), `level`, `file`, `line`, `text` |
-| `uc-error` | `kind` (`busy`, `error`, `timeout`), `message` |
-| `uc-token-refused` | the logdata service refused the token |
+Every attribute, property, method, event, part and colour is in the
+[`<uc-log>` reference](reference/uc-log.md).
 
 ## Styling
 
@@ -134,10 +103,54 @@ uc-log {
   --uc-accent: #0b6e4f;
   --uc-radius: 4px;
   --uc-font: system-ui, sans-serif;
-  --uc-mono: ui-monospace, monospace;
 }
 uc-log::part(header) { background: #f4f1ea; }
 ```
 
-Parts: `header`, `tabs`, `main`, `panel`, `panel-<name>`, `status`, `toolbar`, `table`,
-`terminal`, `plot`.
+## Examples
+
+Both are in the repository and tested on every change, so what you see here runs.
+
+### A device portal
+
+A stand-in for a product's support page ([`web/examples/embed`](https://github.com/UnitCircleInc/uclog/tree/main/web/examples/embed)):
+its own buttons drive the element, its events are listed beside it, and a checkbox brands it. Its
+server sends a strict Content-Security-Policy. To run it:
+
+```sh
+cd web
+npx -y pnpm@12.10.1 install
+npx -y pnpm@12.10.1 --filter @uclog/element build
+node examples/embed/serve.mjs          # http://localhost:8080/
+```
+
+=== "index.html"
+
+    ```html
+    --8<-- "web/examples/embed/index.html"
+    ```
+
+=== "page.js"
+
+    ```js
+    --8<-- "web/examples/embed/page.js"
+    ```
+
+### The web app
+
+The [web app](web-app.md) itself is `<uc-log>` and a page script
+([`web/apps/demo`](https://github.com/UnitCircleInc/uclog/tree/main/web/apps/demo)), built with Vite from the package
+(`import '@uclog/element'`). The page script adds what a standalone app needs: query parameters,
+the sample logdata for the simulated device, and working offline.
+
+=== "page.ts"
+
+    ```ts
+    --8<-- "web/apps/demo/src/page.ts"
+    ```
+
+=== "main.ts"
+
+    ```ts
+    --8<-- "web/apps/demo/src/main.ts"
+    ```

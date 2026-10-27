@@ -1,0 +1,6 @@
+/* ucLog's own additions to the theme (extra.css is the uc-www theme, copied as is: THEME.md). */
+
+/* Names in a table's first column (attributes, events, parts) stay on one line. */
+.md-typeset td:first-child code {
+  white-space: nowrap;
+}

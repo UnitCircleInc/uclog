@@ -107,13 +107,14 @@ builds, and semihost files. A link the host owns is passed as `connect({kind: 'e
         panels="log,terminal,commands,plots,fw-update" layout="tabs" theme="auto"></uc-log>
 ```
 
-| | |
-|---|---|
-| Attributes | `logdata-domain`, `logdata-url`, `hub-url`, `panels` (`log,terminal,commands,plots,device,fw-update`), `layout` (`tabs`, `grid`), `theme` (`auto`, `light`, `dark`), `storage-key`, `worker-base`, `emit-logs` |
-| Property | `logdataToken` |
-| Methods | `connect(spec)` (`ws://host:9000`, `loopback:`, `serial`/`hid`/`ble` to open the chooser, or a `SerialPort`/`HIDDevice`/`BluetoothDevice`), `disconnect()`, `send(port, bytes or text)`, `loadLogdata(file or {name, data})`, `ready()` |
-| Events | `uc-ready`, `uc-connect`, `uc-disconnect`, `uc-device-info`, `uc-log` (with `emit-logs`; `detail.records`), `uc-error` |
-| Styling | `--uc-*` custom properties (colours, `--uc-font`, `--uc-mono`, `--uc-radius`) and `::part()` (`header`, `tabs`, `main`, `panel`, `panel-<name>`, `status`, `toolbar`, `table`, `terminal`, `plot`) |
+The API (attributes, the `logdataToken` property, methods, events, `::part()` names and `--uc-*`
+properties) is documented in JSDoc on the class (`packages/ui/src/uc-log.ts`). The element build
+turns it into `dist/custom-elements.json` (`cem analyze`, `custom-elements-manifest.config.mjs`),
+which the package ships for editors and `website/build.py` renders as the docs' reference page
+(uclog.unitcircle.ca, *Embedding*). The parts inside the views are passed on with `exportparts`.
+
+`apps/demo` (the hosted web app) is the reference embedding: it imports only `@uclog/element`
+(its `dist/` when built, so build the element first; its source under `vite` dev).
 
 Host requirements:
 

@@ -1,15 +1,8 @@
 // © 2026 Unit Circle Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-/**
- * `<uc-log>`: the embeddable ucLog client (plan 02 §7).
- *
- * Attributes: `logdata-domain`, `logdata-url`, `hub-url`, `panels`, `layout` (`tabs|grid`),
- * `theme` (`auto|light|dark`), `storage-key`, `worker-base`, `emit-logs`.
- * Property: `logdataToken`. Methods: `connect(spec)`, `disconnect()`, `send(port, bytes)`,
- * `loadLogdata(file)`, `ready()`. Events: `uc-ready`, `uc-connect`, `uc-disconnect`, `uc-device-info`,
- * `uc-log` (with `emit-logs`), `uc-error`. Styling: `--uc-*` custom properties and `::part()`.
- */
+// `<uc-log>`: the embeddable ucLog client (plan 02 §7). Its API is documented on the class: the
+// docs' reference page is generated from it (custom-elements.json, website/build.py).
 
 import { css, html, LitElement, nothing } from 'lit';
 import { Client, workersAt, type ConnectionState, type LinkSpec, type WorkerFactories } from '@uclog/workers';
@@ -77,11 +70,59 @@ const DARK = css`
   --uc-ok: #5cc06a;
 `;
 
+/**
+ * The ucLog client as one element: logs, terminal, commands, plots, device information and
+ * firmware update, connected over Web Serial, WebHID, Web Bluetooth or a hub.
+ *
+ * @summary The embeddable ucLog client.
+ *
+ * @fires uc-ready - The element has started; its methods work from now on. No `detail`.
+ * @fires uc-connect - A connection opened. `detail`: `{uri, description}`.
+ * @fires uc-disconnect - The connection closed. `detail`: `{reason}`.
+ * @fires uc-error - A connection failed. `detail`: `{kind, message}`, `kind` one of `busy`, `error`, `timeout`.
+ * @fires uc-device-info - The device reported its information. `detail`: `{info, fields, appHash}`: what the device sent, `[name, value]` pairs as the Device view shows them, and the image hash (hex) or `null`.
+ * @fires uc-log - Decoded logs, in batches (only with `emit-logs`). `detail`: `{records}`, each `{seq, ts, target, level, file, line, text, error?}`: `ts` in seconds since the session started, `level` one of `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`, `PANIC`.
+ * @fires uc-token-refused - The logdata service refused the token (`logdataToken` or the saved one), but reading without one worked. No `detail`.
+ *
+ * @csspart header - The bar with the views and the Connect button.
+ * @csspart tabs - The views' tabs.
+ * @csspart main - The area holding the views.
+ * @csspart panel - Each view; also `panel-<name>`, such as `panel-log`.
+ * @csspart status - The status line at the bottom.
+ * @csspart toolbar - The bar at the top of the logs, the terminal and each plot.
+ * @csspart table - The log table.
+ * @csspart terminal - The terminal.
+ * @csspart responses - The command responses.
+ * @csspart plot-tabs - The plots' tabs.
+ * @csspart plot - Each plot.
+ *
+ * @cssprop --uc-bg - The background. Each colour has a light and a dark default; a value the page sets applies in both.
+ * @cssprop --uc-panel - Bars and panels.
+ * @cssprop --uc-fg - Text.
+ * @cssprop --uc-muted - Secondary text.
+ * @cssprop --uc-border - Borders.
+ * @cssprop --uc-accent - Selection, focus and the primary buttons.
+ * @cssprop --uc-accent-fg - Text on the accent colour.
+ * @cssprop --uc-button-bg - Buttons.
+ * @cssprop --uc-button-hover - Buttons under the pointer.
+ * @cssprop --uc-input-bg - Text fields.
+ * @cssprop --uc-selection - Selected rows.
+ * @cssprop --uc-term-bg - The terminal's background.
+ * @cssprop --uc-error - Errors.
+ * @cssprop --uc-warn - Warnings.
+ * @cssprop --uc-ok - Connected, success.
+ * @cssprop --uc-font - The text font (default: the system's).
+ * @cssprop --uc-font-size - The text size (default 13px).
+ * @cssprop --uc-mono - The monospace font (logs, terminal).
+ * @cssprop --uc-radius - The element's corner radius (default 8px).
+ */
 export class UcLog extends LitElement {
   /** Worker factories when `worker-base` is not set: the element bundle sets inlined ones, an app
-   * built with Vite can use `@uclog/workers/default-workers`. */
+   * built with Vite can use `@uclog/workers/default-workers`.
+   * @internal */
   static workers: WorkerFactories | null = null;
-  /** Set by an embedding host that provides its own pickers, settings and services (VS Code). */
+  /** Set by an embedding host that provides its own pickers, settings and services (VS Code).
+   * @internal */
   static host: UcHost | null = null;
 
   static properties = {
@@ -102,24 +143,42 @@ export class UcLog extends LitElement {
     logdataText: { state: true },
     menuOpen: { state: true },
   };
+  /** Your account on the logdata service: logdata is fetched by the device's image hash from `<logdata-url>/logdata/<domain>/<hash>`. Not set: no service lookups. */
   declare logdataDomain: string;
+  /** The logdata service (default `https://fw.unitcircle.ca`). */
   declare logdataUrl: string;
+  /** The hub the Connect dialog suggests, such as `ws://localhost:9000`. */
   declare hubUrl: string;
+  /** The views, comma-separated, from `log,terminal,commands,plots,device,fw-update` (default: all). */
   declare panels: string;
+  /** `tabs` or `grid` (all views at once). Not set: the user's choice (settings), tabs at first. */
   declare layout: string;
+  /** `auto` (follows the system), `light` or `dark`. */
   declare theme: string;
+  /** The key the user's settings are stored under (local storage). Give each element on a site its own. */
   declare storageKey: string;
+  /** A directory with `uclog-transport-worker.js` and `uclog-decode-worker.js` (the package's `dist/workers/`): load the workers from there instead of `blob:` URLs, for a CSP without `worker-src blob:`. */
   declare workerBase: string;
+  /** Fire `uc-log` with each batch of decoded logs. */
   declare emitLogs: boolean;
+  /** @internal */
   declare active: Panel;
+  /** @internal */
   declare conn: ConnectionState;
+  /** @internal */
   declare dark: boolean;
+  /** @internal */
   declare note: string;
+  /** @internal */
   declare errors: number;
+  /** @internal */
   declare logdataText: string;
+  /** @internal */
   declare menuOpen: boolean;
 
+  /** @internal */
   client!: Client;
+  /** @internal */
   settings!: SettingsStore;
   private notes: string[] = [];
   private noteTimer: ReturnType<typeof setTimeout> | undefined;
@@ -148,7 +207,9 @@ export class UcLog extends LitElement {
     this.menuOpen = false;
   }
 
-  /** The logdata service token (a property only, never an attribute). */
+  /** A token for the logdata service, if your account needs one to read logdata. A property only,
+   * never an attribute (so it is not in the page's HTML). Not set: the token the user saved in
+   * the settings, if any. */
   get logdataToken(): string | undefined {
     return this.token;
   }
@@ -316,6 +377,7 @@ export class UcLog extends LitElement {
     `,
   ];
 
+  /** @internal */
   connectedCallback() {
     super.connectedCallback();
     // A page that has <uc-log> before the bundle's script upgrades it while the bundle is still
@@ -340,12 +402,13 @@ export class UcLog extends LitElement {
     this.dispatchEvent(new CustomEvent('uc-ready', { bubbles: true, composed: true }));
   }
 
-  /** Resolves once the client is running (methods need it). */
+  /** Resolves once the element has started (`uc-ready`). The other methods wait for it. */
   ready(): Promise<void> {
     if (this.client) return Promise.resolve();
     return new Promise((r) => this.addEventListener('uc-ready', () => r(), { once: true }));
   }
 
+  /** @internal */
   disconnectedCallback() {
     super.disconnectedCallback();
     this.media.removeEventListener('change', this.onMedia);
@@ -365,6 +428,7 @@ export class UcLog extends LitElement {
     this.toggleAttribute('data-dark', this.dark);
   };
 
+  /** @internal */
   updated(ch: Map<string, unknown>) {
     if (ch.has('theme')) this.onMedia();
     if (ch.has('logdataDomain') || ch.has('logdataUrl') || ch.has('emitLogs')) this.configure();
@@ -456,28 +520,36 @@ export class UcLog extends LitElement {
   // Public API
   // -------------------------------------------------------------------------------------------
 
-  /** Connect: `ws://host:9000`, `loopback:`, `serial`/`hid`/`ble` (chooser), or a device object. */
+  /** Connect, replacing any open connection. `spec`: a hub (`ws://host:9000`, `wss://…`), the
+   * simulated device (`loopback:`, `loopback:rate=20`), `serial`, `hid` or `ble` to open the
+   * browser's chooser (call it from a click), or a `SerialPort`, `HIDDevice` or `BluetoothDevice`
+   * the page already has. */
   async connect(spec: LinkSpec) {
     await this.ready();
     return this.client.connect(spec);
   }
 
+  /** Close the connection. */
   async disconnect() {
     await this.ready();
     return this.client.disconnect();
   }
 
+  /** Send bytes or text to a device port: 61 is the terminal (end a line with `\r`). */
   send(port: number, data: Uint8Array | string) {
     this.client?.send(port, data);
   }
 
+  /** Load logdata (an ELF or a `.logdata` file) for this session. A file named
+   * `<image hash>.logdata` is also kept in the browser's cache for later sessions. */
   async loadLogdata(file: File | { name: string; data: Uint8Array }) {
     await this.ready();
     const data = file instanceof File ? await readFile(file) : file.data;
     return this.client.loadLogdata(file.name, data);
   }
 
-  /** Choose the image and start the update (connected) or wait for Start (not connected). */
+  /** Show the firmware update view with this image: the update starts if connected, or waits
+   * for Start. Needs the `fw-update` view. */
   async fwUpdate(name: string, data: Uint8Array) {
     await this.ready();
     if (!this.enabled.includes('fw-update')) throw new Error('the fw-update panel is not enabled');
@@ -486,7 +558,7 @@ export class UcLog extends LitElement {
     await (this.renderRoot.querySelector('uc-fw-update') as UcFwUpdate).startWith(name, data);
   }
 
-  /** Show the connect dialog (or the host's). */
+  /** Open the Connect dialog. */
   showPicker() {
     if (UcLog.host?.showConnect) return UcLog.host.showConnect();
     const p = this.renderRoot.querySelector('uc-device-picker') as UcDevicePicker;
@@ -494,7 +566,7 @@ export class UcLog extends LitElement {
     void p.show();
   }
 
-  /** Zip of the logs (CSV), the terminal text and every plot (CSV). */
+  /** Save a zip of the logs (CSV), the terminal text and every plot (CSV). */
   async exportAll() {
     const t = stamp();
     const term = this.renderRoot.querySelector('uc-terminal') as UcTerminal | null;
@@ -554,13 +626,13 @@ export class UcLog extends LitElement {
   private panel(p: Panel) {
     switch (p) {
       case 'log':
-        return html`<uc-log-view .client=${this.client} .settings=${this.settings} .host=${UcLog.host} ?dark=${this.dark}></uc-log-view>`;
+        return html`<uc-log-view exportparts="toolbar, table" .client=${this.client} .settings=${this.settings} .host=${UcLog.host} ?dark=${this.dark}></uc-log-view>`;
       case 'terminal':
-        return html`<uc-terminal .client=${this.client} .settings=${this.settings} ?dark=${this.dark}></uc-terminal>`;
+        return html`<uc-terminal exportparts="toolbar, terminal" .client=${this.client} .settings=${this.settings} ?dark=${this.dark}></uc-terminal>`;
       case 'commands':
-        return html`<uc-commands .client=${this.client} .settings=${this.settings}></uc-commands>`;
+        return html`<uc-commands exportparts="responses" .client=${this.client} .settings=${this.settings}></uc-commands>`;
       case 'plots':
-        return html`<uc-plots .client=${this.client} ?dark=${this.dark}></uc-plots>`;
+        return html`<uc-plots exportparts="plot-tabs, plot, toolbar" .client=${this.client} ?dark=${this.dark}></uc-plots>`;
       case 'device':
         return html`<uc-device-info .client=${this.client} .notes=${this.notes} .host=${UcLog.host}></uc-device-info>`;
       case 'fw-update':
@@ -568,6 +640,7 @@ export class UcLog extends LitElement {
     }
   }
 
+  /** @internal */
   render() {
     if (!this.client) return nothing;
     const panels = this.enabled;

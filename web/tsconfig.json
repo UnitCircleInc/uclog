@@ -15,7 +15,9 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
-    "noEmit": true
+    "noEmit": true,
+    // The package's source for type checks (dist has no declarations; apps/demo builds from dist).
+    "paths": { "@uclog/element": ["./packages/element/src/index.ts"] }
   },
   "include": ["packages/*/src", "packages/*/test", "packages/*/vite.config.ts", "apps/*/src", "apps/*/vite.config.ts", "apps/vscode/webview", "e2e", "vitest.config.ts", "playwright.config.ts"],
   "exclude": ["apps/vscode/src", "apps/vscode/test", "apps/vscode/scripts"]

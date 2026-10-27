@@ -8,7 +8,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@uclog/ui": "workspace:*",
-    "@uclog/workers": "workspace:*"
+    "@uclog/element": "workspace:*"
   }
 }

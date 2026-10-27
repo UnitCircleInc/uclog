@@ -66,12 +66,13 @@ function singleFile(): Plugin {
   };
 }
 
-export default defineConfig(({ mode }) =>
+// Both builds use @uclog/element as published (packages/element/dist: build it first). `vite`
+// (development) uses its source instead, so changes to the packages show at once.
+const fromSource = { alias: { '@uclog/element': join(import.meta.dirname, '../../packages/element/src/index.ts') } };
+
+export default defineConfig(({ command, mode }) =>
   mode === 'single'
     ? {
-        // Classic workers: a module worker from a blob: URL does not start in a file:// page
-        // (its origin is opaque).
-        worker: { format: 'iife' },
         build: {
           outDir: 'dist-single',
           emptyOutDir: true,
@@ -83,7 +84,7 @@ export default defineConfig(({ mode }) =>
     : {
         base: './', // relative: the app works under /app/ (or anywhere)
         server: { port: 5173, fs: { allow: ['../../..'] } },
-        worker: { format: 'es' },
+        resolve: command === 'serve' ? fromSource : {},
         build: { sourcemap: true },
         plugins: [serviceWorker()],
       },

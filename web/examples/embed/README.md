@@ -43,5 +43,6 @@ your page. Then add:
 
 The page must be a secure context (https, or localhost). Its CSP needs `worker-src blob:`, or
 `worker-base` pointing at the copied `workers/` folder. To embed it in an iframe, use
-`allow="serial; hid; bluetooth"`. The attributes, methods and events are listed in
-[web/README.md](../../README.md#embedding).
+`allow="serial; hid; bluetooth"`. The attributes, methods and events are on the docs site
+(*Embedding*, and the generated *Element reference*), which also shows this example's source.
+`e2e/embed.spec.ts` runs it, with each way of loading the bundle.

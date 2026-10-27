@@ -1,20 +1,16 @@
 // The built <uc-log> bundles on a third-party page (plan 02 §7): attributes, events, methods,
 // the IIFE with inlined workers under a CSP that allows `worker-src blob:`, and the ESM bundle
-// with `worker-base` (no blob: needed).
+// with `worker-base` (no blob: needed). Then examples/embed itself, as the docs show it, from its
+// own server (serve.mjs, with its CSP), with each way of loading the bundle.
 
-import { execSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { watchErrors } from './util.ts';
 
-const EL = join(import.meta.dirname, '../packages/element');
-const DIST = join(EL, 'dist');
+const DIST = join(import.meta.dirname, '../packages/element/dist'); // built by global-setup.ts
 const SAMPLE = readFileSync(join(import.meta.dirname, '../../spec/vectors/sample.logdata'));
-
-test.beforeAll(() => {
-  execSync('npx vite build && npx vite build --mode iife && npx vite build --mode workers', { cwd: EL, stdio: 'ignore' });
-});
 
 /** Serve a page and the bundle files under http://localhost:5199/embed/ (a secure context). */
 async function serve(page: Page, html: string, csp: string) {
@@ -69,6 +65,14 @@ test('IIFE bundle, inlined workers, CSP worker-src blob:', async ({ page }) => {
   );
   await page.goto('/embed/');
   await exercise(page);
+  // The documented parts reach into the views (exportparts): the page can style them.
+  await page.addStyleTag({ content: 'uc-log::part(table), uc-log::part(terminal), uc-log::part(toolbar) { outline: 3px solid rgb(1, 2, 3); }' });
+  const outlined = await page.evaluate(() => {
+    const deep = (root: Document | ShadowRoot, sel: string): Element[] =>
+      [...root.querySelectorAll(sel), ...[...root.querySelectorAll('*')].flatMap((e) => (e.shadowRoot ? deep(e.shadowRoot, sel) : []))];
+    return ['table', 'terminal', 'toolbar'].map((p) => deep(document, `[part~="${p}"]`).map((e) => getComputedStyle(e).outlineColor));
+  });
+  expect(outlined).toEqual([['rgb(1, 2, 3)'], ['rgb(1, 2, 3)'], ['rgb(1, 2, 3)', 'rgb(1, 2, 3)']]);
   expect(errors).toEqual([]);
 });
 
@@ -87,3 +91,38 @@ test('ESM bundle with worker-base (no blob: workers)', async ({ page }) => {
   await exercise(page);
   expect(errors).toEqual([]);
 });
+
+for (const variant of ['', '?bundle=iife', '?worker-base=1']) {
+  test(`examples/embed${variant}`, async ({ page }) => {
+    const errors = watchErrors(page);
+    const server = spawn('node', [join(import.meta.dirname, '../examples/embed/serve.mjs'), '--port', '0'], { stdio: ['ignore', 'pipe', 'inherit'] });
+    try {
+      const url = await new Promise<string>((resolve, reject) => {
+        server.stdout.on('data', (d) => {
+          const m = /http:\/\/localhost:\d+\//.exec(String(d));
+          if (m) resolve(m[0]);
+        });
+        server.on('exit', (c) => reject(new Error(`serve.mjs exited ${c}`)));
+      });
+      await page.goto(url + variant);
+      const events = page.locator('#events');
+      await expect(events).toContainText('uc-ready');
+      await page.getByRole('button', { name: 'Load sample.logdata' }).click();
+      await expect(events).toContainText('loadLogdata');
+      await page.getByRole('button', { name: 'Simulated device' }).click();
+      await expect(events).toContainText('uc-connect');
+      await expect(events).toContainText('uc-device-info');
+      await expect(events).toContainText(/uc-log "WARN src\/main\.c:\d+ temp=/, { timeout: 15_000 }); // warnings only
+      await page.getByRole('button', { name: 'send "echo hello"' }).click();
+      await page.locator('uc-log').getByRole('tab', { name: 'Terminal' }).click();
+      await expect(page.locator('.xterm-rows')).toContainText('hello');
+      await page.getByLabel('branding').check();
+      await expect.poll(() => page.locator('uc-log').evaluate((e) => getComputedStyle(e).getPropertyValue('--uc-accent').trim())).toBe('#0f766e');
+      await page.locator('#disc').click(); // the page's button (the element has one too)
+      await expect(events).toContainText('uc-disconnect');
+      expect(errors).toEqual([]);
+    } finally {
+      server.kill();
+    }
+  });
+}

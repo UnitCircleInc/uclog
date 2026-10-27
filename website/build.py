@@ -21,7 +21,8 @@ The site (mike's layout, plan 08 §3.2):
   /CNAME                uclog.unitcircle.ca
 
 The spec pages are generated from ../spec (one copy of the spec): links into the repository
-become links to GitHub at the version's tag (main for dev).
+become links to GitHub at the version's tag (main for dev). The <uc-log> reference is generated
+from the element's Custom Elements Manifest (`cem analyze` in ../web: needs its node_modules).
 """
 
 import argparse
@@ -106,12 +107,89 @@ def spec_page(src: Path, ref: str) -> str:
   return python_markdown_lists(re.sub(r'(\]\s?)\(([^)\s]+)\)', link, text))
 
 
+REFERENCE_PAGE = 'reference/uc-log.md'
+
+
+def one_line(text):
+  return ' '.join((text or '').split())
+
+
+def element_manifest() -> dict:
+  """<uc-log>'s Custom Elements Manifest, made now from the source (web/custom-elements-manifest.config.mjs)."""
+  web = ROOT / 'web'
+  if not (web / 'node_modules/.bin/cem').exists():
+    raise SystemExit('web/node_modules is missing: run `npx -y pnpm@12.10.1 install` in web/ first')
+  out = HERE / '.cache/cem'
+  out.mkdir(parents=True, exist_ok=True)
+  # --outdir is relative to web/ (the analyzer joins it to the working directory).
+  subprocess.run(['npx', 'cem', 'analyze', '--outdir', os.path.relpath(out, web)], cwd=web, check=True,
+                 stdout=subprocess.DEVNULL)
+  return json.loads((out / 'custom-elements.json').read_text(encoding='utf-8'))
+
+
+def element_reference(manifest: dict, ref: str) -> str:
+  """The reference page: attributes, properties, methods, events, parts and CSS properties."""
+  el = next(d for m in manifest['modules'] for d in m.get('declarations', []) if d.get('tagName') == 'uc-log')
+  src = f'{GITHUB}/blob/{ref}/web/packages/ui/src/uc-log.ts'
+  members = [m for m in el.get('members', []) if m.get('privacy', 'public') == 'public' and not m.get('static')]
+
+  def default(a):
+    d = a.get('default', '')
+    return f'`{d.strip(chr(39))}`' if re.fullmatch(r"'[^']+'|true|false|\d+", d) else ''
+
+  def typ(t):
+    return ' or '.join(f'`{x.strip()}`' for x in (t or {}).get('text', '').split('|') if x.strip())
+
+  lines = [
+    '# `<uc-log>` reference',
+    '',
+    f'{one_line(el.get("description"))} How to add it to a page: [Embedding](../embedding.md).',
+    '',
+    f'Generated from the element\'s source ([`uc-log.ts`]({src})) through its Custom Elements Manifest, '
+    'which the package also ships (`custom-elements.json`) for editors.',
+    '',
+    '## Attributes',
+    '',
+    'Each is also a property, named in camelCase (`logdata-domain`: `logdataDomain`).',
+    '',
+    '| Attribute | |',
+    '|---|---|',
+  ]
+  for a in el.get('attributes', []):
+    d = default(a)
+    lines.append(f'| `{a["name"]}` | {one_line(a.get("description"))}{f" Default: {d}." if d else ""} |')
+  props = [m for m in members if m['kind'] == 'field' and not m.get('attribute')]
+  if props:
+    lines += ['', '## Properties', '', '| Property | Type | |', '|---|---|---|']
+    for m in props:
+      lines.append(f'| `{m["name"]}` | {typ(m.get("type"))} | {one_line(m.get("description"))} |')
+  lines += ['', '## Methods', '']
+  for m in (m for m in members if m['kind'] == 'method'):
+    params = ', '.join(p['name'] for p in m.get('parameters', []))
+    lines += [f'### `{m["name"]}({params})`', '', one_line(m.get('description')), '']
+  lines += ['## Events', '', 'All bubble and are composed (they cross shadow roots).', '',
+            '| Event | |', '|---|---|']
+  for e in el.get('events', []):
+    lines.append(f'| `{e["name"]}` | {one_line(e.get("description"))} |')
+  lines += ['', '## CSS parts', '', 'Style them with `uc-log::part(name)`.', '', '| Part | |', '|---|---|']
+  for p in el.get('cssParts', []):
+    lines.append(f'| `{p["name"]}` | {one_line(p.get("description"))} |')
+  lines += ['', '## CSS custom properties', '', 'Set them on the element, for example `uc-log { --uc-accent: #0b6e4f; }`.', '',
+            '| Property | |', '|---|---|']
+  for p in el.get('cssProperties', []):
+    lines.append(f'| `{p["name"]}` | {one_line(p.get("description"))} |')
+  return '\n'.join(lines) + '\n'
+
+
 def generate(version):
   ref = ref_for(version)
   for page, src in SPEC_PAGES.items():
     out = HERE / 'docs' / page
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(spec_page(ROOT / src, ref), encoding='utf-8')
+  out = HERE / 'docs' / REFERENCE_PAGE
+  out.parent.mkdir(parents=True, exist_ok=True)
+  out.write_text(element_reference(element_manifest(), ref), encoding='utf-8')
 
 
 def zensical(*args, env=None):

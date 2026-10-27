@@ -128,9 +128,9 @@ export class UcPlots extends LitElement {
           ? nothing
           : a.kind === 'line'
             ? this.lineReady
-              ? html`<uc-line-plot .client=${this.client} .name=${a.name} ?dark=${this.dark}></uc-line-plot>`
+              ? html`<uc-line-plot exportparts="plot, toolbar" .client=${this.client} .name=${a.name} ?dark=${this.dark}></uc-line-plot>`
               : html`<div class="empty muted">Loading…</div>`
-            : html`<uc-grid-plot .client=${this.client} .name=${a.name} ?dark=${this.dark}></uc-grid-plot>`}
+            : html`<uc-grid-plot exportparts="plot, toolbar" .client=${this.client} .name=${a.name} ?dark=${this.dark}></uc-grid-plot>`}
       </div>
     `;
   }

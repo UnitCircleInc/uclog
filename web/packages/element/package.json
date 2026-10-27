@@ -11,9 +11,10 @@
     "./iife": "./dist/uclog-element.iife.js",
     "./workers/*": "./dist/workers/*"
   },
+  "customElements": "./dist/custom-elements.json",
   "files": ["dist"],
   "scripts": {
-    "build": "vite build && vite build --mode iife && vite build --mode workers"
+    "build": "vite build && vite build --mode iife && vite build --mode workers && cd ../.. && cem analyze"
   },
   "dependencies": {
     "@uclog/ui": "workspace:*",

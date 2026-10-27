@@ -1,3 +1,8 @@
 packages:
   - packages/*
   - apps/*
+
+# Dependencies whose install scripts are not run. rs-module-lexer (from the Custom Elements
+# Manifest analyzer) ships prebuilt binaries; `cem analyze` works without its script.
+allowBuilds:
+  rs-module-lexer: false

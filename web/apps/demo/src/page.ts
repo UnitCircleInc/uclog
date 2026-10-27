@@ -5,7 +5,7 @@
 // (?hub-url=ws://host:9000&theme=dark&layout=grid&logdata-domain=…), and ?connect=… connects.
 // Shared by the hosted app (main.ts) and the one-file app (single.ts).
 
-import type { UcLog } from '@uclog/ui';
+import type { UcLog } from '@uclog/element';
 
 export function startPage(storageKey: string, sampleLogdata: string): UcLog {
   const el = document.createElement('uc-log') as UcLog;
