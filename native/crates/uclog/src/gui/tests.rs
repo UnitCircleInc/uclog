@@ -90,6 +90,42 @@ fn logs_terminal_device_and_status() {
 }
 
 #[test]
+fn terminal_character_mode() {
+    let mut r = rig("loopback:rate=0", false, Settings::default());
+    r.until("connected", |a| a.conn.uri.is_some());
+    r.h.state_mut().focus(Tab::Terminal);
+    r.h.state_mut().term_view.char_mode = true;
+    r.h.step();
+    r.h.ctx.memory_mut(|m| m.request_focus(egui::Id::new("term-chars")));
+    r.h.step();
+    // Each key goes at once: no line is kept, and nothing reaches the history.
+    for c in "help".chars() {
+        r.h.event(egui::Event::Text(c.to_string()));
+        r.h.step();
+    }
+    r.h.key_press(egui::Key::Enter);
+    r.until("help reply", |a| a.term.text().contains("loopback commands"));
+    assert!(r.h.state().term_view.char_focus);
+    assert!(r.h.state().settings.terminal.history.is_empty());
+}
+
+#[test]
+fn character_mode_keys() {
+    use super::views::term::event_bytes;
+    use egui::{Event, Key, Modifiers};
+    let key = |key, modifiers| Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
+    assert_eq!(event_bytes(&Event::Text("é".into())), Some("é".as_bytes().to_vec()));
+    assert_eq!(event_bytes(&key(Key::Enter, Modifiers::NONE)), Some(b"\r".to_vec()));
+    assert_eq!(event_bytes(&key(Key::ArrowUp, Modifiers::NONE)), Some(b"\x1b[A".to_vec()));
+    assert_eq!(event_bytes(&key(Key::C, Modifiers::CTRL)), Some(vec![3]));
+    assert_eq!(event_bytes(&key(Key::L, Modifiers::CTRL)), Some(vec![12]));
+    assert_eq!(event_bytes(&key(Key::C, Modifiers::NONE)), None); // its Text event carries it
+    assert_eq!(event_bytes(&key(Key::C, Modifiers::CTRL | Modifiers::ALT)), None); // AltGr
+    assert_eq!(event_bytes(&Event::Paste("a\nb".into())), Some(b"a\rb".to_vec()));
+    assert_eq!(event_bytes(&Event::Copy), (!cfg!(target_os = "macos")).then(|| vec![3]));
+}
+
+#[test]
 fn plots_open_tabs_without_stealing_focus() {
     let mut r = rig("loopback:rate=0", false, Settings::default());
     r.until("connected", |a| a.conn.connected());

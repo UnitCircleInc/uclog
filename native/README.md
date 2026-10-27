@@ -106,6 +106,8 @@ uclog gui -d loopback: -l spec/vectors/sample.logdata   # simulated device; type
   - Error records are always shown, with counters.
 - **Terminal:**
   - ANSI colours, scrollback, an input line with history, and the configured buttons.
+  - *Character mode*: each key goes to the device at once (Ctrl keys, arrows, Tab and Esc too;
+    with its focus, on Linux and Windows Ctrl+K/L/E are the device's, not the app's shortcuts).
   - Semihost stdout and stderr appear here, and stdin reads take the next line.
 - **Commands:**
   - Buttons from the settings, with their `$arg` fields beside them.

@@ -147,6 +147,11 @@ pub struct TermView {
     /// Position while browsing history (`None` = editing a new line).
     pub hist: Option<usize>,
     pub stdin_wanted: bool,
+    /// Character mode: each key goes to the device at once (as the TUI's Ctrl+T).
+    pub char_mode: bool,
+    /// The character-mode input had the focus last frame: on Linux and Windows its Ctrl keys
+    /// (Ctrl+K, Ctrl+L, …) go to the device rather than to the app's shortcuts.
+    pub char_focus: bool,
 }
 
 #[derive(Default)]
@@ -546,6 +551,9 @@ impl GuiApp {
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
         use egui::{Key, KeyboardShortcut, Modifiers};
+        if self.term_view.char_focus && !cfg!(target_os = "macos") {
+            return; // Ctrl+letter is the device's (macOS's shortcuts are ⌘)
+        }
         let k = |m, key| KeyboardShortcut::new(m, key);
         if ctx.input_mut(|i| i.consume_shortcut(&k(Modifiers::COMMAND, Key::K))) {
             self.open_connect();

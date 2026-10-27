@@ -1,5 +1,6 @@
-//! Terminal view (port 61): ANSI colours, scrollback, an input line with history, and the
-//! configured buttons. Semihost stdout/stderr appears here too, and stdin reads take the next line.
+//! Terminal view (port 61): ANSI colours, scrollback, an input line with history (or character
+//! mode: each key sent at once), and the configured buttons. Semihost stdout/stderr appears here
+//! too, and stdin reads take the next line.
 
 use egui::text::LayoutJob;
 use egui::{Color32, FontId, RichText, TextFormat, Ui};
@@ -78,6 +79,10 @@ pub fn ui(app: &mut GuiApp, ui: &mut Ui) {
             let t = app.term.text();
             app.export("terminal.txt", &t);
         }
+        ui.separator();
+        ui.checkbox(&mut app.term_view.char_mode, "Character mode").on_hover_text(
+            "Each key goes to the device at once, Ctrl keys and arrows included (for shells and editors on the device)",
+        );
     });
     ui.separator();
     let font = FontId::monospace(ui.text_style_height(&egui::TextStyle::Monospace) - 2.0);
@@ -99,7 +104,83 @@ pub fn ui(app: &mut GuiApp, ui: &mut Ui) {
     input(app, ui);
 }
 
+/// Bytes for one input event in character mode: the TUI's `key_bytes` (and `uclog term --raw`).
+pub fn event_bytes(ev: &egui::Event) -> Option<Vec<u8>> {
+    use egui::{Event, Key};
+    Some(match ev {
+        Event::Text(t) => t.as_bytes().to_vec(),
+        Event::Paste(t) => t.replace("\r\n", "\r").replace('\n', "\r").into_bytes(),
+        // Where Ctrl is the command key, egui turns Ctrl+C and Ctrl+X into Copy and Cut.
+        Event::Copy if !cfg!(target_os = "macos") => vec![0x03],
+        Event::Cut if !cfg!(target_os = "macos") => vec![0x18],
+        Event::Key { key, pressed: true, modifiers, .. } => {
+            if modifiers.ctrl && !modifiers.alt {
+                if let [c @ b'A'..=b'Z'] = key.name().as_bytes() {
+                    return Some(vec![c - b'A' + 1]);
+                }
+            }
+            match key {
+                Key::Enter => b"\r".to_vec(),
+                Key::Backspace => vec![0x7F],
+                Key::Tab => b"\t".to_vec(),
+                Key::Escape => vec![0x1B],
+                Key::ArrowUp => b"\x1b[A".to_vec(),
+                Key::ArrowDown => b"\x1b[B".to_vec(),
+                Key::ArrowRight => b"\x1b[C".to_vec(),
+                Key::ArrowLeft => b"\x1b[D".to_vec(),
+                Key::Home => b"\x1b[H".to_vec(),
+                Key::End => b"\x1b[F".to_vec(),
+                Key::Delete => b"\x1b[3~".to_vec(),
+                _ => return None,
+            }
+        }
+        _ => return None,
+    })
+}
+
+/// Character mode's input: a strip that takes the keyboard focus when clicked.
+fn char_input(app: &mut GuiApp, ui: &mut Ui) {
+    let id = egui::Id::new("term-chars");
+    let size = egui::vec2(ui.available_width(), ui.spacing().interact_size.y + 4.0);
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    let r = ui.interact(rect, id, egui::Sense::click());
+    if r.clicked() {
+        r.request_focus();
+    }
+    let focused = r.has_focus();
+    app.term_view.char_focus = focused;
+    if focused {
+        // Tab, the arrows and Esc are the device's too, not the focus's.
+        let filter = egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: true };
+        ui.memory_mut(|m| m.set_focus_lock_filter(id, filter));
+        let bytes: Vec<u8> = ui.input(|i| i.events.iter().filter_map(event_bytes).flatten().collect());
+        if !bytes.is_empty() {
+            app.send(ports::TERMINAL, bytes);
+        }
+    }
+    let v = ui.visuals();
+    let (stroke, text) = if focused {
+        (v.selection.stroke, "Character mode: each key goes to the device. Click elsewhere to stop.")
+    } else {
+        (v.widgets.inactive.bg_stroke, "Character mode: click here, then type.")
+    };
+    ui.painter().rect_stroke(rect.shrink(1.0), 3.0, stroke, egui::StrokeKind::Inside);
+    ui.painter().text(
+        rect.left_center() + egui::vec2(8.0, 0.0),
+        egui::Align2::LEFT_CENTER,
+        text,
+        egui::TextStyle::Body.resolve(ui.style()),
+        v.weak_text_color(),
+    );
+}
+
 fn input(app: &mut GuiApp, ui: &mut Ui) {
+    // A stdin read takes a line, also in character mode.
+    if app.term_view.char_mode && !app.term_view.stdin_wanted {
+        char_input(app, ui);
+        return;
+    }
+    app.term_view.char_focus = false;
     ui.horizontal(|ui| {
         let prompt = if app.term_view.stdin_wanted {
             RichText::new("stdin ›").color(Color32::from_rgb(230, 190, 70))

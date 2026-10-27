@@ -20,6 +20,7 @@ uclog gui -d tcp://lab-pc:9000 -l build/app.elf --files-dir ./files
   export. Double-click a row to show only its source; right-click for more, and to colour a
   source.
 - **Terminal:** ANSI colours, history and buttons; the device's `printf()` (semihost) appears here.
+  **Character mode** sends each key at once, Ctrl keys and arrows included, for a shell on the device.
 - **Commands:** buttons from the settings, and a free line (text, or JSON sent as CBOR).
 - **Plots:** up to three y axes, cursors with Δx, markers, heatmaps; CSV export.
 - **Device:** what the device reports, the logdata in use, counters. *Load logdata…* also keeps
