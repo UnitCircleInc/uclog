@@ -34,6 +34,9 @@ nav = [
   ] },
   { "Protocol" = [
     { "Wire protocol" = "protocol/index.md" },
+  ] },
+  { "Releases" = [
+    { "Release notes" = "releases.md" },
     { "Compatibility" = "protocol/compatibility.md" },
   ] },
 ]

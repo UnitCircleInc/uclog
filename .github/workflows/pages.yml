@@ -3,7 +3,8 @@
 #   (/latest/ = the newest that is not a pre-release; / redirects there);
 # - the web app at /app/ (with its service worker), and the one-file app (/app/uclog-app.html, and
 #   uclog-app-N.html per release);
-# - <uc-log> as one script: /element/dev/, /element/N/ per release, /element/latest/.
+# - <uc-log> as one script: /element/dev/, /element/N/ per release, /element/latest/;
+# - /download/: every release's files with checksums and signing (uclog-release-N.json).
 # A Pages deploy replaces the whole site, so each one fetches the releases' parts again. Pull
 # requests only build it. Pages: Settings → Pages → Source "GitHub Actions", custom domain
 # uclog.unitcircle.ca, HTTPS enforced (DNS: CNAME uclog → unitcircleinc.github.io).
@@ -31,6 +32,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the tags: the Releases page (scripts/releases.py)
       - uses: astral-sh/setup-uv@v6
       - uses: actions/setup-node@v4
         with:
@@ -53,7 +56,8 @@ jobs:
           mkdir -p build/releases
           for tag in $(gh release list --exclude-drafts --limit 200 --json tagName --jq '.[].tagName' | grep -E '^v[0-9]'); do
             gh release download "$tag" -D "build/releases/$tag" \
-              -p 'uclog-docs-*.tar.gz' -p 'uclog-app-*.html' -p 'uclog-element-*.iife.js' || true
+              -p 'uclog-docs-*.tar.gz' -p 'uclog-app-*.html' -p 'uclog-element-*.iife.js' \
+              -p 'uclog-release-*.json' || true
           done
           ls -R build/releases
       - name: Assemble
@@ -61,12 +65,14 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           docs=(build/releases/*/uclog-docs-*.tar.gz)
+          manifests=(build/releases/*/uclog-release-*.json)
           apps=() elements=("dev=web/packages/element/dist/uclog-element.iife.js")
           for f in build/releases/*/uclog-app-*.html; do n=${f##*/uclog-app-}; apps+=("${n%.html}=$f"); done
           for f in build/releases/*/uclog-element-*.iife.js; do n=${f##*/uclog-element-}; elements+=("${n%.iife.js}=$f"); done
           uv run --project website python website/build.py assemble build/site --dev build/dev \
             --app web/apps/demo/dist ${docs:+--release-docs "${docs[@]}"} \
-            ${apps:+--app-file "${apps[@]}"} --element "${elements[@]}"
+            ${apps:+--app-file "${apps[@]}"} --element "${elements[@]}" \
+            ${manifests:+--release-manifests "${manifests[@]}"}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/site

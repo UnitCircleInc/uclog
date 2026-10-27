@@ -14,7 +14,7 @@ All of them read the same devices and the same logdata; use the one that fits wh
 |---|---|
 | [Web app](web-app.md) | Nothing: open [uclog.unitcircle.ca/app/](https://uclog.unitcircle.ca/app/) in Chrome or Edge. It also works offline, and as one downloadable file |
 | [VS Code](vscode.md) | The **ucLog** extension (Unit Circle) from the extensions view, or the `.vsix` from a [release](https://github.com/UnitCircleInc/uclog/releases) (*Install from VSIX…*). It brings its own `uclog-hub` |
-| [`uclog`](cli.md): GUI, TUI and command line | The archive for your platform from a [release](https://github.com/UnitCircleInc/uclog/releases): `uclog` and [`uclog-hub`](hub.md) |
+| [`uclog`](cli.md): GUI, TUI and command line | The archive for your platform from the [download page](https://uclog.unitcircle.ca/download/) (or a [GitHub release](https://github.com/UnitCircleInc/uclog/releases)): `uclog` and [`uclog-hub`](hub.md) |
 | [Python](python.md) | `pip install uclog` (the wheel includes `uclog-hub`) |
 
 The release archives are `uclog-vN-<platform>.tar.gz` (Linux, macOS) or `.zip` (Windows), for
