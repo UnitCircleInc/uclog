@@ -208,6 +208,16 @@ def host_decode(frames, elf):
           'machine': f'{platform.system()} {platform.machine()}, Python {platform.python_version()}'}
 
 
+def firmware_commit() -> str:
+  """The commit the firmware was built from: this tree's (build it from a clean checkout), with
+  -dirty if the firmware's sources (firmware/, device/; not this script) have changed."""
+  git = ['git', '-C', str(ROOT)]
+  sha = subprocess.run([*git, 'rev-parse', '--short', 'HEAD'], capture_output=True, text=True).stdout.strip()
+  changed = subprocess.run([*git, 'status', '--porcelain', '--', 'firmware', 'device', ':!firmware/bench.py'],
+                           capture_output=True, text=True).stdout.strip()
+  return sha + ('-dirty' if changed else '')
+
+
 def main():
   ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
   ap.add_argument('--board-dir', required=True, help='firmware/<board> (its Makefile: the CPU flags)')
@@ -220,9 +230,7 @@ def main():
   elf = Path(a.build) / 'app.elf'
   cc, cpu = board_flags(a.board_dir)
   result = {'date': datetime.date.today().isoformat(),
-            # the commit the firmware was built from (this tree: build it from a clean checkout)
-            'firmware': subprocess.run(['git', '-C', str(ROOT), 'describe', '--always', '--dirty',
-                                        '--exclude', '*'], capture_output=True, text=True).stdout.strip(),
+            'firmware': firmware_commit(),
             'cpu': a.cpu_name or next((f[6:] for f in cpu if f.startswith('-mcpu=')), '?'),
             'links': [], 'round_trip': {}}
   for i, uri in enumerate(a.device):

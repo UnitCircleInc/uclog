@@ -1,6 +1,6 @@
 {
  "date": "2026-10-27",
- "firmware": "v2-68-g88958e2-dirty",
+ "firmware": "f4fab54",
  "cpu": "Cortex-M0+",
  "links": [
   {
@@ -16,27 +16,27 @@
    "link": "cdc",
    "logs": 2000,
    "bytes": 38000,
-   "ms": 83,
+   "ms": 82,
    "dropped": 0,
-   "bytes_per_s": 457831,
-   "logs_per_s": 24096
+   "bytes_per_s": 463415,
+   "logs_per_s": 24390
   },
   {
    "link": "hid",
    "logs": 2000,
    "bytes": 38000,
-   "ms": 603,
+   "ms": 604,
    "dropped": 0,
-   "bytes_per_s": 63018,
-   "logs_per_s": 3317
+   "bytes_per_s": 62914,
+   "logs_per_s": 3311
   }
  ],
  "round_trip": {
   "uart": {
    "bytes": 16,
    "n": 50,
-   "median_ms": 2.02,
-   "p90_ms": 2.61
+   "median_ms": 2.0,
+   "p90_ms": 2.76
   },
   "cdc": {
    "bytes": 16,
@@ -47,8 +47,8 @@
   "hid": {
    "bytes": 16,
    "n": 50,
-   "median_ms": 8.97,
-   "p90_ms": 9.65
+   "median_ms": 9.09,
+   "p90_ms": 10.08
   }
  },
  "board": "nucleo_c071rb",
@@ -81,7 +81,7 @@
    "wire": 15,
    "text": 20,
    "log_min": 1204,
-   "log_avg": 1231,
+   "log_avg": 1230,
    "printf_min": 2509,
    "printf_avg": 2534
   },
@@ -92,8 +92,8 @@
    "text": 28,
    "log_min": 1567,
    "log_avg": 1592,
-   "printf_min": 4968,
-   "printf_avg": 5072
+   "printf_min": 4967,
+   "printf_avg": 5046
   },
   {
    "id": "float1",
@@ -101,9 +101,9 @@
    "wire": 15,
    "text": 19,
    "log_min": 1153,
-   "log_avg": 1230,
+   "log_avg": 1153,
    "printf_min": 9994,
-   "printf_avg": 10071
+   "printf_avg": 10281
   },
   {
    "id": "double1",
@@ -113,7 +113,7 @@
    "log_min": 1128,
    "log_avg": 1128,
    "printf_min": 10906,
-   "printf_avg": 11138
+   "printf_avg": 11113
   },
   {
    "id": "str1",
@@ -123,7 +123,7 @@
    "log_min": 1319,
    "log_avg": 1319,
    "printf_min": 1479,
-   "printf_avg": 1660
+   "printf_avg": 1479
   },
   {
    "id": "mixed4",
@@ -131,14 +131,14 @@
    "wire": 36,
    "text": 53,
    "log_min": 2318,
-   "log_avg": 2369,
+   "log_avg": 2370,
    "printf_min": 22002,
-   "printf_avg": 22389
+   "printf_avg": 22400
   }
  ],
  "host_decode": {
-  "python_logs_per_s": 175939,
-  "native_logs_per_s": 758356,
+  "python_logs_per_s": 261231,
+  "native_logs_per_s": 369268,
   "machine": "Darwin arm64, Python 3.14.7"
  },
  "footprint": {

@@ -1,6 +1,6 @@
 {
  "date": "2026-10-27",
- "firmware": "v2-68-g88958e2-dirty",
+ "firmware": "f4fab54",
  "cpu": "Cortex-M4F",
  "links": [
   {
@@ -17,8 +17,8 @@
   "uart": {
    "bytes": 16,
    "n": 50,
-   "median_ms": 2.8,
-   "p90_ms": 3.09
+   "median_ms": 2.18,
+   "p90_ms": 3.01
   }
  },
  "board": "nucleo_l452re_p",
@@ -53,7 +53,7 @@
    "log_min": 1084,
    "log_avg": 1090,
    "printf_min": 2320,
-   "printf_avg": 2332
+   "printf_avg": 2331
   },
   {
    "id": "int4",
@@ -91,9 +91,9 @@
    "wire": 16,
    "text": 22,
    "log_min": 1280,
-   "log_avg": 1291,
+   "log_avg": 1296,
    "printf_min": 1462,
-   "printf_avg": 1466
+   "printf_avg": 1462
   },
   {
    "id": "mixed4",
@@ -103,12 +103,12 @@
    "log_min": 2014,
    "log_avg": 2014,
    "printf_min": 14615,
-   "printf_avg": 14655
+   "printf_avg": 14666
   }
  ],
  "host_decode": {
-  "python_logs_per_s": 154975,
-  "native_logs_per_s": 744441,
+  "python_logs_per_s": 179385,
+  "native_logs_per_s": 746211,
   "machine": "Darwin arm64, Python 3.14.7"
  },
  "footprint": {
