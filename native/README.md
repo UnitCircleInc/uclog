@@ -221,8 +221,9 @@ uclog hub -d loopback:rate=10 --port 0 --json-ready --exit-on-stdin-eof   # simu
 Linux builds need `pkg-config`, `libudev-dev` and `libdbus-1-dev`. `packaging/linux/70-uclog.rules` gives users
 access to Zephyr USB devices.
 
-On macOS, `build.rs` embeds `packaging/macos/Info.plist` into both executables. Its
-`NSBluetoothAlwaysUsageDescription` lets CoreBluetooth work from the command line.
+On macOS, `build.rs` embeds `packaging/macos/Info.plist` into `uclog` and `Info-hub.plist` into
+`uclog-hub` (their signing identifiers, `ca.unitcircle.uclog` and `ca.unitcircle.uclog-hub`).
+Their `NSBluetoothAlwaysUsageDescription` lets CoreBluetooth work from the command line.
 
 ### Windows
 
@@ -266,5 +267,17 @@ Tested on WSL2 with Ubuntu 22.04 (2026-10-25). Install the Linux packages above 
 ### Releases
 
 Release builds: `.github/workflows/release.yml` runs on a `v*` tag and builds Linux, macOS and
-Windows (x64 and arm64) archives with checksums. Code signing, notarisation and armv7 are not set
-up yet.
+Windows (x64 and arm64) archives with checksums. Its `macos` job runs
+`packaging/macos/release.sh`: it signs `uclog` and `uclog-hub` (hardened runtime) and builds
+**ucLog.app**, a universal `uclog` that starts the GUI when opened from the Finder, in
+`uclog-vN-macos.dmg`; it notarises and staples them. To check it locally, with the Developer ID
+certificate in the keychain and a notarytool profile:
+
+```sh
+MACOS_SIGN_IDENTITY="Developer ID Application: Unit Circle Inc. (6CQYR849L3)" \
+NOTARY_PROFILE=uclog-notary packaging/macos/release.sh vN ARM64.tar.gz X64.tar.gz OUT_DIR
+```
+
+Without `NOTARY_PROFILE` it signs but does not notarise (nothing is sent to Apple). The app's icon
+is `packaging/macos/ucLog.icns`, made from `icon.svg` by `icon.sh`. Windows signing and armv7 are
+not set up yet.

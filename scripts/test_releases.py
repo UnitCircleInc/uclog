@@ -71,7 +71,7 @@ class Releases(unittest.TestCase):
     d.mkdir()
     for name in ['uclog-v4-linux-x64.tar.gz', 'uclog-v4-windows-arm64.zip', 'uclog-v4-linux-x64.tar.gz.sha256',
                  'uclog-4.vsix', 'uclog-4-py3-none-any.whl', 'uclog-4.tar.gz', 'uclog-app-4.html',
-                 'uclog-element-4.iife.js', 'uclog-docs-4.tar.gz']:
+                 'uclog-element-4.iife.js', 'uclog-docs-4.tar.gz', 'uclog-v4-macos.dmg']:
       (d / name).write_bytes(b'abc')
     os.environ.pop('UCLOG_SIGNED_MACOS', None)
     m = json.loads(json.dumps(releases.manifest('v4', d)))
@@ -80,6 +80,7 @@ class Releases(unittest.TestCase):
     self.assertEqual(kinds['uclog-v4-windows-arm64.zip'], ('archive', 'windows-arm64'))
     self.assertEqual(kinds['uclog-4.tar.gz'], ('python', None))
     self.assertEqual(kinds['uclog-docs-4.tar.gz'], ('docs', None))
+    self.assertEqual(kinds['uclog-v4-macos.dmg'], ('dmg', 'macos'))
     self.assertNotIn('uclog-v4-linux-x64.tar.gz.sha256', kinds)
     self.assertEqual(m['assets'][0]['sha256'],
                      'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')  # "abc"

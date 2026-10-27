@@ -101,8 +101,19 @@ pub fn default_cache_dir() -> Option<PathBuf> {
     }
 }
 
+/// The arguments; with none, from ucLog.app (Finder, the Dock: packaging/macos/release.sh), `gui`.
+fn args() -> Vec<std::ffi::OsString> {
+    #[allow(unused_mut)]
+    let mut a: Vec<_> = std::env::args_os().collect();
+    #[cfg(all(target_os = "macos", feature = "gui"))]
+    if a.len() == 1 && std::env::current_exe().is_ok_and(|p| p.parent().is_some_and(|d| d.ends_with("Contents/MacOS"))) {
+        a.push("gui".into());
+    }
+    a
+}
+
 fn main() -> std::process::ExitCode {
-    let cli = Cli::parse();
+    let cli = Cli::parse_from(args());
     // The hub reports connections at info level; the client tools are quiet by default.
     let is_hub = matches!(cli.cmd, Command::Hub(_));
     // btleplug logs at error level for things it then reports as Ok (CoreBluetooth: disconnecting a

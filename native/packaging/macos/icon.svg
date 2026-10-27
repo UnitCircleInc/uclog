@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- ucLog.app's icon (icon.sh makes ucLog.icns from it): the site's logo (website/docs/assets/favicon.svg)
+       on the macOS icon grid, an 824 px rounded square with room for its shadow. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBF8F2"/><stop offset="1" stop-color="#EAE3D5"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)" filter="url(#shadow)"/>
+  <g transform="translate(232 232) scale(35)">
+    <path fill="#1C1B19" d="M13.95 5.51A6.45 6.45 0 1 1 10.49 2.05A2.65 2.65 0 0 0 8.855 4.658A3.45 3.45 0 1 0 11.342 7.145A2.65 2.65 0 0 0 13.95 5.51Z"/>
+    <circle fill="#9B1C22" cx="11.5" cy="4.5" r="1.65"/>
+  </g>
+</svg>

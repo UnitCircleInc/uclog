@@ -194,6 +194,14 @@ mod tests {
     use crossterm::event::KeyModifiers;
 
     #[test]
+    fn no_image_search_from_home_or_above() {
+        // From `/` or the home directory it would read the user's protected folders (macOS asks).
+        assert!(signed_images(std::path::Path::new("/"), 4).is_empty());
+        let home = directories::BaseDirs::new().unwrap().home_dir().to_path_buf();
+        assert!(signed_images(&home, 4).is_empty());
+    }
+
+    #[test]
     fn browse_complete_choose() {
         let d = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(d.path().join("build/zephyr")).unwrap();

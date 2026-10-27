@@ -14,7 +14,7 @@ All of them read the same devices and the same logdata; use the one that fits wh
 |---|---|
 | [Web app](web-app.md) | Nothing: open [uclog.unitcircle.ca/app/](https://uclog.unitcircle.ca/app/) in Chrome or Edge. It also works offline, and as one downloadable file |
 | [VS Code](vscode.md) | The **ucLog** extension (Unit Circle) from the extensions view, or the `.vsix` from a [release](https://github.com/UnitCircleInc/uclog/releases) (*Install from VSIX…*). It brings its own `uclog-hub` |
-| [`uclog`](cli.md): GUI, TUI and command line | The archive for your platform from the [download page](https://uclog.unitcircle.ca/download/) (or a [GitHub release](https://github.com/UnitCircleInc/uclog/releases)): `uclog` and [`uclog-hub`](hub.md) |
+| [`uclog`](cli.md): GUI, TUI and command line | The archive for your platform from the [download page](https://uclog.unitcircle.ca/download/) (or a [GitHub release](https://github.com/UnitCircleInc/uclog/releases)): `uclog` and [`uclog-hub`](hub.md). On macOS the GUI is also an app, **ucLog.app**, in `uclog-vN-macos.dmg` |
 | [Python](python.md) | `pip install uclog` (the wheel includes `uclog-hub`) |
 
 The release archives are `uclog-vN-<platform>.tar.gz` (Linux, macOS) or `.zip` (Windows), for
@@ -25,8 +25,10 @@ x64 and arm64, each with a `.sha256`. Put the two programs on your `PATH`.
   say, then replug.
 - **Windows:** the programs are not code-signed yet, so SmartScreen may stop the first run: choose
   *More info*, then *Run anyway*. Check the archive against its `.sha256` first.
-- **macOS:** Bluetooth needs the permission macOS asks for on the first scan (System Settings →
-  Privacy & Security → Bluetooth, for the terminal app you run `uclog` in).
+- **macOS:** the programs and ucLog.app are signed and notarised. Open the `.dmg` and drag ucLog
+  to Applications. Bluetooth needs the permission macOS asks for on the first scan (System
+  Settings → Privacy & Security → Bluetooth: for ucLog, or for the terminal app you run `uclog`
+  in).
 
 ## 2. Try the simulated device
 

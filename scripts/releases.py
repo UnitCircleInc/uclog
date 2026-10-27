@@ -132,6 +132,8 @@ def kind_of(name, tag):
   for p in PLATFORMS:
     if name in (f'uclog-{tag}-{p}.tar.gz', f'uclog-{tag}-{p}.zip'):
       return 'archive', p
+  if name == f'uclog-{tag}-macos.dmg':
+    return 'dmg', 'macos'
   if name.endswith('.vsix'):
     return 'vsix', None
   if name.endswith('.whl') or (name.endswith('.tar.gz') and name.startswith(f'uclog-{solover.pep440(n)}.')):

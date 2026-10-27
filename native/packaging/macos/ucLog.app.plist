@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- ucLog.app's Contents/Info.plist (release.sh fills in the version). The app runs `uclog gui`: uclog
+     starts the GUI when it is started with no arguments from an app bundle. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>ca.unitcircle.uclog.app</string>
+  <key>CFBundleName</key>
+  <string>ucLog</string>
+  <key>CFBundleDisplayName</key>
+  <string>ucLog</string>
+  <key>CFBundleExecutable</key>
+  <string>uclog</string>
+  <key>CFBundleIconFile</key>
+  <string>ucLog</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleShortVersionString</key>
+  <string>@VERSION@</string>
+  <key>CFBundleVersion</key>
+  <string>@BUILD@</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>10.12</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.developer-tools</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSHumanReadableCopyright</key>
+  <string>© 2026 Unit Circle Inc.</string>
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>ucLog connects to ucLog devices over Bluetooth Low Energy.</string>
+</dict>
+</plist>

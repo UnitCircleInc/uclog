@@ -178,8 +178,21 @@ pub fn timestamp() -> String {
     format!("{y:04}{m:02}{d:02}-{:02}{:02}{:02}", secs / 3600, secs / 60 % 60, secs % 60)
 }
 
-/// `zephyr.signed.bin` files under `root` (build directories), at most `depth` levels down.
+/// The working directory, or the home directory when it is `/` (ucLog.app started from the Finder).
+pub fn start_dir() -> PathBuf {
+    match std::env::current_dir() {
+        Ok(d) if d.parent().is_some() => d,
+        _ => directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()).unwrap_or_default(),
+    }
+}
+
+/// `zephyr.signed.bin` files under `root` (build directories), at most `depth` levels down. None
+/// from the home directory or above: that would read the user's folders, and macOS asks for each
+/// protected one (Documents, Music, Photos, ...).
 pub fn signed_images(root: &Path, depth: usize) -> Vec<PathBuf> {
+    if directories::BaseDirs::new().is_some_and(|b| b.home_dir().starts_with(root)) {
+        return vec![];
+    }
     fn walk(d: &Path, depth: usize, out: &mut Vec<PathBuf>) {
         let Ok(rd) = std::fs::read_dir(d) else { return };
         for e in rd.flatten() {

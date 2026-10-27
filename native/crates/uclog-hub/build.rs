@@ -3,7 +3,7 @@
 
 fn main() {
     println!("cargo:rustc-env=UCLOG_VERSION={}", solover(env!("CARGO_PKG_VERSION")));
-    let plist = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packaging/macos/Info.plist");
+    let plist = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packaging/macos/Info-hub.plist");
     println!("cargo:rerun-if-changed={}", plist.display());
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         println!("cargo:rustc-link-arg-bins=-Wl,-sectcreate,__TEXT,__info_plist,{}", plist.display());

@@ -10,8 +10,10 @@
 # cannot run under act. The wheels job skips the missing platforms; the release job is left out.
 #
 # act gives a matrix job the first row's platform, so each build row is its own act run. act's run
-# id is always 1, so the runs share tmp/act-artifacts/1/. The wheels and vsix jobs then run from a
-# copy of the workflow without `needs: build` (act -j also runs a job's needs).
+# id is always 1, so the runs share tmp/act-artifacts/1/. The macos, wheels and vsix jobs then run
+# from a copy of the workflow without their `needs:` (act -j also runs a job's needs). The macos job
+# has no secrets under act, so it passes the archives on unsigned
+# (packaging/macos/release.sh signs locally).
 #
 # Docker's memory (8 GB by default, shared with any other running containers) is too small for the
 # release profile's fat-LTO link of the uclog GUI, so the Linux build here uses thin LTO and 2 cargo
@@ -27,7 +29,7 @@ fi
 
 rm -rf tmp/act-artifacts tmp/act
 mkdir -p tmp/act
-sed -e '/^    needs: build$/d' -e '/^  release:/,$d' .github/workflows/release.yml > tmp/act/release.yml
+sed -E -e '/^    needs: (build|\[build, macos\])$/d' -e '/^  release:/,$d' .github/workflows/release.yml > tmp/act/release.yml
 
 run() {
   act workflow_dispatch \
@@ -42,6 +44,7 @@ run -W .github/workflows/release.yml -j build --matrix name:"$linux" --env CARGO
 for row in macos-arm64 macos-x64; do
   run -W .github/workflows/release.yml -j build --matrix name:"$row" "$@"
 done
+run -W tmp/act/release.yml -j macos "$@"
 run -W tmp/act/release.yml -j wheels "$@"
 run -W tmp/act/release.yml -j vsix "$@"
 ls -R tmp/act-artifacts/1

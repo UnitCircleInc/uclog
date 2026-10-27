@@ -245,7 +245,7 @@ impl GuiApp {
         dock: Option<DockState<Tab>>,
     ) -> Self {
         let max = settings.max_log_lines;
-        let cwd = std::env::current_dir().unwrap_or_default();
+        let cwd = crate::front::start_dir();
         GuiApp {
             settings,
             settings_path,

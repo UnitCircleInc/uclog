@@ -378,7 +378,7 @@ async fn run_ui(
     settings_path: Option<PathBuf>,
     note: Option<String>,
 ) -> anyhow::Result<ExitCode> {
-    let cwd = std::env::current_dir().unwrap_or_default();
+    let cwd = crate::front::start_dir();
     let mut app = App::new(settings, cwd);
     app.token_set = settings::keyring_token().is_some();
     app.token_from_keyring = crate::front::token_from_keyring(&a.logdata);

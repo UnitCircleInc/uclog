@@ -501,7 +501,7 @@ PLATFORM_NAMES = {
   'linux-x64': 'Linux x64', 'linux-arm64': 'Linux Arm64', 'macos-arm64': 'macOS Apple silicon',
   'macos-x64': 'macOS Intel', 'windows-x64': 'Windows x64', 'windows-arm64': 'Windows Arm64',
 }
-KIND_NAMES = {'vsix': 'VS Code extension', 'python': 'Python package', 'app': 'Web app, one file',
+KIND_NAMES = {'dmg': 'macOS GUI app (ucLog.app), Apple silicon and Intel', 'vsix': 'VS Code extension', 'python': 'Python package', 'app': 'Web app, one file',
               'element': '<uc-log>, one script', 'docs': 'These docs', 'other': ''}
 
 DOWNLOAD_CSS = """
@@ -583,6 +583,10 @@ def download_page(manifests: list) -> str:
     data = {p: {'name': PLATFORM_NAMES[p], 'url': url(top, a), 'file': a['name'], 'sha256': a['sha256'],
                 'signing': signing(top, p), 'start': f'{docs}getting-started/'}
             for p in PLATFORM_NAMES if (a := asset(top, 'archive', p))}
+    if dmg := asset(top, 'dmg', 'macos'):  # the GUI as an app, for either Mac
+      for p in data:
+        if p.startswith('macos-'):
+          data[p]['app'] = {'url': url(top, dmg), 'file': dmg['name'], 'sha256': dmg['sha256']}
     pre = ' (a pre-release)' if top['prerelease'] else ''
     out += [f'<p>Release <strong>{e(top["tag"])}</strong>{pre}, {e(top["date"])}: device library '
             f'<code>device-v{e(top["device"])}</code>, wire protocol {e(top["protocol"])}. '
@@ -632,9 +636,14 @@ def download_page(manifests: list) -> str:
   if (!arch) arch = os === 'macos' ? 'arm64' : 'x64'; // Safari does not tell: most Macs are Apple silicon
   const p = os && RELEASE[`${os}-${arch}`];
   if (!p) return;
-  document.querySelectorAll(`tr[data-platform="${os}-${arch}"]`).forEach((r) => r.classList.add('mine'));
+  document.querySelectorAll(`tr[data-platform="${os}-${arch}"], tr[data-platform="${os}"]`)
+    .forEach((r) => r.classList.add('mine'));
+  const app = p.app ? `<p><a class="btn" href="${p.app.url}">Download ucLog.app</a></p>
+    <p class="muted">The GUI as an app, for any Mac: open ${p.app.file} and drag ucLog to Applications.
+    SHA-256 <span class="mono">${p.app.sha256}</span></p>
+    <p style="margin-top: 24px">The command-line tools and the hub:</p>` : '';
   pick.innerHTML = `<p><strong>For ${p.name}</strong> (from your browser; others below):</p>
-    <p><a class="btn" href="${p.url}">Download ${p.file}</a></p>
+    ${app}<p><a class="btn" href="${p.url}">Download ${p.file}</a></p>
     <p class="muted">${p.signing}. SHA-256 <span class="mono">${p.sha256}</span></p>
     <p class="muted">It holds <code>uclog</code> and <code>uclog-hub</code>: put them on your PATH
     (<a href="${p.start}">Getting started</a>).</p>`;

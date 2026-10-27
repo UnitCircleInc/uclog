@@ -2,8 +2,11 @@
 #
 # On a tag v*: build every target, package, checksum, and attach to a draft GitHub release. Also
 # build the Python wheels (with uclog-hub bundled) as an artifact.
-# Not yet done (needs certificates as repository secrets): macOS codesign + notarize, Windows
-# signing, and linux armv7 (needs cross). See docs/plans/07-release.md.
+# The macOS files are signed and notarised in the macos job (with the secrets below). Not yet
+# done: Windows signing, and linux armv7 (needs cross). See docs/plans/07-release.md.
+#
+# Artifacts: dist-* are the release's files (the release job attaches them all); unsigned-* are
+# the macOS builds before the macos job signs them.
 #
 # Until there is a GitHub remote, .github/act-release.sh runs this workflow locally with act
 # (Linux jobs in Docker, macOS rows on this Mac, no Windows rows, no release job).
@@ -79,17 +82,76 @@ jobs:
           fi
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.name }}
+          name: ${{ runner.os == 'macOS' && 'unsigned' || 'dist' }}-${{ matrix.name }}
           path: |
             native/dist/*.tar.gz*
             native/dist/*.zip*
+
+  # macOS (plan 07 tasks 4 and 5): sign and notarise uclog and uclog-hub, and ucLog.app (universal)
+  # in a .dmg: packaging/macos/release.sh. Secrets: MACOS_CERTIFICATE_P12 (the Developer ID
+  # Application certificate and key, .p12 in base64), MACOS_CERTIFICATE_PASSWORD, and an App Store
+  # Connect API key for notarytool: APPLE_API_KEY_P8 (the .p8 file's text), APPLE_API_KEY_ID,
+  # APPLE_API_ISSUER_ID. Without them the archives go on unsigned, with no .dmg.
+  macos:
+    needs: build
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: .
+    outputs:
+      signed: ${{ steps.sign.outputs.signed }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: unsigned-macos-*
+          path: unsigned
+          merge-multiple: true
+      - name: Sign and notarise
+        id: sign
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          NOTARY_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          tag=$GITHUB_REF_NAME
+          signed=0
+          if [[ -n $CERT_P12 && -n $NOTARY_KEY_P8 ]]; then
+            # A keychain for this job only, holding the certificate, that codesign may use unprompted.
+            kc=$RUNNER_TEMP/signing.keychain-db
+            kp=$(openssl rand -hex 16)
+            security create-keychain -p "$kp" "$kc"
+            security set-keychain-settings -lut 21600 "$kc"
+            security unlock-keychain -p "$kp" "$kc"
+            printf '%s' "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+            security import "$RUNNER_TEMP/cert.p12" -k "$kc" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple: -s -k "$kp" "$kc" > /dev/null
+            security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+            MACOS_SIGN_IDENTITY=$(security find-identity -v -p codesigning "$kc" | awk -F'"' '/Developer ID Application/ { print $2; exit }')
+            export MACOS_SIGN_IDENTITY
+            printf '%s' "$NOTARY_KEY_P8" > "$RUNNER_TEMP/notary.p8"
+            export NOTARY_KEY=$RUNNER_TEMP/notary.p8 NOTARY_KEY_ID NOTARY_ISSUER
+            signed=1
+          else
+            echo "::warning::no MACOS_CERTIFICATE_P12 or APPLE_API_KEY_P8 secret: the macOS files are not signed"
+          fi
+          native/packaging/macos/release.sh "$tag" "unsigned/uclog-$tag-macos-arm64.tar.gz" \
+            "unsigned/uclog-$tag-macos-x64.tar.gz" dist
+          echo "signed=$signed" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-macos
+          path: dist/*
 
   # Python wheels (plan 06 §2): one per platform with uclog-hub bundled, plus py3-none-any and
   # the sdist. They are attached to the draft release.
   # TODO: publish to PyPI: add a PyPI trusted publisher, then a publish job (needs: wheels,
   # permissions: id-token: write, pypa/gh-action-pypi-publish). Not decided yet.
   wheels:
-    needs: build
+    needs: [build, macos]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -101,6 +163,7 @@ jobs:
           python-version: "3.13"
       - uses: actions/download-artifact@v4
         with:
+          pattern: dist-*
           path: artifacts
           merge-multiple: true
       - name: Build wheels
@@ -136,13 +199,13 @@ jobs:
           ls -l dist
       - uses: actions/upload-artifact@v4
         with:
-          name: python-dist
+          name: dist-python
           path: python/dist/*
 
   # The VS Code extension (plan 03 §6): one VSIX with every target's uclog-hub from the archives
   # above (checksums verified). Publishing to the Marketplace and Open VSX: plan 07.
   vsix:
-    needs: build
+    needs: [build, macos]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -154,6 +217,7 @@ jobs:
           node-version: 22
       - uses: actions/download-artifact@v4
         with:
+          pattern: dist-*
           path: artifacts
           merge-multiple: true
       - name: Build and package
@@ -164,7 +228,7 @@ jobs:
           node scripts/package.mjs --from ../../../artifacts
       - uses: actions/upload-artifact@v4
         with:
-          name: vsix
+          name: dist-vsix
           path: web/apps/vscode/*.vsix
 
   # The site's parts of this release (plan 08 §3): the docs as uclog-docs-N.tar.gz (the Pages
@@ -199,11 +263,11 @@ jobs:
           (cd dist && sha256sum * > "uclog-site-$n.sha256")
       - uses: actions/upload-artifact@v4
         with:
-          name: site
+          name: dist-site
           path: dist/*
 
   release:
-    needs: [build, wheels, vsix, site]
+    needs: [build, macos, wheels, vsix, site]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     defaults:
@@ -215,12 +279,15 @@ jobs:
           fetch-depth: 0  # the previous release's tag: the notes' changes
       - uses: actions/download-artifact@v4
         with:
+          pattern: dist-*
           path: dist
           merge-multiple: true
       # The notes, and uclog-release-N.json for the download page: the files with their SHA-256, the
-      # versions in the release, and the signing status (no signing yet: plan 07 tasks 4-6 set
-      # UCLOG_SIGNED_MACOS / UCLOG_SIGNED_WINDOWS once they sign).
+      # versions in the release, and the signing status (Windows: plan 07 task 6 will set
+      # UCLOG_SIGNED_WINDOWS).
       - name: Notes and manifest
+        env:
+          UCLOG_SIGNED_MACOS: ${{ needs.macos.outputs.signed }}
         run: |
           set -euo pipefail
           n=${GITHUB_REF_NAME#v}
