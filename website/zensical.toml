@@ -13,12 +13,20 @@ extra_css = ["stylesheets/extra.css", "stylesheets/uclog.css"]
 nav = [
   { "Home" = "index.md" },
   { "Getting started" = "getting-started.md" },
-  { "The hosts" = "hosts.md" },
-  { "Web app" = "web-app.md" },
+  { "Hosts" = [
+    { "Overview" = "hosts.md" },
+    { "Web app" = "web-app.md" },
+    { "VS Code" = "vscode.md" },
+    { "uclog: GUI, TUI, CLI" = "cli.md" },
+    { "The hub" = "hub.md" },
+    { "Python" = "python.md" },
+  ] },
   { "Device" = [
     { "From device code to screen" = "device/logging.md" },
     { "Adding ucLog to a device" = "device/index.md" },
   ] },
+  { "Logdata" = "logdata.md" },
+  { "Security" = "security.md" },
   { "Embedding" = [
     { "In a web page" = "embedding.md" },
     { "Element reference" = "reference/uc-log.md" },
