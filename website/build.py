@@ -498,7 +498,8 @@ def is_prerelease(v):
 
 
 PLATFORM_NAMES = {
-  'linux-x64': 'Linux x64', 'linux-arm64': 'Linux Arm64', 'macos-arm64': 'macOS Apple silicon',
+  'linux-x64': 'Linux x64', 'linux-arm64': 'Linux Arm64', 'linux-armv7': 'Linux Arm 32-bit (Raspberry Pi OS)',
+  'macos-arm64': 'macOS Apple silicon',
   'macos-x64': 'macOS Intel', 'windows-x64': 'Windows x64', 'windows-arm64': 'Windows Arm64',
 }
 KIND_NAMES = {'dmg': 'macOS GUI app (ucLog.app), Apple silicon and Intel', 'vsix': 'VS Code extension', 'python': 'Python package', 'app': 'Web app, one file',
@@ -628,10 +629,10 @@ def download_page(manifests: list) -> str:
   const pick = document.getElementById('pick');
   let os = /Windows/.test(navigator.userAgent) ? 'windows' : /Mac/.test(navigator.userAgent) ? 'macos'
     : /Linux|X11/.test(navigator.userAgent) ? 'linux' : null;
-  let arch = /aarch64|arm64/i.test(navigator.userAgent) ? 'arm64' : null;
+  let arch = /aarch64|arm64/i.test(navigator.userAgent) ? 'arm64' : /armv7/i.test(navigator.userAgent) ? 'armv7' : null;
   try {
     const h = await navigator.userAgentData?.getHighEntropyValues(['architecture', 'bitness']);
-    if (h?.architecture) arch = h.architecture === 'arm' ? 'arm64' : 'x64';
+    if (h?.architecture) arch = h.architecture === 'arm' ? (h.bitness === '32' ? 'armv7' : 'arm64') : 'x64';
   } catch {}
   if (!arch) arch = os === 'macos' ? 'arm64' : 'x64'; // Safari does not tell: most Macs are Apple silicon
   const p = os && RELEASE[`${os}-${arch}`];

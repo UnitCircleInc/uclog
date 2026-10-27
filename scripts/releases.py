@@ -35,7 +35,7 @@ FIRST_HOST = 4  # v1–v3 are the old device repository's tags
 MAX_CHANGES = 60
 
 # Release archives: uclog-<tag>-<platform>.tar.gz / .zip (release.yml).
-PLATFORMS = ['linux-x64', 'linux-arm64', 'macos-arm64', 'macos-x64', 'windows-x64', 'windows-arm64']
+PLATFORMS = ['linux-x64', 'linux-arm64', 'linux-armv7', 'macos-arm64', 'macos-x64', 'windows-x64', 'windows-arm64']
 
 
 def git(*args) -> str:

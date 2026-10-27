@@ -18,7 +18,8 @@ All of them read the same devices and the same logdata; use the one that fits wh
 | [Python](python.md) | `pip install uclog` (the wheel includes `uclog-hub`) |
 
 The release archives are `uclog-vN-<platform>.tar.gz` (Linux, macOS) or `.zip` (Windows), for
-x64 and arm64, each with a `.sha256`. Put the two programs on your `PATH`.
+x64 and arm64, and for 32-bit Arm on Linux (`linux-armv7`, Raspberry Pi OS), each with a
+`.sha256`. Put the two programs on your `PATH`.
 
 - **Linux:** serial ports need your user in `dialout` (Debian, Ubuntu) or `uucp` (Arch). For USB
   CDC and HID devices (vendor `2fe3`), install the archive's `70-uclog.rules` as its first lines
