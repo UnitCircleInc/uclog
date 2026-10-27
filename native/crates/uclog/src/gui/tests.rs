@@ -37,6 +37,7 @@ fn rig(device: &str, logdata: bool, settings: Settings) -> Rig {
     let h = Harness::builder()
         .with_size(egui::vec2(1300.0, 850.0))
         .build_ui_state(|ui, app: &mut GuiApp| app.show(ui), app);
+    h.ctx.set_fonts(super::fonts());
     Rig { h, _rt: rt }
 }
 
@@ -107,6 +108,26 @@ fn terminal_character_mode() {
     r.until("help reply", |a| a.term.text().contains("loopback commands"));
     assert!(r.h.state().term_view.char_focus);
     assert!(r.h.state().settings.terminal.history.is_empty());
+}
+
+#[test]
+fn fonts_have_the_symbols() {
+    // The ones the app uses, and what devices print: box drawing, arrows, ✓ ✗, braille. A missing
+    // character is drawn with the replacement glyph, as an unassigned one (U+E000) is. (egui's
+    // has_glyph is no help: it says no for any character of the font with the replacement glyph.)
+    let ctx = egui::Context::default();
+    ctx.set_fonts(super::fonts());
+    ctx.run_ui(Default::default(), |_| {}).textures_delta.clear(); // the font atlas: not drawn here
+    for font in [egui::FontId::proportional(14.0), egui::FontId::monospace(14.0)] {
+        let uv = |c: char| {
+            let g = ctx.fonts_mut(|f| f.layout_no_wrap(c.to_string(), font.clone(), egui::Color32::WHITE));
+            g.rows[0].row.glyphs[0].uv_rect
+        };
+        let missing = uv('\u{E000}');
+        for c in "…·–⌘─│┌┐└┘→↑↓≥›●○◌★−✓✗✖⟳⣿📈".chars() {
+            assert_ne!(uv(c), missing, "{c} in {font:?}");
+        }
+    }
 }
 
 #[test]

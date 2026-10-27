@@ -82,6 +82,24 @@ impl eframe::App for Eframe {
 }
 
 /// Runs on the main thread, inside the tokio runtime's context (`Runtime::enter`).
+/// egui's fonts, with fallbacks for the symbols they lack (plan 07 task 30): Hack, already bundled
+/// as the monospace font, behind the proportional one (box drawing, arrows, ●), and Noto Sans
+/// Symbols 2 (assets/, OFL) behind both (✓ ✗, dingbats, braille, technical symbols).
+pub fn fonts() -> egui::FontDefinitions {
+    use egui::{FontData, FontFamily};
+    let mut f = egui::FontDefinitions::default();
+    f.font_data.insert(
+        "NotoSansSymbols2".into(),
+        std::sync::Arc::new(FontData::from_static(include_bytes!("../../assets/NotoSansSymbols2-Regular.ttf"))),
+    );
+    for (family, extra) in
+        [(FontFamily::Proportional, &["Hack", "NotoSansSymbols2"][..]), (FontFamily::Monospace, &["NotoSansSymbols2"])]
+    {
+        f.families.entry(family).or_default().extend(extra.iter().map(|s| s.to_string()));
+    }
+    f
+}
+
 pub fn run(a: GuiArgs) -> anyhow::Result<ExitCode> {
     let (mut settings, settings_path, note) = Settings::load(a.config.as_deref());
     settings.terminal.on_connect.extend(a.send.iter().cloned());
@@ -106,6 +124,7 @@ pub fn run(a: GuiArgs) -> anyhow::Result<ExitCode> {
         "ucLog",
         options,
         Box::new(move |cc| {
+            cc.egui_ctx.set_fonts(fonts());
             let dock = if shot.is_none() {
                 cc.storage.and_then(|s| eframe::get_value::<egui_dock::DockState<Tab>>(s, "dock"))
             } else {

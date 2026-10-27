@@ -132,6 +132,9 @@ uclog gui -d loopback: -l spec/vectors/sample.logdata   # simulated device; type
   responding, or reconnecting.
 - **Linux, no access to a device:** a window with the commands that grant it (the `dialout`
   group; `70-uclog.rules`).
+- **Fonts:** egui's, with Hack behind the proportional font (box drawing, arrows) and Noto Sans
+  Symbols 2 behind both (✓ ✗, dingbats, braille): `crates/uclog/assets/`, SIL Open Font
+  License (`NotoSansSymbols2-OFL.txt`; the font also carries it in its metadata).
 
 ## TUI
 
