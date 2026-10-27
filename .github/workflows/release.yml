@@ -147,9 +147,7 @@ jobs:
           path: dist/*
 
   # Python wheels (plan 06 §2): one per platform with uclog-hub bundled, plus py3-none-any and
-  # the sdist. They are attached to the draft release.
-  # TODO: publish to PyPI: add a PyPI trusted publisher, then a publish job (needs: wheels,
-  # permissions: id-token: write, pypa/gh-action-pypi-publish). Not decided yet.
+  # the sdist. They are attached to the draft release, and published by the pypi jobs below.
   wheels:
     needs: [build, macos]
     runs-on: ubuntu-latest
@@ -301,3 +299,131 @@ jobs:
           pre=(); [[ $GITHUB_REF_NAME =~ -(alpha|beta|rc)[1-9]$ ]] && pre=(--prerelease)
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft \
             --notes-file notes.md "${pre[@]}"
+
+  # Publishing (plan 07 tasks 12, 13a and 13b), on a tag, once the draft release has everything.
+  # Each job waits in its environment for a reviewer's approval (Settings → Environments), so
+  # nothing is published unseen. Only from UnitCircleInc/uclog (not a fork or a staging copy). docs/plans/08-go-public.md has the accounts and secrets.
+
+  # PyPI by trusted publishing (no token): TestPyPI first, then an install from it on three OSs
+  # (the wheel's own uclog-hub, against the simulated device), then PyPI.
+  testpypi:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/') && github.repository == 'UnitCircleInc/uclog'
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-python
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  testpypi-install:
+    needs: testpypi
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install from TestPyPI and connect to the simulated device
+        shell: bash
+        run: |
+          set -euo pipefail
+          v=$(python3 -I scripts/version.py map "${GITHUB_REF_NAME#v}" | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["pypi"])')
+          for i in 1 2 3 4 5 6; do  # the index can take a minute to show a new release
+            python -m pip install --no-cache-dir --index-url https://test.pypi.org/simple/ "uclog==$v" && break
+            sleep 20
+          done
+          cd "$RUNNER_TEMP"  # not the checkout: the installed package
+          python - <<'PY'
+          import uclog, uclog.hub
+          exe = uclog.hub.find_executable()
+          assert exe and 'site-packages' in exe, exe  # the wheel's own uclog-hub
+          with uclog.connect(device='loopback:rate=0') as dev:
+              info = dev.command({'cmd': 'get-info'})
+          assert info['board'] == 'loopback', info
+          print('ok', uclog.__version__, exe)
+          PY
+
+  pypi:
+    needs: testpypi-install
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-python
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  # npm: @uclog/element with provenance. pnpm pack writes the package as published (no workspace:
+  # versions); npm publishes it, by trusted publishing once the package has one, else with
+  # NPM_TOKEN (the first publish). Pre-releases go to the `next` dist-tag.
+  npm:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/') && github.repository == 'UnitCircleInc/uclog'
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Build and publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          npx -y pnpm@12.10.1 install --frozen-lockfile
+          npx -y pnpm@12.10.1 --filter @uclog/element build
+          cd packages/element
+          npx -y pnpm@12.10.1 pack --pack-destination "$RUNNER_TEMP"
+          tag=latest; [[ $GITHUB_REF_NAME == *-* ]] && tag=next
+          npx -y npm@11.6.2 publish "$RUNNER_TEMP"/uclog-element-*.tgz --provenance --access public --tag "$tag"
+
+  # VS Code: the release's VSIX to the Marketplace and Open VSX. Not pre-releases: the Marketplace
+  # takes no pre-release version (plan 08 §2.2a); their VSIX is on the GitHub release only.
+  vscode:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-') && github.repository == 'UnitCircleInc/uclog'
+    runs-on: ubuntu-latest
+    environment: vscode
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-vsix
+          path: vsix
+      - name: Publish
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        working-directory: .
+        run: |
+          set -euo pipefail
+          f=$(ls vsix/*.vsix)
+          npx -y @vscode/vsce@3.9.2 publish --packagePath "$f" -p "$VSCE_PAT"
+          npx -y ovsx@0.10.6 publish "$f" -p "$OVSX_PAT"

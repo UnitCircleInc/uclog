@@ -32,6 +32,7 @@ function litState() {
 export default {
   globs: ['packages/ui/src/uc-log.ts'],
   outdir: 'packages/element/dist',
+  packagejson: false, // or cem writes the manifest's path into the package.json where it runs
   litelement: true,
   plugins: [litState()],
 };

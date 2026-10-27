@@ -20,6 +20,5 @@
     "typescript": "5.9.3",
     "vite": "8.3.4",
     "vitest": "5.0.3"
-  },
-  "customElements": "../website/.cache/cem/custom-elements.json"
+  }
 }

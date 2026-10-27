@@ -3,6 +3,14 @@
   "version": "4.0.0-alpha.1",
   "description": "<uc-log>: the embeddable ucLog web client (ESM and IIFE bundles, workers inlined)",
   "license": "Apache-2.0",
+  "homepage": "https://uclog.unitcircle.ca/latest/embedding/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/UnitCircleInc/uclog.git",
+    "directory": "web/packages/element"
+  },
+  "bugs": "https://github.com/UnitCircleInc/uclog/issues",
+  "keywords": ["uclog", "logging", "embedded", "firmware", "web-serial", "webusb", "web-bluetooth", "custom-element"],
   "type": "module",
   "main": "./dist/uclog-element.js",
   "module": "./dist/uclog-element.js",
@@ -12,11 +20,14 @@
     "./workers/*": "./dist/workers/*"
   },
   "customElements": "./dist/custom-elements.json",
-  "files": ["dist"],
+  "files": ["dist", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vite build && vite build --mode iife && vite build --mode workers && cd ../.. && cem analyze"
   },
-  "dependencies": {
+  "devDependencies": {
     "@uclog/ui": "workspace:*",
     "@uclog/workers": "workspace:*"
   }

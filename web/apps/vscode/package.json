@@ -10,8 +10,10 @@
   "icon": "media/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/unitcircle/uclog-clientv2"
+    "url": "https://github.com/UnitCircleInc/uclog"
   },
+  "homepage": "https://uclog.unitcircle.ca/latest/vscode/",
+  "bugs": "https://github.com/UnitCircleInc/uclog/issues",
   "engines": {
     "vscode": "^1.100.0"
   },
