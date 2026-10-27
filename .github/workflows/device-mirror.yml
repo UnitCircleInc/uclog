@@ -1,0 +1,62 @@
+# The device-only mirror UnitCircleInc/uclog-device (plan 08 §2.3, task 7): device/ split out with
+# its history, pushed on every push to main. git subtree split keeps the old device repository's
+# commits as they were, so its v1-v3 tags are valid there too (pushed once, then no-ops). A
+# device-vN tag becomes vN in the mirror, and the draft release of device-vN here gets
+# uclog-device-N.tar.gz (the library with its ucComm copy, for Makefile and CMake projects).
+#
+# Needs the secret UCLOG_DEVICE_DEPLOY_KEY: the private half of a deploy key with write access on
+# UnitCircleInc/uclog-device. The mirror is never force-pushed: the split is the same every time.
+name: device-mirror
+
+on:
+  push:
+    branches: [main]
+    tags: ["device-v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: device-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    if: github.repository == 'UnitCircleInc/uclog'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the whole history, and the tags
+      - name: The tag matches UCLOG_DEVICE_VERSION
+        if: startsWith(github.ref, 'refs/tags/device-v')
+        run: python3 -I scripts/version.py check "$GITHUB_REF_NAME"
+      - name: Split device/
+        run: git subtree split --prefix=device -b device-split
+      - name: Push to the mirror
+        env:
+          KEY: ${{ secrets.UCLOG_DEVICE_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/mirror && chmod 600 ~/.ssh/mirror
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/mirror -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          mirror=git@github.com:UnitCircleInc/uclog-device.git
+          if [[ $GITHUB_REF == refs/heads/main ]]; then
+            git push "$mirror" device-split:refs/heads/main v1 v2 v3
+          else
+            git push "$mirror" "device-split:refs/tags/v${GITHUB_REF_NAME#device-v}"
+          fi
+      - name: Release archive
+        if: startsWith(github.ref, 'refs/tags/device-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          n=${GITHUB_REF_NAME#device-v}
+          git archive --prefix="uclog-device-$n/" -o "uclog-device-$n.tar.gz" device-split
+          sha256sum "uclog-device-$n.tar.gz" > "uclog-device-$n.tar.gz.sha256"
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --draft --title "Device library $n" \
+              --notes "The ucLog device library $n (device/; mirrored as v$n in UnitCircleInc/uclog-device)."
+          gh release upload "$GITHUB_REF_NAME" "uclog-device-$n.tar.gz" "uclog-device-$n.tar.gz.sha256" --clobber

@@ -1,0 +1,99 @@
+# The device library (plan 08 task 6): the host build against spec/vectors, the bare-metal test
+# firmware, and Zephyr builds (3.7 LTS and current), with the repository root as the Zephyr module.
+name: device
+
+on:
+  push:
+    paths:
+      - device/**
+      - firmware/**
+      - spec/**
+      - zephyr/**
+      - .github/workflows/device.yml
+      - .github/scripts/fetch-stm32cube.sh
+      - .github/scripts/zephyr-builds.sh
+      - .github/zephyr/**
+  pull_request:
+    paths:
+      - device/**
+      - firmware/**
+      - spec/**
+      - zephyr/**
+      - .github/workflows/device.yml
+      - .github/scripts/fetch-stm32cube.sh
+      - .github/scripts/zephyr-builds.sh
+      - .github/zephyr/**
+
+jobs:
+  # The encoder and the RX scanner against spec/vectors and the reference (device/test/host).
+  # Arm64: ucComm (device/uccomm) does not build on x86.
+  host:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S device/test/host -B build/host && cmake --build build/host
+      - run: python3 device/test/host/test_vectors.py build/host/uclog_host_test -v
+
+  # The test firmware for the three STM32 boards (firmware/README.md), against the STM32Cube parts
+  # it uses (ST's code is not in this repository).
+  firmware:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi
+      - name: STM32Cube
+        run: |
+          f=.github/scripts/fetch-stm32cube.sh
+          $f STM32CubeL4 v1.18.2 cube/l4 Drivers/CMSIS/Include \
+            -- Drivers/STM32L4xx_HAL_Driver Drivers/CMSIS/Device/ST/STM32L4xx
+          $f STM32CubeC0 v1.4.1 cube/c0 Drivers/CMSIS/Include \
+            -- Drivers/STM32C0xx_HAL_Driver Drivers/CMSIS/Device/ST/STM32C0xx
+          $f STM32CubeWBA v1.10.0 cube/wba Drivers/CMSIS/Include \
+            Projects/NUCLEO-WBA55CG/Applications/BLE/BLE_p2pServer_Simplest \
+            -- Drivers/STM32WBAxx_HAL_Driver Drivers/CMSIS/Device/ST/STM32WBAxx Middlewares/ST/STM32_WPAN
+      - name: Build
+        run: |
+          make -C firmware/nucleo-l452re-p STM32CUBE_L4=$PWD/cube/l4
+          make -C firmware/nucleo-c071rb STM32CUBE_C0=$PWD/cube/c0
+          make -C firmware/stm32wba55g-dk1 STM32CUBE_WBA=$PWD/cube/wba
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-firmware
+          path: |
+            firmware/*/build/app.elf
+            firmware/*/build/app.bin
+
+  # .github/scripts/zephyr-builds.sh: the sample (device/app) on the NUCLEO-L452RE-P and the
+  # nRF52840-DK with each driver and every option, and the test firmware (firmware/zephyr, Zephyr 4).
+  # Each Zephyr version in the CI image with the SDK it was released with.
+  zephyr:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { zephyr: v3.7.2, image: "ghcr.io/zephyrproject-rtos/ci:v0.26.18" } # SDK 0.16.9
+          - { zephyr: v4.4.2, image: "ghcr.io/zephyrproject-rtos/ci:v0.29.4" }  # SDK 1.0.x
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: uclog
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ws/zephyr
+            ws/modules
+            ws/.west
+          key: zephyr-${{ matrix.zephyr }}-${{ hashFiles(format('uclog/.github/zephyr/{0}/west.yml', matrix.zephyr)) }}
+      - name: Workspace
+        run: |
+          mkdir -p ws/manifest
+          cp uclog/.github/zephyr/${{ matrix.zephyr }}/west.yml ws/manifest/
+          cd ws
+          [ -d .west ] || west init -l manifest
+          west update --narrow -o=--depth=1
+      - name: Build
+        working-directory: ws
+        run: ZEPHYR_BASE=$PWD/zephyr ../uclog/.github/scripts/zephyr-builds.sh ../build

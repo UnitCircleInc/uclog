@@ -24,8 +24,9 @@
 
 #define FS_TYPE_UCLOG (FS_TYPE_EXTERNAL_BASE + 0x75)
 
-// Declared by <zephyr/sys/libc-hooks.h> only with some C libraries.
+// Declared by <zephyr/sys/libc-hooks.h> only with some C libraries and Zephyr versions.
 void __stdin_hook_install(unsigned char (*hook)(void));
+void __stdout_hook_install(int (*hook)(int));
 
 // "/host/a/b" → "a/b": the host resolves paths in its files directory.
 static const char *host_path(const char *fs_path) {

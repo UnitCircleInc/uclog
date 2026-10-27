@@ -1,0 +1,9 @@
+# The ucLog repository as a Zephyr module: the device library in device/ (device/README.md). The
+# uclog-device mirror has the same at its root (device/zephyr/module.yml).
+name: uclog
+build:
+  cmake: device
+  kconfig: device/Kconfig
+  settings:
+    dts_root: device
+    snippet_root: device

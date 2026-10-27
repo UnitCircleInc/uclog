@@ -29,7 +29,7 @@ function(zephyr_log_tasks)
   set_property(GLOBAL APPEND PROPERTY extra_post_build_commands COMMAND
     echo "Cache logdata ${output}.logdata")
   set_property(GLOBAL APPEND PROPERTY extra_post_build_commands COMMAND
-    ${PYTHON_EXECUTABLE} ${UCLOG_ROOT_DIR}/tools/cachelogdata.py --bin ${output}.bin --logdata ${output}.logdata ${extra_cache_args})
+    ${PYTHON_EXECUTABLE} ${UCLOG_ROOT_DIR}/tools/cachelogdata.py --bin ${output}.bin --logdata ${output}.logdata ${extra_cache_args} --copy-to ${CMAKE_BINARY_DIR})
 endfunction()
 
 zephyr_log_tasks()

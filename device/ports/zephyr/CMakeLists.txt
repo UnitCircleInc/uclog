@@ -4,6 +4,11 @@
 if(CONFIG_UC_LOG)
   zephyr_library()
   zephyr_library_sources(${UCLOG_ROOT_DIR}/src/log.c port.c)
+  if(NOT CONFIG_UCCOMM) # no ucComm module in the workspace: the pinned copy
+    zephyr_include_directories(${UCLOG_ROOT_DIR}/uccomm)
+    zephyr_library_sources(${UCLOG_ROOT_DIR}/uccomm/cb.c ${UCLOG_ROOT_DIR}/uccomm/cobs.c
+                           ${UCLOG_ROOT_DIR}/uccomm/cbor.c ${UCLOG_ROOT_DIR}/uccomm/crc32c.c)
+  endif()
   zephyr_library_sources_ifdef(CONFIG_UC_SYSCALLS ${UCLOG_ROOT_DIR}/src/semihost.c semihost_fs.c)
   zephyr_library_sources_ifdef(CONFIG_UC_SHELL shell.c)
 

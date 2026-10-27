@@ -24,8 +24,6 @@ OBJDUMP := $(CROSS)objdump
 SIZE    := $(CROSS)size
 PROG    ?= $(CUBECLT)/STM32CubeProgrammer/bin/STM32_Programmer_CLI
 PYTHON  ?= python3
-# The hosts find logdata here by the device's app_hash (same default as uclog and the Python library)
-UCLOG_CACHE ?= $(or $(UCLOG_CACHE_DIR),$(XDG_CACHE_HOME:%=%/uclog),$(HOME)/.cache/uclog)
 
 STM32CUBE_WBA ?= $(HOME)/STM32Cube/Repository/STM32Cube_FW_WBA_V1.10.0
 WBA_DEV  := $(STM32CUBE_WBA)/Drivers/CMSIS/Device/ST/STM32WBAxx
@@ -36,7 +34,8 @@ WPAN     := $(STM32CUBE_WBA)/Middlewares/ST/STM32_WPAN
 WBA_EX   := $(STM32CUBE_WBA)/Projects/NUCLEO-WBA55CG/Applications/BLE/BLE_p2pServer_Simplest
 
 DEVICE_DIR := ../../device
-UCCOMM_DIR := ../uccomm
+UCLOG_DIR  := $(DEVICE_DIR)
+include $(DEVICE_DIR)/uclog.mk
 APP_DIR    := ../app
 BUILD      := build
 
@@ -44,17 +43,11 @@ BUILD      := build
 # app (../app) is shown as src/ (-ffile-prefix-map below).
 SRCS := $(APP_DIR)/main.c \
         $(APP_DIR)/drivers/sensor.c \
-        $(DEVICE_DIR)/src/syscalls.c \
-        $(DEVICE_DIR)/src/semihost.c \
         $(APP_DIR)/sh/semihost_test.c \
         board/board.c \
         board/ble.c \
         board/uart.c \
-        $(DEVICE_DIR)/src/log.c \
-        $(UCCOMM_DIR)/cb.c \
-        $(UCCOMM_DIR)/cobs.c \
-        $(UCCOMM_DIR)/cbor.c \
-        $(UCCOMM_DIR)/crc32c.c
+        $(UCLOG_SRCS) $(UCLOG_SYSCALLS_SRCS)
 
 CUBE_SRCS := $(WBA_DEV)/Source/Templates/system_stm32wbaxx.c \
              $(WBA_DEV)/Source/Templates/gcc/startup_stm32wba55xx.s \
@@ -73,7 +66,7 @@ DEFS   := -DSTM32WBA55xx -DUSE_HAL_DRIVER -DUSE_FULL_LL_DRIVER -DBLE_LL -DPHY_40
           -DBLE_STACK_PERIPHERAL_ONLY -DBURST_MIN_LOGS=10000
 # board/ first: its skel_ble.h stands in for the example's application header (app_conf.h is the
 # example's own; ble.c overrides its MBLOCK margin).
-INCS   := -I$(APP_DIR) -Iboard -I$(DEVICE_DIR)/include -I$(UCCOMM_DIR) \
+INCS   := -I$(APP_DIR) -Iboard $(UCLOG_CFLAGS) \
           -I$(WBA_EX)/Core/Inc -I$(WBA_EX)/STM32_WPAN/App -I$(WBA_EX)/STM32_WPAN/Target \
           -I$(WBA_EX)/System/Modules \
           -I$(STM32CUBE_WBA)/Drivers/CMSIS/Include -I$(WBA_DEV)/Include -I$(WBA_HAL)/Inc \
@@ -88,7 +81,7 @@ CFLAGS := $(CPU) -std=gnu11 -Os -g3 -Wall -Wextra -Wno-override-init \
           $(DEFS) $(INCS) -MMD -MP
 # ST's files: their warnings are not ours.
 CUBE_CFLAGS := $(filter-out -Wall -Wextra -Wno-override-init -Wno-unused-parameter,$(CFLAGS)) -w
-LDFLAGS := $(CPU) -Tboard/stm32wba55cg.ld -L$(DEVICE_DIR)/ports/baremetal -Wl,--gc-sections -Wl,-Map=$(BUILD)/app.map \
+LDFLAGS := $(CPU) -Tboard/stm32wba55cg.ld $(UCLOG_LDFLAGS) -Wl,--gc-sections -Wl,-Map=$(BUILD)/app.map \
            --specs=nano.specs --specs=nosys.specs -u _printf_float -Wl,--no-warn-rwx-segments \
            -Wl,--no-warn-execstack
 LDLIBS := -Wl,--start-group $(LIBS) -lm -Wl,--end-group
@@ -116,10 +109,6 @@ $(BUILD)/obj/device/%.o: $(DEVICE_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/obj/uccomm/%.o: $(UCCOMM_DIR)/%.c
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
-
 vpath %.c $(sort $(dir $(filter %.c,$(CUBE_SRCS))))
 vpath %.s $(sort $(dir $(filter %.s,$(CUBE_SRCS))))
 
@@ -134,17 +123,10 @@ $(BUILD)/obj/cube/%.o: %.s
 # 1. link (the .apphash field is zero)
 # 2. app_hash = SHA-512 of that image; write it into .apphash
 # 3. logdata from the ELF; embed it as .logdata_cbor; save <app_hash>.logdata too
-$(BUILD)/app.elf: $(OBJS) board/stm32wba55cg.ld $(DEVICE_DIR)/ports/baremetal/log.ld $(DEVICE_DIR)/tools/logdata.py \
-             $(DEVICE_DIR)/tools/hash.py
+$(BUILD)/app.elf: $(OBJS) board/stm32wba55cg.ld $(UCLOG_TOOLS)
 	$(CC) $(LDFLAGS) $(OBJS) $(LDLIBS) -o $@.tmp
-	$(OBJCOPY) -O binary $@.tmp $(BUILD)/app.unhashed.bin
-	$(PYTHON) $(DEVICE_DIR)/tools/hash.py -f -i $(BUILD)/app.unhashed.bin -o $(BUILD)/app.hash > $(BUILD)/app.hash.txt
-	$(OBJCOPY) --update-section .apphash=$(BUILD)/app.hash $@.tmp
-	$(PYTHON) $(DEVICE_DIR)/tools/logdata.py --objdump $(OBJDUMP) $@.tmp -o $(BUILD)/app.logdata
-	$(OBJCOPY) --add-section .logdata_cbor=$(BUILD)/app.logdata --set-section-flags .logdata_cbor=noload,readonly $@.tmp $@
+	$(call uclog_post_link,$@.tmp,$@,$(BUILD))
 	@rm -f $@.tmp
-	cp $(BUILD)/app.logdata $(BUILD)/$$(cat $(BUILD)/app.hash.txt).logdata
-	@mkdir -p $(UCLOG_CACHE) && cp $(BUILD)/app.logdata $(UCLOG_CACHE)/$$(cat $(BUILD)/app.hash.txt).logdata
 	$(SIZE) $@
 
 $(BUILD)/app.bin: $(BUILD)/app.elf

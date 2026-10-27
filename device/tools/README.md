@@ -1,7 +1,7 @@
 # Build-time tools
 
-Called by the Zephyr CMake helpers in `../cmake/` and by the bare-metal Makefiles in
-`../../firmware/`:
+Called by the CMake helpers in `../cmake/`, by `../uclog.mk`, and by the
+[test firmware](https://github.com/UnitCircleInc/uclog/blob/main/firmware)'s Makefiles:
 
 | Script | Used by | Does |
 |---|---|---|

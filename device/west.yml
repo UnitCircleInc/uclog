@@ -1,12 +1,15 @@
-# © 2025 Unit Circle Inc
+# © 2025 Unit Circle Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# A west workspace for working on this library with the nRF Connect SDK 2.9 (Zephyr 3.7) and
+# ucComm:
+#   west init -m https://github.com/UnitCircleInc/uclog-device ws && cd ws && west update
+# A project that uses the library adds it (and ucComm, or it uses the copy in uccomm/) to its own
+# west.yml instead.
 
 manifest:
-  defaults:
-    revision: main
-
   self:
-    path: newlog
-    west-commands: scripts/west-commands.yml
+    path: uclog-device
 
   remotes:
     - name: ncs
@@ -19,7 +22,6 @@ manifest:
       remote: ncs
       repo-path: sdk-nrf
       revision: v2.9.0
-      import: true
       import:
         name-allowlist:
           - zephyr
@@ -32,6 +34,6 @@ manifest:
 
     - name: uccomm
       remote: uci
-      revision: v2
+      revision: v3 # the same as uccomm/
       repo-path: ucComm
       path: modules/uccomm

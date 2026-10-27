@@ -42,6 +42,15 @@
 
 #define DT_DRV_COMPAT unitcircle_ucusb
 
+// nrfx 4 (Zephyr 4.x): nrf_usbd_common returns 0 or a negative errno, not an nrfx_err_t.
+#if NRFX_RELEASE_VER_MAJOR >= 4
+typedef int ucusb_err_t;
+#define UCUSB_OK 0
+#else
+typedef nrfx_err_t ucusb_err_t;
+#define UCUSB_OK NRFX_SUCCESS
+#endif
+
 
 // Need to be packed
 typedef struct __attribute__ ((packed)) {
@@ -472,8 +481,8 @@ static void handle_get_desc(nrf_usbd_common_setup_t* req) {
         if (sizeof(device) < n) n = sizeof(device);
         LOG_MEM_INFO("sending USB_DESC_DEVICE:", &device, n);
         NRF_USBD_COMMON_TRANSFER_IN(tx, &device, n, 0);
-        nrfx_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN0, &tx);
-        if (e != NRFX_SUCCESS) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
+        ucusb_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN0, &tx);
+        if (e != UCUSB_OK) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
       }
       break;
     case USB_DESC_CONFIGURATION:
@@ -481,8 +490,8 @@ static void handle_get_desc(nrf_usbd_common_setup_t* req) {
         if (sizeof(configuration) < n) n = sizeof(configuration);
         LOG_MEM_INFO("sending USB_DESC_CONFIGURATION:", &configuration, n);
         NRF_USBD_COMMON_TRANSFER_IN(tx, &configuration, n, 0);
-        nrfx_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN0, &tx);
-        if (e != NRFX_SUCCESS) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
+        ucusb_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN0, &tx);
+        if (e != UCUSB_OK) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
       }
       break;
     case USB_DESC_STRING:
@@ -496,8 +505,8 @@ static void handle_get_desc(nrf_usbd_common_setup_t* req) {
         if (usb_strings[idx]->bLength < n) n = usb_strings[idx]->bLength;
         LOG_MEM_INFO("sending USB_DESC_STRING:", usb_strings[idx], n);
         NRF_USBD_COMMON_TRANSFER_IN(tx, usb_strings[idx], n, 0);
-        nrfx_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN0, &tx);
-        if (e != NRFX_SUCCESS) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
+        ucusb_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN0, &tx);
+        if (e != UCUSB_OK) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
       }
       break;
    case USB_DESC_DEVICE_QUALIFIER:
@@ -505,8 +514,8 @@ static void handle_get_desc(nrf_usbd_common_setup_t* req) {
         if (sizeof(device_qual) < n) n = sizeof(device_qual);
         LOG_MEM_INFO("sending USB_DESC_DEVICE_QUAL:", &device_qual, n);
         NRF_USBD_COMMON_TRANSFER_IN(tx, &device_qual, n, 0);
-        nrfx_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN0, &tx);
-        if (e != NRFX_SUCCESS) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
+        ucusb_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN0, &tx);
+        if (e != UCUSB_OK) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
       }
       break;
 #if 0
@@ -595,8 +604,8 @@ static void handle_class_setup(nrf_usbd_common_setup_t* req, const void* data) {
       case CS_GET_LINE_CODING: {
         LOG_INFO("get line coding");
         NRF_USBD_COMMON_TRANSFER_IN(tx, &line_coding, sizeof(line_coding), 0);
-        nrfx_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN0, &tx);
-        if (e != NRFX_SUCCESS) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
+        ucusb_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN0, &tx);
+        if (e != UCUSB_OK) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
         break;
       }
       case CS_SET_CONTROL_LINE_STATE:
@@ -649,14 +658,14 @@ int usb_tx_schedule(const struct device *dev, const uint8_t* prefix, size_t pn) 
         // The device info: not in tx_cb, so tx_n = 0 and the transfer-done handler skips nothing.
         tx_n = 0;
         NRF_USBD_COMMON_TRANSFER_IN(tx, prefix, pn, 0);
-        nrfx_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN2, &tx);
-        if (e != NRFX_SUCCESS) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
+        ucusb_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN2, &tx);
+        if (e != UCUSB_OK) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
       }
       else if (n > 0) {
         tx_n = n;
         NRF_USBD_COMMON_TRANSFER_IN(tx, cb_peek(tx_cb), n, 0);
-        nrfx_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN2, &tx);
-        if (e != NRFX_SUCCESS) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
+        ucusb_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN2, &tx);
+        if (e != UCUSB_OK) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
       }
       else {
         atomic_set(&tx_active, false);
@@ -780,8 +789,8 @@ static void usbd_event_handler(nrf_usbd_common_evt_t const *const p_event) {
           nrf_usbd_common_setup_data_clear();
           NRF_USBD_COMMON_TRANSFER_OUT(rx, request_data, req.wLength);
           pending_req = req;
-          nrfx_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPOUT0, &rx);
-          if (e != NRFX_SUCCESS) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
+          ucusb_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPOUT0, &rx);
+          if (e != UCUSB_OK) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
         }
         else {
           LOG_ERROR("host trying to send too much data: %u", req.wLength);
@@ -813,8 +822,8 @@ static void usbd_event_handler(nrf_usbd_common_evt_t const *const p_event) {
       else if (p_event->data.eptransfer.ep == NRF_USBD_COMMON_EPOUT1) {
         if (p_event->data.eptransfer.status == NRF_USBD_COMMON_EP_WAITING) {
           NRF_USBD_COMMON_TRANSFER_OUT(rx, rx_temp_buf, sizeof(rx_temp_buf));
-          nrfx_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPOUT1, &rx);
-          if (e != NRFX_SUCCESS) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
+          ucusb_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPOUT1, &rx);
+          if (e != UCUSB_OK) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
         }
         else {
           size_t n = usbd_ep_amount_get(NRF_USBD_COMMON_EPOUT1);
@@ -846,8 +855,8 @@ static void usbd_event_handler(nrf_usbd_common_evt_t const *const p_event) {
               atomic_set(&tx_active, true);
               tx_n = n;
               NRF_USBD_COMMON_TRANSFER_IN(tx, cb_peek(tx_cb), n, 0);
-              nrfx_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN2, &tx);
-              if (e != NRFX_SUCCESS) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
+              ucusb_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN2, &tx);
+              if (e != UCUSB_OK) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
             }
             else if ((n == 0) && (tx_n > 0U) && ((tx_n % NRF_USBD_COMMON_EPSIZE) == 0U) && ready) {
               // If last transfer was multiple of EPSIZE and we are done
@@ -855,8 +864,8 @@ static void usbd_event_handler(nrf_usbd_common_evt_t const *const p_event) {
               // by sending a 0 length packet
               tx_n = 0;
               NRF_USBD_COMMON_TRANSFER_IN(tx, cb_peek(tx_cb), 0, 0);
-              nrfx_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN2, &tx);
-              if (e != NRFX_SUCCESS) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
+              ucusb_err_t e = nrf_usbd_common_ep_transfer(NRF_USBD_COMMON_EPIN2, &tx);
+              if (e != UCUSB_OK) LOG_ERROR("nrf_usbd_common_ep_transfer() %08x", e);
             }
             else {
               atomic_set(&tx_active, false);
@@ -960,7 +969,7 @@ static void fill_serial_number(void) {
 
 
 static int usb_init(const struct device *arg) {
-  nrfx_err_t err;
+  ucusb_err_t err;
   LOG_INFO("usb_init");
 
   k_event_init(&event);
@@ -988,7 +997,7 @@ static int usb_init(const struct device *arg) {
   if (nrf_usbd_common_is_initialized()) nrf_usbd_common_uninit();
 
   err = nrf_usbd_common_init(usbd_event_handler);
-  if (err < 0) LOG_FATAL("nrf_usbd_common_init() = %08x", err);
+  if (err != UCUSB_OK) LOG_FATAL("nrf_usbd_common_init() = %08x", err);
 
   nrfx_power_usbevt_enable();
 

@@ -1,0 +1,20 @@
+# © 2026 Unit Circle Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# A minimal Zephyr v4.4.2 workspace for the device CI (.github/workflows/device.yml): the ucLog
+# repository is added with ZEPHYR_EXTRA_MODULES, and uses its own copy of ucComm (device/uccomm).
+manifest:
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+  projects:
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: v4.4.2
+      import:
+        name-allowlist:
+          - cmsis_6
+          - hal_stm32
+          - hal_nordic
+  self:
+    path: manifest

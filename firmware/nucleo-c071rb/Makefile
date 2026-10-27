@@ -25,8 +25,6 @@ OBJDUMP := $(CROSS)objdump
 SIZE    := $(CROSS)size
 PROG    ?= $(CUBECLT)/STM32CubeProgrammer/bin/STM32_Programmer_CLI
 PYTHON  ?= python3
-# The hosts find logdata here by the device's app_hash (same default as uclog and the Python library)
-UCLOG_CACHE ?= $(or $(UCLOG_CACHE_DIR),$(XDG_CACHE_HOME:%=%/uclog),$(HOME)/.cache/uclog)
 
 STM32CUBE_C0 ?= $(HOME)/STM32Cube/Repository/STM32Cube_FW_C0_V1.4.1
 CMSIS_CORE   ?= $(STM32CUBE_C0)/Drivers/CMSIS/Include
@@ -42,7 +40,8 @@ else
 endif
 
 DEVICE_DIR := ../../device
-UCCOMM_DIR := ../uccomm
+UCLOG_DIR  := $(DEVICE_DIR)
+include $(DEVICE_DIR)/uclog.mk
 APP_DIR    := ../app
 BUILD      := build
 
@@ -50,18 +49,12 @@ BUILD      := build
 # app (../app) is shown as src/ (-ffile-prefix-map below).
 SRCS := $(APP_DIR)/main.c \
         $(APP_DIR)/drivers/sensor.c \
-        $(DEVICE_DIR)/src/syscalls.c \
-        $(DEVICE_DIR)/src/semihost.c \
         $(APP_DIR)/sh/semihost_test.c \
         board/board.c \
         board/startup.c \
         board/uart.c \
         board/usb.c \
-        $(DEVICE_DIR)/src/log.c \
-        $(UCCOMM_DIR)/cb.c \
-        $(UCCOMM_DIR)/cobs.c \
-        $(UCCOMM_DIR)/cbor.c \
-        $(UCCOMM_DIR)/crc32c.c
+        $(UCLOG_SRCS) $(UCLOG_SYSCALLS_SRCS)
 
 # 24 KiB of RAM: smaller buffers than the L452 (log ring, semihost requests, the selftest's file).
 RAM_OPTS := -DLOG_TX_BUF_SIZE=4096 -DSH_BUF_SIZE=512 -DSH_BIG_FILE=1200
@@ -70,9 +63,9 @@ CPU    := -mcpu=cortex-m0plus -mthumb -mfloat-abi=soft -mfp16-format=ieee
 CFLAGS := $(CPU) -std=gnu11 -Os -g3 -Wall -Wextra -Wno-override-init \
           -Wno-unused-parameter -ffunction-sections -fdata-sections \
           -fno-eliminate-unused-debug-types -ffile-prefix-map=$(APP_DIR)/=src/ -ffile-prefix-map=$(DEVICE_DIR)/=uclog/ \
-          -DSTM32C071xx $(RAM_OPTS) -I$(APP_DIR) -Iboard -I$(DEVICE_DIR)/include -I$(UCCOMM_DIR) \
+          -DSTM32C071xx $(RAM_OPTS) -I$(APP_DIR) -Iboard $(UCLOG_CFLAGS) \
           -I$(CMSIS_CORE) -I$(C0_DEVICE) -I$(C0_LL) -MMD -MP
-LDFLAGS := $(CPU) -Tboard/stm32c071rb.ld -L$(DEVICE_DIR)/ports/baremetal -Wl,--gc-sections -Wl,-Map=$(BUILD)/app.map \
+LDFLAGS := $(CPU) -Tboard/stm32c071rb.ld $(UCLOG_LDFLAGS) -Wl,--gc-sections -Wl,-Map=$(BUILD)/app.map \
            --specs=nano.specs --specs=nosys.specs -u _printf_float -Wl,--no-warn-rwx-segments
 LDLIBS := -lm
 
@@ -98,10 +91,6 @@ $(BUILD)/obj/device/%.o: $(DEVICE_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/obj/uccomm/%.o: $(UCCOMM_DIR)/%.c
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
-
 $(BUILD)/obj/cube/system_stm32c0xx.o: $(C0_SYSTEM)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -109,17 +98,10 @@ $(BUILD)/obj/cube/system_stm32c0xx.o: $(C0_SYSTEM)
 # 1. link (the .apphash field is zero)
 # 2. app_hash = SHA-512 of that image; write it into .apphash
 # 3. logdata from the ELF; embed it as .logdata_cbor; save <app_hash>.logdata too
-$(BUILD)/app.elf: $(OBJS) board/stm32c071rb.ld $(DEVICE_DIR)/ports/baremetal/log.ld $(DEVICE_DIR)/tools/logdata.py \
-             $(DEVICE_DIR)/tools/hash.py
+$(BUILD)/app.elf: $(OBJS) board/stm32c071rb.ld $(UCLOG_TOOLS)
 	$(CC) $(LDFLAGS) $(OBJS) $(LDLIBS) -o $@.tmp
-	$(OBJCOPY) -O binary $@.tmp $(BUILD)/app.unhashed.bin
-	$(PYTHON) $(DEVICE_DIR)/tools/hash.py -f -i $(BUILD)/app.unhashed.bin -o $(BUILD)/app.hash > $(BUILD)/app.hash.txt
-	$(OBJCOPY) --update-section .apphash=$(BUILD)/app.hash $@.tmp
-	$(PYTHON) $(DEVICE_DIR)/tools/logdata.py --objdump $(OBJDUMP) $@.tmp -o $(BUILD)/app.logdata
-	$(OBJCOPY) --add-section .logdata_cbor=$(BUILD)/app.logdata --set-section-flags .logdata_cbor=noload,readonly $@.tmp $@
+	$(call uclog_post_link,$@.tmp,$@,$(BUILD))
 	@rm -f $@.tmp
-	cp $(BUILD)/app.logdata $(BUILD)/$$(cat $(BUILD)/app.hash.txt).logdata
-	@mkdir -p $(UCLOG_CACHE) && cp $(BUILD)/app.logdata $(UCLOG_CACHE)/$$(cat $(BUILD)/app.hash.txt).logdata
 	$(SIZE) $@
 
 $(BUILD)/app.bin: $(BUILD)/app.elf

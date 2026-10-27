@@ -1,0 +1,10 @@
+/* The ucLog link on the nRF52840's USB (ucusb) instead of UARTE0. */
+/ {
+	chosen {
+		uclog,link = &usbd;
+	};
+};
+
+&usbd {
+	compatible = "unitcircle,ucusb", "nordic,nrf-usbd";
+};

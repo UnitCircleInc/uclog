@@ -16,8 +16,14 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
-#include <zephyr/sys/printk-hooks.h>
 #include <zephyr/sys/libc-hooks.h>
+#if __has_include(<zephyr/sys/printk-hooks.h>)
+#include <zephyr/sys/printk-hooks.h>
+#endif
+
+// Zephyr 3.7 has these but declares them in no header.
+void __printk_hook_install(int (*fn)(int c));
+void __stdout_hook_install(int (*hook)(int));
 
 #include "log.h"
 #include "ucuart.h"

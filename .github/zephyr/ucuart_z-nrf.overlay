@@ -1,0 +1,16 @@
+/* ucuart_z (any Zephyr UART) on the nRF52840's UARTE1. */
+/ {
+	chosen {
+		uclog,link = &uclogz;
+	};
+};
+
+&uart1 {
+	status = "okay";
+	current-speed = <1000000>;
+
+	uclogz: uclog {
+		compatible = "staric,ucuart_z";
+		current-speed = <1000000>;
+	};
+};

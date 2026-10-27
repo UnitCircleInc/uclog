@@ -12,6 +12,8 @@ __pycache__/
 
 # Firmware
 /firmware/*/build/
+# Device library host test (device/test/host)
+/build/
 
 # Node
 node_modules/

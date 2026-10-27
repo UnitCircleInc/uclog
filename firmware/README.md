@@ -5,8 +5,7 @@ Test firmware for exercising the hosts on real hardware, built on the device lib
 
 | Directory | Contents |
 |---|---|
-| [`../device/`](../device/README.md) | The device library: `include/log.h`, `src/log.c`, the semihost client and newlib syscalls, the Zephyr port and drivers, `tools/logdata.py` and `tools/hash.py` |
-| [`uccomm/`](uccomm/) | COBS, CBOR, CRC-32C and the ring buffer (`cb`), copied unchanged from [UnitCircleInc/ucComm](https://github.com/UnitCircleInc/ucComm) `src/` (commit 8bc8e3b) |
+| [`../device/`](../device/README.md) | The device library: `include/log.h`, `src/log.c`, the semihost client and newlib syscalls, the Zephyr port and drivers, `tools/`, and ucComm v3 (`uccomm/`); the boards build it through `uclog.mk` |
 | [`app/`](app/) | The test app every board builds: commands, the selftests |
 | [`nucleo-l452re-p/`](nucleo-l452re-p/) | Test firmware for the NUCLEO-L452RE-P (STM32L452RE, Cortex-M4F, hard-float): UART |
 | [`nucleo-c071rb/`](nucleo-c071rb/) | Test firmware for the NUCLEO-C071RB (STM32C071RB, Cortex-M0+): UART, USB CDC-ACM and USB HID at once |
@@ -520,13 +519,11 @@ The same test app (`app/`) on Zephyr 4.x, with `../device` as a Zephyr module: t
 `hwinfo` for the UID); `boards/<board>.overlay` picks the link. NUCLEO-L452RE-P only for now.
 
 ```sh
-# ZEPHYR_BASE set (a west workspace with Zephyr 4.x and hal_stm32); ucComm checked out somewhere.
+# ZEPHYR_BASE set: a west workspace with Zephyr 4.x and hal_stm32 (.github/zephyr/v4.4.2/west.yml).
 west build -b nucleo_l452re/stm32l452xx/p -d firmware/zephyr/build firmware/zephyr -- \
-    -DZEPHYR_EXTRA_MODULES="$PWD/device;/path/to/ucComm"
+    -DZEPHYR_EXTRA_MODULES="$PWD"         # the repository root is the module (ucComm: device/uccomm)
 STM32_Programmer_CLI -c port=SWD -w firmware/zephyr/build/zephyr/zephyr.bin 0x08000000 -v -rst
-# The VS Code hardware test reads <app_hash>.logdata from firmware/zephyr/build:
-cp firmware/zephyr/build/zephyr/zephyr.logdata \
-   firmware/zephyr/build/$(xxd -p -c 64 firmware/zephyr/build/zephyr/zephyr.hash).logdata
+# The build leaves <app_hash>.logdata in firmware/zephyr/build, where the VS Code test looks:
 UCLOG_TEST_FIRMWARE=zephyr UCLOG_TEST_DEVICE=serial:/dev/cu.usbmodem… \
     npx playwright test -c apps/vscode/playwright.config.ts hw          # in web/
 ```

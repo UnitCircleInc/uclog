@@ -1,3 +1,4 @@
+name: uclog
 build:
   kconfig: Kconfig
   cmake: .
@@ -5,8 +6,6 @@ build:
   #  board_root: .
     dts_root: .
     snippet_root: .
-  depends:
-    - uccomm
 #runners:
 #  # Additional runners, Zephyr will import these when discovering
 #  # subclasses of the `ZephyrBinaryRunner` class.

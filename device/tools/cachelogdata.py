@@ -26,6 +26,7 @@ if __name__ == '__main__':
     parser.add_argument('--logdata', help="Log data to cache", required=True)
     parser.add_argument('-f', '--full', action='store_true', help="Use full file contents")
     parser.add_argument('--hashfile', help="File with hash", default="")
+    parser.add_argument('--copy-to', help="Also copy it here as <app_hash>.logdata", default="")
 
     args = parser.parse_args()
 
@@ -52,3 +53,5 @@ if __name__ == '__main__':
     if not os.path.exists(cache_dir):
         os.makedirs(cache_dir)
     shutil.copy(args.logdata, os.path.join(cache_dir, app_hash.hex() + ".logdata"))
+    if args.copy_to != "":
+        shutil.copy(args.logdata, os.path.join(args.copy_to, app_hash.hex() + ".logdata"))
