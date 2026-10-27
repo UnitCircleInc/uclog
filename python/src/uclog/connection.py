@@ -123,6 +123,7 @@ class Connection:
 
   @property
   def closed(self) -> bool:
+    """The connection is closed (by `close()`, or by the hub)."""
     return self._closed
 
   @property
@@ -143,6 +144,8 @@ class Connection:
     return t
 
   def wait_device_info(self, timeout: Optional[float] = 2.0) -> Optional[dict]:
+    """The device info, waiting up to `timeout` seconds for it (None: as long as it takes); None
+    if none came."""
     with self._cv:
       self._cv.wait_for(lambda: self._info is not None or self._closed, timeout)
       return self._info
@@ -583,6 +586,12 @@ def connect(host: Optional[str] = None, device: Optional[str] = None, *, logdata
   - `approval_timeout`: for remote hubs, how long the hub may hold the connection while its
     operator approves it (before `device_timeout` starts).
   - `skip_backlog`: drop the frames the hub buffered before this connection.
+  - `cache_dir`, `logdata_domain`, `logdata_url`, `logdata_token`: the logdata cache and service
+    (default: $UCLOG_CACHE_DIR, $UCLOG_LOGDATA_DOMAIN, $UCLOG_LOGDATA_URL, $UCLOG_LOGDATA_TOKEN).
+  - `discover_remote`: also look for hubs on the network (mDNS; needs the `mdns` extra).
+  - `max_queue`: entries kept per queue (logs, frames, each port); the oldest are dropped and
+    counted in `dropped`.
+  - `hub_args`: more arguments for a hub this call starts (e.g. `["--bind", "0.0.0.0"]`).
   """
   if isinstance(logdata, (str, os.PathLike)):
     logdata = [logdata]

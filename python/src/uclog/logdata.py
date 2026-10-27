@@ -276,6 +276,8 @@ class LogData:
     return (self.saddr >> TARGET_DIGIT_SHIFT) & 0xF
 
   def lookup_sym(self, a: int) -> str:
+    """An address as `{sym}%p` shows it: `function+0xOFF`, else the nearest variable below it
+    (within 0x3000) as `file:name+0xOFF`, else hex (protocol.md §6.3)."""
     a2 = a & ~1
     for low, size, name in self.fns:
       if low <= a2 < low + size:
@@ -291,6 +293,8 @@ class LogData:
     return f'0x{a:08x}'
 
   def enum_name(self, name: str, v: int) -> str:
+    """An enum value as `{enum:name}%d` shows it: the enumerator, `<name:v>` for a value the enum
+    lacks, or `<!name:v>` when there is no such enum."""
     for t in (self.enums, self.tdenums):
       if name in t:
         return t[name].get(v, f'<{name}:{v}>')

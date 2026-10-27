@@ -37,11 +37,16 @@ with uclog.connect(logdata="build/zephyr/zephyr.elf") as dev:
 
 The examples in [examples/](examples/) replace the legacy scripts:
 
-| Example | Replaces |
+| Example | |
 |---|---|
-| `capture_logs.py` | `uclog-cli.py` |
-| `terminal.py` | `logcmd.py` (works on Windows too) |
-| `command.py` | `StreamClient.txrx` |
+| `capture_logs.py` | logs, filtered by level, source and text (replaces `uclog-cli.py`) |
+| `terminal.py` | a line-mode terminal, also piped (replaces `logcmd.py`; works on Windows too) |
+| `command.py` | a CBOR request on port 0 and its reply (replaces `StreamClient.txrx`) |
+| `decode_capture.py` | decode a raw capture of a device's bytes offline |
+| `pytest/` | a pytest fixture for hardware tests (`--uclog-device`), and tests that use it |
+
+`tests/test_examples.py` runs every example against the simulated device. The API reference is
+generated from the docstrings for the docs site (`website/build.py`).
 
 ## Choosing a hub
 

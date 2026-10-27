@@ -31,6 +31,20 @@ def default_cache_dir() -> str:
 
 
 class Resolver:
+  """Finds the logdata for a device's app hash, in this order:
+
+  1. the given `files` (`.logdata` or ELF); a file named `<app_hash>.logdata` is used for that hash
+     only;
+  2. `<cache_dir>/<app_hash>.logdata` (default: $UCLOG_CACHE_DIR, else $XDG_CACHE_HOME/uclog,
+     else ~/.cache/uclog);
+  3. the logdata service, when `domain` is set (`GET {url}/logdata/{domain}/{app_hash}`, with
+     `token` if set; a refused token is retried without it, and `token_refused` is set). The
+     download is saved in the cache;
+  4. the first given file, with a note.
+
+  `connect()` makes one; use it directly to resolve logdata without a device.
+  """
+
   def __init__(self, files=(), cache_dir=None, domain=None, url=None, token=None):
     self.files = [os.fspath(f) for f in files]
     self.cache_dir = os.fspath(cache_dir) if cache_dir is not None else default_cache_dir()
@@ -48,7 +62,7 @@ class Resolver:
     return out
 
   def resolve(self, app_hash: bytes):
-    """Returns (list of LogData, source text, notes)."""
+    """The logdata for `app_hash`: (list of LogData, where it came from, notes on the way)."""
     h = app_hash.hex()
     notes = []
     loaded = []

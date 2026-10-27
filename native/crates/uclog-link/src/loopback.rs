@@ -20,6 +20,10 @@
 //! - `plot` / `plot stop`: create plots on port 60 (protocol.md §5.6) and stream data to them, 20
 //!   times a second: a line plot `loopback` with two y-axes (`sin`, `cos`; `ramp` on y2), a
 //!   spectrogram `spectrum` (32 rows) and an 8×8 heatmap `grid`
+//!
+//! A CBOR map on port 0 is a request (`{"cmd": …}`, as the hosts' command buttons and Python's
+//! `command()` send), answered with a map whose `rsp` is the `cmd`: `get-info` (`board`, `logs`:
+//! logs sent so far), `echo` (`value`: the request's `value`), else `error`.
 
 use std::time::Duration;
 
@@ -272,6 +276,7 @@ impl Device {
                 let info = device_info(&self.o.board);
                 self.send(info).await
             }
+            Mux::Port { port: 0, data } if matches!(data.first(), Some(0xa0..=0xbf)) => self.cbor_command(data).await,
             Mux::Port { port: port @ (0 | ports::TERMINAL), data } => {
                 let mut ok = true;
                 for &b in data {
@@ -288,6 +293,26 @@ impl Device {
             }
             _ => true,
         }
+    }
+
+    async fn cbor_command(&mut self, data: &[u8]) -> bool {
+        use cbor::Value;
+        let req = cbor::from_slice(data).ok();
+        let cmd = req.as_ref().and_then(|m| cbor::get_text(m, "cmd")).unwrap_or("").to_string();
+        let rsp = Value::Text(cmd.clone());
+        let reply = match cmd.as_str() {
+            "get-info" => cbor::map([
+                ("rsp", rsp),
+                ("board", Value::Text(self.o.board.clone())),
+                ("logs", Value::Integer(self.seq.into())),
+            ]),
+            "echo" => cbor::map([
+                ("rsp", rsp),
+                ("value", req.as_ref().and_then(|m| cbor::get(m, "value")).cloned().unwrap_or(Value::Null)),
+            ]),
+            _ => cbor::map([("rsp", rsp), ("error", Value::Text("unknown command".into()))]),
+        };
+        self.send(wire_port(0, &cbor::to_vec(&reply))).await
     }
 
     async fn command(&mut self, port: u8, line: &str) -> bool {
@@ -404,6 +429,21 @@ mod tests {
         loop {
             let LinkEvent::Data(d) = l.rx.recv().await.unwrap() else { panic!() };
             if d == wire_port(61, b"hi\r\n") {
+                break;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn cbor_requests_on_port_0() {
+        use cbor::Value;
+        let mut l = open(LinkSpec::Loopback { opts: "rate=0".into() }, "rate=0").unwrap();
+        let req = cbor::map([("cmd", Value::Text("echo".into())), ("value", Value::Integer(7.into()))]);
+        l.tx.send(wire_port(0, &cbor::to_vec(&req))).await.unwrap();
+        let want = cbor::map([("rsp", Value::Text("echo".into())), ("value", Value::Integer(7.into()))]);
+        loop {
+            let LinkEvent::Data(d) = l.rx.recv().await.unwrap() else { panic!() };
+            if d == wire_port(0, &cbor::to_vec(&want)) {
                 break;
             }
         }

@@ -58,8 +58,47 @@ See [Logdata](logdata.md).
 The script answers the device's semihost calls: stdout and stderr go to `console()`, stdin reads
 call `stdin=`, and file calls work inside `files_dir=` only (without it they fail with `EACCES`).
 
+Every function and class: the [Python reference](reference/python.md).
+
 ## Examples
 
-[`python/examples/`](https://github.com/UnitCircleInc/uclog/tree/main/python/examples):
-`capture_logs.py` (logs to the console), `terminal.py` (an interactive terminal, Windows too) and
-`command.py` (a request and its reply).
+In [`python/examples/`](https://github.com/UnitCircleInc/uclog/tree/main/python/examples); the
+tests run each of them against the simulated device.
+
+| Example | |
+|---|---|
+| `capture_logs.py` | logs as they arrive, filtered by level, source and text |
+| `command.py` | a CBOR request on port 0 and its reply |
+| `terminal.py` | an interactive terminal on any OS; input can be piped |
+| `decode_capture.py` | decode a raw capture of a device's bytes, with no device or hub |
+| `pytest/` | a pytest fixture for hardware tests, and tests that use it |
+
+### Hardware tests with pytest
+
+`conftest.py` connects once for the run, to the device given with `--uclog-device` (or
+`$UCLOG_DEVICE`, or the one local device), and gives the tests `dev`; `no_errors` fails a test
+in which the device logs an error:
+
+```sh
+pytest python/examples/pytest --uclog-device serial:/dev/ttyACM0 --uclog-logdata build/app.elf
+```
+
+=== "conftest.py"
+
+    ```python
+    --8<-- "python/examples/pytest/conftest.py"
+    ```
+
+=== "test_device.py"
+
+    ```python
+    --8<-- "python/examples/pytest/test_device.py"
+    ```
+
+### Decoding a capture
+
+=== "decode_capture.py"
+
+    ```python
+    --8<-- "python/examples/decode_capture.py"
+    ```

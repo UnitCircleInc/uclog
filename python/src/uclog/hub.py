@@ -44,6 +44,7 @@ class HubInfo:
 
   @property
   def address(self) -> str:
+    """`host:port`, as `connect(host=...)` takes it."""
     return f'{self.host}:{self.port}'
 
   def __str__(self):

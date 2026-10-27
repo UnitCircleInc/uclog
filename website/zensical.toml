@@ -20,6 +20,7 @@ nav = [
     { "uclog: GUI, TUI, CLI" = "cli.md" },
     { "The hub" = "hub.md" },
     { "Python" = "python.md" },
+    { "Python reference" = "reference/python.md" },
   ] },
   { "Device" = [
     { "From device code to screen" = "device/logging.md" },

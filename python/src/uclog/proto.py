@@ -108,6 +108,7 @@ class FrameScanner:
         self.buf.clear()
 
   def feed(self, data: bytes):
+    """Scan received bytes; returns the events of the runs they complete."""
     events = []
     i = 0
     n = len(data)
@@ -163,6 +164,7 @@ def mux_decode(payload: bytes):
 
 
 def mux_encode(port: int, data: bytes) -> bytes:
+  """A port frame's payload: the header byte for `port`, then `data` (not yet COBS-encoded)."""
   if not 0 <= port <= 63:
     raise ValueError(f'port {port} out of range 0..63')
   return bytes(((port << 2) | TYPE_PORT,)) + bytes(data)
@@ -174,4 +176,5 @@ def wire(payload: bytes) -> bytes:
 
 
 def wire_port(port: int, data: bytes) -> bytes:
+  """The complete on-the-wire frame for `data` on `port`."""
   return wire(mux_encode(port, data))

@@ -108,6 +108,7 @@ def spec_page(src: Path, ref: str) -> str:
 
 
 REFERENCE_PAGE = 'reference/uc-log.md'
+PYTHON_REFERENCE_PAGE = 'reference/python.md'
 
 
 def one_line(text):
@@ -186,6 +187,125 @@ def names_tables(md: str) -> str:
   return re.sub(r'((?:^\|.*\n)+)', lambda m: f'<div class="uc-names" markdown>\n\n{m[1]}\n</div>\n', md, flags=re.M)
 
 
+# The Python reference: uclog's public names (its __all__), grouped; each with its signature and
+# docstring (the docstrings are Markdown: `code`, lists, indented examples).
+PYTHON_GROUPS = [
+  ('Connecting', ['connect', 'Connection', 'aio']),
+  ('Hubs and devices', ['list_hubs', 'list_devices', 'start_hub', 'stop_hub', 'HubInfo', 'DeviceInfo']),
+  ('Logs and logdata', ['LogRecord', 'LogData', 'Resolver']),
+  ('Errors', ['UclogError', 'NoHubError', 'MultipleHubsError', 'HubBusyError', 'ApprovalTimeoutError',
+              'DeviceNotRespondingError', 'HubStartError', 'ConnectionClosedError', 'DecodeError',
+              'LogDataError']),
+  ('Protocol helpers', ['cbor', 'proto']),
+]
+
+
+def docstring_md(text: str) -> str:
+  """A docstring as Python-Markdown: a blank line before a list that follows a paragraph, and
+  indented examples (after a blank line) as fenced Python."""
+  out, block, prev = [], None, ''
+  for line in text.split('\n') + ['']:
+    if block is not None:
+      if line.startswith('    ') or (not line.strip() and block):
+        block.append(line[4:])
+        continue
+      while block and not block[-1].strip():
+        block.pop()
+      out += ['```python', *block, '```', '']
+      block = None
+    if line.startswith('    ') and not prev.strip() and not LIST_ITEM.match(line):
+      block = [line[4:]]
+      continue
+    if LIST_ITEM.match(line) and prev.strip() and not LIST_ITEM.match(prev) and not prev.startswith(' '):
+      out.append('')
+    out.append(line)
+    prev = line
+  return '\n'.join(out).rstrip() + '\n'
+
+
+def python_reference(ref: str) -> str:
+  import dataclasses
+  import inspect
+  sys.path.insert(0, str(ROOT / 'python/src'))
+  try:
+    import uclog
+  finally:
+    sys.path.pop(0)
+  grouped = [n for _, names in PYTHON_GROUPS for n in names]
+  missing = sorted(set(uclog.__all__) - set(grouped))
+  if missing:
+    raise SystemExit(f'build.py: put {missing} in PYTHON_GROUPS (uclog.__all__ changed)')
+
+  def doc(o) -> str:
+    return docstring_md(inspect.getdoc(o) or '*(no description)*')
+
+  def sig(name, f) -> str:
+    try:
+      s = inspect.signature(f)
+    except (TypeError, ValueError):
+      return f'{name}(…)'
+    plain = s.replace(parameters=[p.replace(annotation=p.empty) for p in s.parameters.values()],
+                      return_annotation=s.empty)
+    return f'{name}{plain}'.replace('(self, ', '(').replace('(self)', '()')
+
+  def fn(level, name, f, body) -> list:
+    """A function's heading (its name), its signature, then its description."""
+    return [f'{level} `{name}`', '', '```python', sig(name, f), '```', '', body, '']
+
+  def own_members(cls):
+    for n, m in vars(cls).items():
+      if n.startswith('_'):
+        continue
+      if isinstance(m, property):
+        yield n, 'property', m
+      elif isinstance(m, (staticmethod, classmethod)):
+        yield n, 'method', m.__func__
+      elif inspect.isfunction(m):
+        yield n, 'method', m
+
+  out = ['# Python reference', '',
+         'The `uclog` package, generated from its docstrings '
+         f'([source]({GITHUB}/tree/{ref}/python/src/uclog)). A guide: [Python](../python.md).', '',
+         doc(uclog), '']
+  for title, names in PYTHON_GROUPS:
+    out += [f'## {title}', '']
+    for n in names:
+      o = getattr(uclog, n)
+      if inspect.ismodule(o):
+        out += [f'### `uclog.{n}`', '', doc(o), '']
+        consts = []
+        for m in getattr(o, '__all__', []):
+          f = getattr(o, m)
+          if inspect.isfunction(f):
+            out += fn('####', f'{n}.{m}', f, doc(f))
+          elif inspect.isclass(f) and not issubclass(f, BaseException):
+            out += [f'#### `{n}.{m}`', '', doc(f), '']
+            for mm, kind, ff in own_members(f):
+              if kind == 'method':
+                # aio.Connection's methods are the sync ones, awaited.
+                body = doc(ff) if ff.__doc__ or n != 'aio' else f'As `Connection.{mm}`, awaited.'
+                out += ['```python', sig(f'{m}.{mm}', ff), '```', '', body, '']
+          elif isinstance(f, int):
+            consts.append(f'| `{n}.{m}` | {f} |')
+        if consts:
+          out += [f'#### Constants', '', '| Name | Value |', '|---|---|', *consts, '']
+      elif inspect.isclass(o) and issubclass(o, BaseException):
+        base = o.__mro__[1].__name__
+        out += [f'### `{n}`', '', f'*Exception, a `{base}`.* ' + doc(o), '']
+      elif inspect.isclass(o):
+        out += [f'### `{n}`', '', doc(o), '']
+        if dataclasses.is_dataclass(o):
+          out += ['| Field | Type |', '|---|---|']
+          out += [f'| `{f.name}` | `{f.type if isinstance(f.type, str) else f.type.__name__}` |'
+                  for f in dataclasses.fields(o)]
+          out.append('')
+        for m, kind, f in own_members(o):
+          out += [f'#### `{n}.{m}`', '', doc(f), ''] if kind == 'property' else fn('####', f'{n}.{m}', f, doc(f))
+      else:
+        out += fn('###', f'uclog.{n}', o, doc(o))
+  return '\n'.join(out)
+
+
 def generate(version):
   ref = ref_for(version)
   for page, src in SPEC_PAGES.items():
@@ -195,6 +315,7 @@ def generate(version):
   out = HERE / 'docs' / REFERENCE_PAGE
   out.parent.mkdir(parents=True, exist_ok=True)
   out.write_text(element_reference(element_manifest(), ref), encoding='utf-8')
+  (HERE / 'docs' / PYTHON_REFERENCE_PAGE).write_text(python_reference(ref), encoding='utf-8')
 
 
 def zensical(*args, env=None):
