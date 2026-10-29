@@ -22,10 +22,8 @@ Secrets are added to a repository under Settings → Secrets and variables → A
   `uclog`, owner `UnitCircleInc`, repository `uclog`, workflow `release.yml`, environment
   `pypi`. The same on test.pypi.org with environment `testpypi`.
 - [ ] **npm**: create the organisation `uclog` (npmjs.com → Add organization, free for public
-  packages), owned by a Unit Circle account with 2FA. The first publish of `@uclog/element`
-  needs a token (`NPM_TOKEN`: a granular token, read and write, for the `@uclog` scope). After it,
-  add a trusted publisher on the package's settings (GitHub Actions, `UnitCircleInc/uclog`,
-  `release.yml`, environment `npm`) and the token can go.
+  packages), owned by a Unit Circle account with 2FA. No token: the first publish of
+  `@uclog/element` is by hand (step C8), and CI publishes later versions by trusted publishing.
 - [ ] **VS Code Marketplace**: an Azure DevOps organisation, then marketplace.visualstudio.com/manage
   → create publisher `unitcircle` (the id in `web/apps/vscode/package.json`). A personal access
   token with scope *Marketplace → Manage*, all accessible organisations: secret `VSCE_PAT`.
@@ -69,8 +67,8 @@ Secrets are added to a repository under Settings → Secrets and variables → A
 - [ ] C3. Secrets in `uclog`: the five Apple ones and `UCLOG_DEVICE_DEPLOY_KEY`.
 - [ ] C4. Environments in `uclog` (Settings → Environments): `testpypi`, `pypi`, `npm` and
   `vscode`, each with you as required reviewer, so nothing is published without your approval.
-  Put `NPM_TOKEN` in `npm`'s secrets and `VSCE_PAT`, `OVSX_PAT` in `vscode`'s (or in the
-  repository's).
+  Put `VSCE_PAT` and `OVSX_PAT` in `vscode`'s secrets (or in the repository's). `npm` needs
+  none.
 - [ ] C5. Pages: Settings → Pages → Source *GitHub Actions*; custom domain `uclog.unitcircle.ca`;
   when the certificate is issued, *Enforce HTTPS*. Then Actions → pages → *Run workflow*.
   https://uclog.unitcircle.ca/ shows the docs from `main` at `/dev/` (and the app at `/app/`).
@@ -78,18 +76,33 @@ Secrets are added to a repository under Settings → Secrets and variables → A
   ran first, re-run it). `uclog-device` gets `main` and `v1`–`v3`.
 - [ ] C7. Repository settings: description, website `https://uclog.unitcircle.ca`, topics;
   protect `main` (no force push).
-- [ ] C8. Release: `git tag v4 && git tag device-v4 && git push origin v4 device-v4`. `release.yml`
+- [ ] C8. `@uclog/element` 4.0.0 to npm, by hand (trusted publishing can only be set up on a
+  package that exists). From the tree of C1:
+  ```
+  npm login                     # in the browser, with your 2FA
+  cd web
+  pnpm install --frozen-lockfile
+  pnpm --filter @uclog/element build
+  cd packages/element
+  pnpm pack                     # uclog-element-4.0.0.tgz; check its files: tar tzf
+  npm publish uclog-element-4.0.0.tgz --access public   # asks for a 2FA code
+  ```
+  Then on npmjs.com, `@uclog/element` → Settings: *Trusted publisher* → GitHub Actions,
+  organisation `UnitCircleInc`, repository `uclog`, workflow `release.yml`, environment `npm`.
+  Under *Publishing access*, require 2FA and disallow tokens (trusted publishing still works).
+- [ ] C9. Release: `git tag v4 && git tag device-v4 && git push origin v4 device-v4`. `release.yml`
   makes the draft release `v4`, `device-mirror` the draft `device-v4` and the mirror's tag `v4`.
-- [ ] C9. Check the drafts (the files, the notes, `uclog-release-4.json` says macOS signed), then
+- [ ] C10. Check the drafts (the files, the notes, `uclog-release-4.json` says macOS signed), then
   publish `v4` and `device-v4`. Publishing runs `pages` again: `/v4/`, `/latest/` and
   `/download/` appear. In the release run, approve the waiting jobs: `testpypi` (then
-  `testpypi-install` checks an install on Linux, macOS and Windows), `pypi`, `npm` and `vscode`.
+  `testpypi-install` checks an install on Linux, macOS and Windows), `pypi` and `vscode`. Not
+  `npm` for `v4`: 4.0.0 is already there (C8), so reject it. From `v5` it publishes.
   They don't wait for the draft to be published, so check the draft first. A pre-release tag
   publishes to TestPyPI, PyPI and npm (`next`), not to VS Code.
-- [ ] C10. Check as a user: the download page on a Mac and on Windows; the `.dmg` on another Mac;
+- [ ] C11. Check as a user: the download page on a Mac and on Windows; the `.dmg` on another Mac;
   `pip install uclog`; the VS Code extension from the Marketplace; a Zephyr app with
   `uclog-device` in its `west.yml`.
-- [ ] C11. Announce from www.unitcircle.ca.
+- [ ] C12. Announce from www.unitcircle.ca.
 
 Existing users of the device repository keep working: `v1`–`v3` stay, and `main` keeps a
 `zephyr/module.yml` at the root that points into `device/`.
