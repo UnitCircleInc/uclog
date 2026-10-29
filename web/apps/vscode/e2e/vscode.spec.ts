@@ -80,7 +80,10 @@ test('device terminal (pseudoterminal)', async () => {
   await command('ucLog: Open Device Terminal');
   const term = page.locator('.terminal-wrapper.active .xterm-rows, .terminal .xterm-rows').last();
   await expect(term).toContainText('ucLog device terminal', { timeout: 15_000 });
-  await term.click(); // the keys go to the focused element: not always the new terminal yet
+  // The keys go to the focused element, not always the new terminal yet. xterm reads them from
+  // its helper textarea (a click on the rows lands on VS Code's widget container instead).
+  await page.locator('.terminal-wrapper.active .xterm-helper-textarea, .terminal .xterm-helper-textarea').last().focus();
+  await expect(term).toHaveClass(/xterm-focus/);
   await page.keyboard.type('echo from vscode');
   await page.keyboard.press('Enter');
   await expect(term).toContainText('from vscode', { timeout: 15_000 });
