@@ -129,6 +129,25 @@ fn resolve(a: &HubArgs) -> anyhow::Result<LinkSpec> {
     Ok(spec.with_baud(a.baud))
 }
 
+/// The TCP listener and, with UDP on, its socket (on the TCP port unless `--udp-port`). With
+/// `--port 0` a port whose UDP side is refused (Windows reserves ranges for UDP alone) is given
+/// up for another.
+async fn bind_tcp_udp(a: &HubArgs) -> anyhow::Result<(TcpListener, Option<UdpSocket>)> {
+    let mut tries = 0;
+    loop {
+        let tcp = bind_tcp(a.bind, a.port).await?;
+        if !a.udp {
+            return Ok((tcp, None));
+        }
+        let p = a.udp_port.unwrap_or(tcp.local_addr()?.port());
+        match UdpSocket::bind(SocketAddr::new(a.bind, p)).await {
+            Ok(u) => return Ok((tcp, Some(u))),
+            Err(_) if a.port == Some(0) && a.udp_port.is_none() && tries < 10 => tries += 1,
+            Err(e) => return Err(e).with_context(|| format!("UDP port {p}")),
+        }
+    }
+}
+
 /// Start the hub; returns once it is listening.
 pub async fn start(a: HubArgs, verbose: u8) -> anyhow::Result<Running> {
     let spec = resolve(&a)?;
@@ -143,19 +162,13 @@ pub async fn start(a: HubArgs, verbose: u8) -> anyhow::Result<Running> {
     let router = Router::new(files_dir.clone(), a.client_syscalls == OnOff::On);
     let (shared, to_device) = Shared::new(a.backlog, router, a.max_frame, a.slow_client, a.client_timeout());
 
-    let tcp = bind_tcp(a.bind, a.port).await?;
+    let (tcp, udp) = bind_tcp_udp(&a).await?;
     let port = tcp.local_addr()?.port();
     let ws = match a.ws_port {
         Some(p) => Some(TcpListener::bind(SocketAddr::new(a.bind, p)).await.with_context(|| format!("--ws-port {p}"))?),
         None => None,
     };
     let ws_port = ws.as_ref().map(|l| l.local_addr().map(|a| a.port())).transpose()?;
-    let udp = if a.udp {
-        let p = a.udp_port.unwrap_or(port);
-        Some(UdpSocket::bind(SocketAddr::new(a.bind, p)).await.with_context(|| format!("UDP port {p}"))?)
-    } else {
-        None
-    };
     let udp_port = udp.as_ref().map(|s| s.local_addr().map(|a| a.port())).transpose()?;
     let tls = tls_acceptor(&a)?;
 
