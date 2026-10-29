@@ -430,6 +430,10 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-') && github.repository == 'UnitCircleInc/uclog'
     runs-on: ubuntu-latest
     environment: vscode
+    # Both by trusted publishing (OIDC): no tokens.
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/setup-node@v4
         with:
@@ -439,12 +443,9 @@ jobs:
           name: dist-vsix
           path: vsix
       - name: Publish
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
         working-directory: .
         run: |
           set -euo pipefail
           f=$(ls vsix/*.vsix)
-          npx -y @vscode/vsce@3.9.2 publish --packagePath "$f" -p "$VSCE_PAT"
-          npx -y ovsx@0.10.6 publish "$f" -p "$OVSX_PAT"
+          npx -y @vscode/vsce@4.0.0 publish --packagePath "$f" --oidc
+          npx -y ovsx@1.2.0 publish "$f" --trusted-publishing --skip-duplicate

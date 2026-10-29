@@ -8,9 +8,9 @@ publisher (Marketplace, Open VSX) don't exist yet; `uclog.unitcircle.ca` has no 
 
 Secrets are added to a repository under Settings → Secrets and variables → Actions.
 
-## A. Accounts and credentials (start now: some take days)
+## A. Accounts and credentials (start now: some take days) — done 2026-10-29 except Windows
 
-- [ ] **Apple** (ready, in 1Password). Prepare the five secret values:
+- [x] **Apple** (ready, in 1Password). Prepare the five secret values:
   - `MACOS_CERTIFICATE_P12`: `base64 -i DeveloperID.p12 | pbcopy`
   - `MACOS_CERTIFICATE_PASSWORD`: the .p12's password
   - `APPLE_API_KEY_P8`: the text of the `AuthKey_XXXX.p8` file
@@ -18,25 +18,28 @@ Secrets are added to a repository under Settings → Secrets and variables → A
     Integrations
 - [ ] **Windows**: Azure Artifact Signing (in progress). Not needed to go public: the download
   page and the docs say the Windows programs are not signed yet.
-- [ ] **PyPI**: on pypi.org, Account → Publishing → *Add a new pending publisher*: project
+- [x] **PyPI**: on pypi.org, Account → Publishing → *Add a new pending publisher*: project
   `uclog`, owner `UnitCircleInc`, repository `uclog`, workflow `release.yml`, environment
   `pypi`. The same on test.pypi.org with environment `testpypi`.
-- [ ] **npm**: create the organisation `uclog` (npmjs.com → Add organization, free for public
+- [x] **npm**: create the organisation `uclog` (npmjs.com → Add organization, free for public
   packages), owned by a Unit Circle account with 2FA. No token: the first publish of
   `@uclog/element` is by hand (step C8), and CI publishes later versions by trusted publishing.
-- [ ] **VS Code Marketplace**: an Azure DevOps organisation, then marketplace.visualstudio.com/manage
-  → create publisher `unitcircle` (the id in `web/apps/vscode/package.json`). A personal access
-  token with scope *Marketplace → Manage*, all accessible organisations: secret `VSCE_PAT`.
-- [ ] **Open VSX**: sign in at open-vsx.org with GitHub, link an Eclipse account and sign the
-  publisher agreement, create a token: secret `OVSX_PAT`. Create the namespace once:
-  `npx ovsx create-namespace unitcircle -p <token>`.
-- [ ] **Device mirror**: create `UnitCircleInc/uclog-device`, public and empty (no README).
+- [x] **VS Code Marketplace**: an Azure DevOps organisation, then marketplace.visualstudio.com/manage
+  → create publisher `unitcircle` (the id in `web/apps/vscode/package.json`). No token: on the
+  publisher's *Trusted Publishing* tab, add GitHub: `UnitCircleInc` / `uclog`, workflow
+  `release.yml` (and environment `vscode`, if it asks). The release job runs
+  `vsce publish --oidc`.
+- [x] **Open VSX**: sign in at open-vsx.org with GitHub, link an Eclipse account and sign the
+  publisher agreement. Create the namespace `unitcircle` (on the site, or with a token:
+  `npx ovsx create-namespace unitcircle -p <token>`). Trusted publishing can only be added once
+  the extension has a version, so the first publish is by hand (step C10).
+- [x] **Device mirror**: create `UnitCircleInc/uclog-device`, public and empty (no README).
   Make a deploy key:
   `ssh-keygen -t ed25519 -C uclog-device-mirror -N '' -f uclog-device-deploy`. Add
   `uclog-device-deploy.pub` to `uclog-device` (Settings → Deploy keys, **allow write
   access**); the private file becomes secret `UCLOG_DEVICE_DEPLOY_KEY` in `uclog` (step C3).
-- [ ] **DNS**: in the `unitcircle.ca` zone, `uclog CNAME unitcircleinc.github.io.`
-- [ ] **Domain verification** (prevents takeover): GitHub organisation settings → Pages →
+- [x] **DNS**: in the `unitcircle.ca` zone, `uclog CNAME unitcircleinc.github.io.`
+- [x] **Domain verification** (prevents takeover): GitHub organisation settings → Pages →
   Add a domain `uclog.unitcircle.ca`, then the TXT record it shows.
 
 ## B. Staging: CI and a release dry run, in private
@@ -67,8 +70,7 @@ Secrets are added to a repository under Settings → Secrets and variables → A
 - [ ] C3. Secrets in `uclog`: the five Apple ones and `UCLOG_DEVICE_DEPLOY_KEY`.
 - [ ] C4. Environments in `uclog` (Settings → Environments): `testpypi`, `pypi`, `npm` and
   `vscode`, each with you as required reviewer, so nothing is published without your approval.
-  Put `VSCE_PAT` and `OVSX_PAT` in `vscode`'s secrets (or in the repository's). `npm` needs
-  none.
+  None of them needs secrets.
 - [ ] C5. Pages: Settings → Pages → Source *GitHub Actions*; custom domain `uclog.unitcircle.ca`;
   when the certificate is issued, *Enforce HTTPS*. Then Actions → pages → *Run workflow*.
   https://uclog.unitcircle.ca/ shows the docs from `main` at `/dev/` (and the app at `/app/`).
@@ -97,6 +99,12 @@ Secrets are added to a repository under Settings → Secrets and variables → A
   `/download/` appear. In the release run, approve the waiting jobs: `testpypi` (then
   `testpypi-install` checks an install on Linux, macOS and Windows), `pypi` and `vscode`. Not
   `npm` for `v4`: 4.0.0 is already there (C8), so reject it. From `v5` it publishes.
+  Before approving `vscode` the first time, publish to Open VSX by hand: download
+  `uclog-4.0.0.vsix` from the draft release, then
+  `npx -y ovsx@1.2.0 publish uclog-4.0.0.vsix -p <token>` (a token from open-vsx.org → Settings →
+  Access Tokens; delete it afterwards). Then Settings → Trusted Publishers: namespace
+  `unitcircle`, `UnitCircleInc` / `uclog`, workflow `release.yml`, environment `vscode`. The
+  job then publishes to the Marketplace and skips Open VSX's 4.0.0.
   They don't wait for the draft to be published, so check the draft first. A pre-release tag
   publishes to TestPyPI, PyPI and npm (`next`), not to VS Code.
 - [ ] C11. Check as a user: the download page on a Mac and on Windows; the `.dmg` on another Mac;
