@@ -51,7 +51,8 @@ jobs:
           # (glibc 2.35, as the other Linux builds: Raspberry Pi OS bookworm and later).
           - { os: ubuntu-22.04, target: armv7-unknown-linux-gnueabihf, name: linux-armv7, armhf: true }
           - { os: macos-14, target: aarch64-apple-darwin, name: macos-arm64 }
-          - { os: macos-13, target: x86_64-apple-darwin, name: macos-x64 }
+          # Intel, cross-compiled on Apple Silicon (GitHub has retired the macos-13 Intel image).
+          - { os: macos-14, target: x86_64-apple-darwin, name: macos-x64 }
           - { os: windows-latest, target: x86_64-pc-windows-msvc, name: windows-x64 }
           - { os: windows-11-arm, target: aarch64-pc-windows-msvc, name: windows-arm64 }
     runs-on: ${{ matrix.os }}

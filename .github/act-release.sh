@@ -36,7 +36,7 @@ run() {
     -P ubuntu-latest=catthehacker/ubuntu:act-22.04 \
     -P ubuntu-22.04=catthehacker/ubuntu:act-22.04 \
     -P ubuntu-22.04-arm=catthehacker/ubuntu:act-22.04 \
-    -P macos-14=-self-hosted -P macos-13=-self-hosted \
+    -P macos-14=-self-hosted \
     --artifact-server-path tmp/act-artifacts "${arch[@]}" "$@"
 }
 

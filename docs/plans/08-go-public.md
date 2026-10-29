@@ -63,7 +63,7 @@ Secrets are added to a repository under Settings → Secrets and variables → A
 - [ ] Actions → release → *Run workflow* on `main`. It builds every target, signs and notarises
   the macOS files (named `uclog-main-…`) and builds the wheels, VSIX and site parts as artifacts;
   the release job is skipped (not a tag). Check that every runner exists for the repository:
-  `macos-13` (Intel), `ubuntu-22.04-arm`, `windows-11-arm` (the Arm ones may not be offered to a
+  `ubuntu-22.04-arm`, `windows-11-arm` (the Arm ones may not be offered to a
   private repository; I can switch those rows to cross builds).
 - [ ] Optional, to try the release job: `git tag v4-alpha1 && git push staging v4-alpha1`. It
   makes a draft pre-release in `uclog-staging`; the publish jobs only run in `UnitCircleInc/uclog`.
