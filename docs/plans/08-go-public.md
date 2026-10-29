@@ -16,8 +16,17 @@ Secrets are added to a repository under Settings → Secrets and variables → A
   - `APPLE_API_KEY_P8`: the text of the `AuthKey_XXXX.p8` file
   - `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`: from App Store Connect → Users and Access →
     Integrations
-- [ ] **Windows**: Azure Artifact Signing (in progress). Not needed to go public: the download
-  page and the docs say the Windows programs are not signed yet.
+- [ ] **Windows**: Azure Artifact Signing (account and identity validated 2026-10-29). Then:
+  - a certificate profile (*Public Trust*) in the account; note the account's name, its URI
+    (Overview, e.g. `https://eus.codesigning.azure.net/`) and the profile's name;
+  - Microsoft Entra ID → App registrations → New (`uclog-release-signing`); note its client and
+    tenant IDs. Under *Certificates & secrets → Federated credentials*, one per repository:
+    *GitHub Actions*, organisation `UnitCircleInc`, repository `uclog-staging` (and `uclog`),
+    entity *Environment*, `windows-signing`;
+  - on the certificate profile, Access control (IAM) → role *Artifact Signing Certificate
+    Profile Signer* for the app;
+  - in the repository: variables `AZURE_SIGNING_ENDPOINT`, `AZURE_SIGNING_ACCOUNT`,
+    `AZURE_SIGNING_PROFILE`; secrets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`.
 - [x] **PyPI**: on pypi.org, Account → Publishing → *Add a new pending publisher*: project
   `uclog`, owner `UnitCircleInc`, repository `uclog`, workflow `release.yml`, environment
   `pypi`. The same on test.pypi.org with environment `testpypi`.
@@ -67,7 +76,8 @@ Secrets are added to a repository under Settings → Secrets and variables → A
 - [ ] C2. `git remote add origin git@github.com:UnitCircleInc/uclog.git`, then
   `git push --dry-run origin main` (it must be a fast-forward from `0970e82`), then
   `git push origin main`. The old `v1`–`v3` tags are already there.
-- [ ] C3. Secrets in `uclog`: the five Apple ones and `UCLOG_DEVICE_DEPLOY_KEY`.
+- [ ] C3. Secrets in `uclog`: the five Apple ones, `UCLOG_DEVICE_DEPLOY_KEY`, and the Azure
+  secrets and variables (A, Windows).
 - [ ] C4. Environments in `uclog` (Settings → Environments): `testpypi`, `pypi`, `npm` and
   `vscode`, each with you as required reviewer, so nothing is published without your approval.
   None of them needs secrets.

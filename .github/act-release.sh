@@ -29,7 +29,7 @@ fi
 
 rm -rf tmp/act-artifacts tmp/act
 mkdir -p tmp/act
-sed -E -e '/^    needs: (build|\[build, macos\])$/d' -e '/^  release:/,$d' .github/workflows/release.yml > tmp/act/release.yml
+sed -E -e '/^    needs: (build|\[build, macos(, windows)?\])$/d' -e '/^  release:/,$d' .github/workflows/release.yml > tmp/act/release.yml
 
 run() {
   act workflow_dispatch \
