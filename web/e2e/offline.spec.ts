@@ -1,8 +1,8 @@
 // The web app offline (plan 08 §3.1, task 9b):
 // - the built app from a server: after one visit it loads with no network (sw.js); a new build is
 //   announced, and "Reload" switches to it;
-// - the one-file app from file://: a secure context with Web Serial, WebHID and Web Bluetooth, the
-//   simulated device, and a hub, which refuses the "null" origin unless --allow-origin null.
+// - the one-file app from file://: a secure context with Web Serial, WebHID and Web Bluetooth (not on
+//   Linux), the simulated device, and a hub, which refuses the "null" origin unless --allow-origin null.
 // Builds web/apps/demo itself; the hub part needs native/target/{release,debug}/uclog-hub.
 
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
@@ -86,7 +86,8 @@ test('the one-file app from file://', async ({ page }) => {
     origin: location.origin,
   }));
   console.log(`file:// page: ${JSON.stringify(env)}`);
-  expect(env).toMatchObject({ secure: true, serial: true, hid: true, bluetooth: true });
+  // Chrome on Linux has Web Bluetooth only behind a flag (chrome://flags, experimental web platform features).
+  expect(env).toMatchObject({ secure: true, serial: true, hid: true, bluetooth: process.platform !== 'linux' });
   await expect(page.locator('#app-bar')).toHaveCount(0);
   await simulated(page);
 });

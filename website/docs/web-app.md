@@ -3,7 +3,8 @@
 [uclog.unitcircle.ca/app/](https://uclog.unitcircle.ca/app/) runs in Chrome and Edge (Web Serial,
 WebHID and Web Bluetooth are Chromium-only). It connects to:
 
-- a device on this computer: a serial port (UART, USB CDC), USB HID, or Bluetooth LE;
+- a device on this computer: a serial port (UART, USB CDC), USB HID, or Bluetooth LE (on Linux,
+  only with *Experimental Web Platform features* turned on in `chrome://flags`);
 - a `uclog hub` on this computer or on the network (`ws://` or `wss://`);
 - the simulated device, to try it out.
 

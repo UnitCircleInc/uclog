@@ -14,8 +14,8 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - name: Linux build dependencies (hidapi, btleplug)
@@ -57,7 +57,7 @@ jobs:
           mkdir -p /tmp/vscode && tar xzf /tmp/vscode.tar.gz -C /tmp/vscode --strip-components 1
           sudo apt-get install -y xvfb
           UCLOG_VSCODE=/tmp/vscode/code xvfb-run -a npx playwright test -c apps/vscode/playwright.config.ts
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: playwright-results

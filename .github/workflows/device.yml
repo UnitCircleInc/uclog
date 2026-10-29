@@ -24,6 +24,7 @@ on:
       - .github/scripts/fetch-stm32cube.sh
       - .github/scripts/zephyr-builds.sh
       - .github/zephyr/**
+  workflow_dispatch:
 
 jobs:
   # The encoder and the RX scanner against spec/vectors and the reference (device/test/host), on
@@ -34,7 +35,7 @@ jobs:
         os: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: cmake -S device/test/host -B build/host && cmake --build build/host
       - run: python3 device/test/host/test_vectors.py build/host/uclog_host_test -v
       - run: python3 -I -m unittest discover -s device/tools -v
@@ -45,7 +46,7 @@ jobs:
   firmware:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Toolchain
         run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi
       - name: STM32Cube
@@ -69,7 +70,7 @@ jobs:
           make -C firmware/nucleo-l452re-p STM32CUBE_L4=$PWD/cube/l4
           make -C firmware/nucleo-c071rb STM32CUBE_C0=$PWD/cube/c0
           make -C firmware/stm32wba55g-dk1 STM32CUBE_WBA=$PWD/cube/wba
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: test-firmware
           path: |
@@ -89,10 +90,10 @@ jobs:
     runs-on: ubuntu-24.04
     container: ${{ matrix.image }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           path: uclog
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ws/zephyr

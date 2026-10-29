@@ -25,7 +25,7 @@ jobs:
     if: github.repository == 'UnitCircleInc/uclog'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0 # the whole history, and the tags
       - name: The tag matches UCLOG_DEVICE_VERSION
