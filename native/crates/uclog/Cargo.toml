@@ -28,12 +28,12 @@ serde_json = { version = "1.0.154", features = ["preserve_order"] }
 tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "sync", "time", "io-std", "io-util", "signal"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
-uclog-hub = { version = "4.0.0-alpha.1", path = "../uclog-hub" }
-uclog-link = { version = "4.0.0-alpha.1", path = "../uclog-link" }
-uclog-logdata = { version = "4.0.0-alpha.1", path = "../uclog-logdata" }
-uclog-proto = { version = "4.0.0-alpha.1", path = "../uclog-proto" }
-uclog-semihost = { version = "4.0.0-alpha.1", path = "../uclog-semihost" }
-uclog-session = { version = "4.0.0-alpha.1", path = "../uclog-session" }
+uclog-hub = { version = "4.0.0", path = "../uclog-hub" }
+uclog-link = { version = "4.0.0", path = "../uclog-link" }
+uclog-logdata = { version = "4.0.0", path = "../uclog-logdata" }
+uclog-proto = { version = "4.0.0", path = "../uclog-proto" }
+uclog-semihost = { version = "4.0.0", path = "../uclog-semihost" }
+uclog-session = { version = "4.0.0", path = "../uclog-session" }
 
 eframe = { version = "0.36.2", optional = true, default-features = false, features = ["glow", "default_fonts", "wayland", "x11", "persistence", "accesskit"] }
 egui = { version = "0.36.2", optional = true }

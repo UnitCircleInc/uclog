@@ -26,9 +26,9 @@ tokio-tungstenite = "0.29.0"
 toml = "1.1.8"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
-uclog-link = { version = "4.0.0-alpha.1", path = "../uclog-link" }
-uclog-proto = { version = "4.0.0-alpha.1", path = "../uclog-proto" }
-uclog-semihost = { version = "4.0.0-alpha.1", path = "../uclog-semihost" }
+uclog-link = { version = "4.0.0", path = "../uclog-link" }
+uclog-proto = { version = "4.0.0", path = "../uclog-proto" }
+uclog-semihost = { version = "4.0.0", path = "../uclog-semihost" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.191"

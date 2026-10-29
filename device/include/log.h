@@ -23,7 +23,7 @@
 
 // The device library version (SoloVer, plan 08 §2.2a; set by scripts/version.py set --device).
 // Sent as `uclog_version` in the device info.
-#define UCLOG_DEVICE_VERSION "4-alpha1"
+#define UCLOG_DEVICE_VERSION "4"
 
 // ---------------------------------------------------------------------------------------------
 // Configuration (override with -D; on Zephyr from Kconfig)

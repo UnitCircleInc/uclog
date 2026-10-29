@@ -1,6 +1,6 @@
 {
   "name": "@uclog/element",
-  "version": "4.0.0-alpha.1",
+  "version": "4.0.0",
   "description": "<uc-log>: the embeddable ucLog web client (ESM and IIFE bundles, workers inlined)",
   "license": "Apache-2.0",
   "homepage": "https://uclog.unitcircle.ca/latest/embedding/",

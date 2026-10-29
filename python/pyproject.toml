@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "uclog"
-version = "4a1"
+version = "4"
 description = "ucLog for scripts: talk to devices through the ucLog hub and decode their logs"
 readme = "README.md"
 requires-python = ">=3.9"
