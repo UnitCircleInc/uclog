@@ -140,6 +140,22 @@ def _pid_alive(pid):
   return True
 
 
+def _read_entry(path, tries=5):
+  """A registry entry, or None. A hub rewrites its entry (busy, device), and on Windows a read
+  at that moment fails or sees it half written: try again briefly."""
+  import time
+  for i in range(tries):
+    try:
+      with open(path, encoding='utf-8') as f:
+        return json.load(f)
+    except FileNotFoundError:
+      return None
+    except (OSError, ValueError):
+      if i + 1 < tries:
+        time.sleep(0.02)
+  return None
+
+
 def _local_hubs():
   d = registry_dir()
   try:
@@ -150,10 +166,8 @@ def _local_hubs():
   for n in sorted(names):
     if not n.endswith('.json'):
       continue
-    try:
-      with open(os.path.join(d, n), encoding='utf-8') as f:
-        j = json.load(f)
-    except (OSError, ValueError):
+    j = _read_entry(os.path.join(d, n))
+    if j is None:
       continue
     if not _pid_alive(j.get('pid')):
       continue

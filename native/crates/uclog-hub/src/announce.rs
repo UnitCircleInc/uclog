@@ -150,8 +150,18 @@ impl Registry {
             "kind": id.kind, "tls": id.tls, "busy": busy, "version": env!("UCLOG_VERSION"),
         });
         let tmp = self.path.with_extension("tmp");
-        if std::fs::write(&tmp, v.to_string()).and_then(|_| std::fs::rename(&tmp, &self.path)).is_err() {
-            warn!("could not write {}", self.path.display());
+        if let Err(e) = std::fs::write(&tmp, v.to_string()) {
+            warn!("could not write {}: {e}", tmp.display());
+            return;
+        }
+        // On Windows the rename fails while a reader has the entry open (Python opens files
+        // without delete sharing): try again briefly.
+        for i in 0..5 {
+            match std::fs::rename(&tmp, &self.path) {
+                Ok(()) => return,
+                Err(_) if i < 4 => std::thread::sleep(std::time::Duration::from_millis(20)),
+                Err(e) => warn!("could not write {}: {e}", self.path.display()),
+            }
         }
     }
 }
