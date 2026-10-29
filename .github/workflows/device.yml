@@ -89,8 +89,15 @@ jobs:
           - { zephyr: v3.7.2, image: "ghcr.io/zephyrproject-rtos/ci:v0.26.18" } # SDK 0.16.9
           - { zephyr: v4.4.2, image: "ghcr.io/zephyrproject-rtos/ci:v0.29.4" }  # SDK 1.0.x
     runs-on: ubuntu-24.04
-    container: ${{ matrix.image }}
+    # The CI image (all of Zephyr's toolchains) is bigger than a runner's free disk, so space is
+    # made first and the image runs with docker run (a job container is pulled before any step).
     steps:
+      - name: Disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          docker image prune -af
+          df -h /
       - uses: actions/checkout@v5
         with:
           path: uclog
@@ -101,13 +108,14 @@ jobs:
             ws/modules
             ws/.west
           key: zephyr-${{ matrix.zephyr }}-${{ hashFiles(format('uclog/.github/zephyr/{0}/west.yml', matrix.zephyr)) }}
-      - name: Workspace
+      - name: Pull ${{ matrix.image }}
+        run: docker pull -q ${{ matrix.image }}
+      - name: Workspace and build
         run: |
           mkdir -p ws/manifest
           cp uclog/.github/zephyr/${{ matrix.zephyr }}/west.yml ws/manifest/
-          cd ws
-          [ -d .west ] || west init -l manifest
-          west update --narrow -o=--depth=1
-      - name: Build
-        working-directory: ws
-        run: ZEPHYR_BASE=$PWD/zephyr ../uclog/.github/scripts/zephyr-builds.sh ../build
+          docker run --rm -v "$PWD:/w" -w /w/ws ${{ matrix.image }} bash -ec '
+            git config --global --add safe.directory "*"
+            [ -d .west ] || west init -l manifest
+            west update --narrow -o=--depth=1
+            ZEPHYR_BASE=$PWD/zephyr ../uclog/.github/scripts/zephyr-builds.sh ../build'
