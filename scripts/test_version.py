@@ -88,9 +88,10 @@ class Manifests(unittest.TestCase):
     lock = (version.ROOT / version.CARGO_LOCK).read_text()
     self.run_cmd('set', '9')
     new = (version.ROOT / version.CARGO_LOCK).read_text()
-    removed = [l for l in lock.splitlines() if l not in new.splitlines()]
-    self.assertTrue(removed and all(l.startswith('version = ') for l in removed))
+    # Line by line: a line like version = "4.0.0" may also be another crate's.
     self.assertEqual(len(lock.splitlines()), len(new.splitlines()))
+    changed = [(a, b) for a, b in zip(lock.splitlines(), new.splitlines()) if a != b]
+    self.assertTrue(changed and all(a.startswith('version = ') and b == 'version = "9.0.0"' for a, b in changed))
 
   def test_device(self):
     self.assertEqual(self.run_cmd('set', '5-beta1', '--device')[0], 0)
