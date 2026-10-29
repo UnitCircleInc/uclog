@@ -60,6 +60,7 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: failure()
         with:
+          retention-days: 7
           name: playwright-results
           path: |
             web/test-results

@@ -103,6 +103,7 @@ jobs:
           fi
       - uses: actions/upload-artifact@v6
         with:
+          retention-days: 7
           name: ${{ runner.os == 'macOS' && 'unsigned' || 'dist' }}-${{ matrix.name }}
           path: |
             native/dist/*.tar.gz*
@@ -164,6 +165,7 @@ jobs:
           echo "signed=$signed" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v6
         with:
+          retention-days: 7
           name: dist-macos
           path: dist/*
 
@@ -218,6 +220,7 @@ jobs:
           ls -l dist
       - uses: actions/upload-artifact@v6
         with:
+          retention-days: 7
           name: dist-python
           path: python/dist/*
 
@@ -247,6 +250,7 @@ jobs:
           node scripts/package.mjs --from ../../../artifacts
       - uses: actions/upload-artifact@v6
         with:
+          retention-days: 7
           name: dist-vsix
           path: web/apps/vscode/*.vsix
 
@@ -282,6 +286,7 @@ jobs:
           (cd dist && sha256sum * > "uclog-site-$n.sha256")
       - uses: actions/upload-artifact@v6
         with:
+          retention-days: 7
           name: dist-site
           path: dist/*
 

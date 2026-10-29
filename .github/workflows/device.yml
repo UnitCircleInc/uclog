@@ -72,6 +72,7 @@ jobs:
           make -C firmware/stm32wba55g-dk1 STM32CUBE_WBA=$PWD/cube/wba
       - uses: actions/upload-artifact@v6
         with:
+          retention-days: 7
           name: test-firmware
           path: |
             firmware/*/build/app.elf
