@@ -23,17 +23,14 @@ Where this text and the reference disagree, that is a bug: raise it.
 
 ## 1. Layers
 
-```
- ┌──────────────────────────────────────────────────────────────────────────────┐
- │ payloads: log frames (§3.3), port data (§5), logdata decoding (§6)            │
- ├──────────────────────────────────────────────────────────────────────────────┤
- │ frame header: type / port byte (§3), 2-byte peek (§3.2)                       │
- ├──────────────────────────────────────────────────────────────────────────────┤
- │ framing: COBS + 0x00 delimiters, pulses, liveness, wake (§2)                  │
- ├──────────────────────────────────────────────────────────────────────────────┤
- │ links: UART, USB CDC, HID, BLE, UDP; hub: TCP, WebSocket (§4)                 │
- └──────────────────────────────────────────────────────────────────────────────┘
-```
+From the top (what the hosts read) to the bottom (the wire):
+
+| Layer | What it is | Section |
+|---|---|---|
+| Payloads | log frames, port data, logdata decoding | §3.3, §5, §6 |
+| Frame header | the type / port byte, the 2-byte peek | §3, §3.2 |
+| Framing | COBS and `0x00` delimiters, pulses, liveness, wake | §2 |
+| Links | UART, USB CDC, HID, BLE, UDP; through a hub: TCP, WebSocket | §4 |
 
 Every link carries the **same byte stream**. A hub forwards whole frames unchanged (§8).
 
